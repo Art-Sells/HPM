@@ -1,5 +1,7 @@
 # HPM Mechanics
 
+## [Code Base Architecture](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase)
+
 ### HPAP = Highest Price After Purchase
 - Changes based on the highest cpVatop, otherwise 0
 
