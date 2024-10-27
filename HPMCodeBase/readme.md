@@ -1,7 +1,5 @@
-## HPM Code Base Architecture
+## HPM Code Base Architecture (for Bitcoin)
 
 ***Built with React (typescript).***
 
-**Free for any organization or person to use, copy, and integrate into their own systems.**
-
-**Feel free to improve upon the system.**
+**Free for any organization or person to use and integrate into their own systems inside or outside Bitcoin.**
