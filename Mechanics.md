@@ -9,7 +9,7 @@ Then, once (or if) the Bitcoin price rises over $60k, MASS swaps the native Stab
 
 It gets even better…
 
-If Bitcoin rises above the price you imported/purchased ($60k in this instance) to $65k then falls to $63k, the $65k price is held. This means, you will never lose any profits you made on the upswing when the downswing occurs (even if the Bitcoin price drops to $0 thanks to Mass).
+If Bitcoin rises above the price you imported/purchased ($60k in this instance) to $65k then falls to $63k, the $65k price is held. This means, you will never lose any profits you made on the upswing when the downswing occurs (even if the Bitcoin price drops to $0 thanks to MASS).
 
 ## Expanded:
 
