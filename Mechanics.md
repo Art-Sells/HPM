@@ -172,7 +172,7 @@ The HPM (whenever a sale occurs) subtracts from the lowest price you imported/pu
  - - cVactTaa 1 = 0.00790
  - - cVactDa 1 = 0
  - - cdVatop 1 = $14
- - Vatop Group 2 *(Subtracts from this group first according to the lowest cpVatop)*
+ - Vatop Group 2 *(subtracts from this group first according to the lowest cpVatop)*
  - - cVatop 2 = $0
  - - cpVatop 2 = $0
  - - cVact 2 = $0
