@@ -193,7 +193,7 @@ The HPM (whenever a sale occurs) subtracts from the lowest price you imported/pu
  - Vatop Group Combinations
  - - acVatops = $700
  - - acVacts = $714
- - - acVactTas = 0.001098
+ - - acVactTas = 0.01098
  - - acVactTaa = 0.00790
  - - acdVatops = $14
  - - acVactDas = 200
