@@ -61,7 +61,7 @@ The HPM (whenever a sale occurs) subtracts from the lowest price you imported/pu
  - - acVacts = $500
  - - acVactTas = 0.00833
  - - acVactTaa = 0
- - - acVactsDas = $500
+ - - acVactDas = $500
  - - acdVatops = $0
 
 2. Bitcoin Price: $54,000
@@ -90,7 +90,7 @@ The HPM (whenever a sale occurs) subtracts from the lowest price you imported/pu
  - - acVacts = $1,100
  - - acVactTas = 0.01941
  - - acVactTaa = 0
- - - acVactsDas = 1,100
+ - - acVactDas = 1,100
  - - acdVatops = $0
 
 3. Bitcoin Price: $55,000
@@ -119,7 +119,7 @@ The HPM (whenever a sale occurs) subtracts from the lowest price you imported/pu
  - - acVacts = $1,111
  - - acVactTas = 0.01941
  - - acVactTaa = 0.01111
- - - acVactsDas = 500
+ - - acVactDas = 500
  - - acdVatops = $11
 
 4. Bitcoin Price: $65,000
@@ -157,7 +157,7 @@ The HPM (whenever a sale occurs) subtracts from the lowest price you imported/pu
  - - acVacts = $1,464
  - - acVatopTas = 0.02249
  - - acVactTaa = 0.01944
- - - acVactsDas = 200
+ - - acVactDas = 200
  - - acdVatops = $164 
 
 5. Bitcoin Price: $63,000
@@ -196,4 +196,4 @@ The HPM (whenever a sale occurs) subtracts from the lowest price you imported/pu
  - - acVactTas = 0.001098
  - - acVactTaa = 0.00790
  - - acdVatops = $14
- - - acVactsDas = 200
+ - - acVactDas = 200
