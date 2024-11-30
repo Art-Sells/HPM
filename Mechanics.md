@@ -34,8 +34,8 @@ The HPM (whenever a sale occurs) subtracts from the lowest price you imported/pu
 - **cVact** = Corresponding Vact (equals the cVatop in the beginning and increases based on the cpVact)
 - **cpVact** = Corresponding Price Vact (equals the cpVatop in the beginning and increases based on the HAP)
 - **cVactTa** = cVact Token Amount (reflects the amount of Bitcoin at time of purchase/import)
-- **cVactTaa** = cVact Token Amount Available (reflects the amount of Bitcoin available to swap from the Stablecoin if cdVatop > 0)
-- **cVactDa** = cVact Dollar Amount (reflects the amount of Dollars available to swap from Bitcoin if cdVatop <= 0)
+- **cVactTaa** = cVact Token Amount Available (reflects the amount of Bitcoin available to swap from the Stablecoin if BitcoinPrice >= cpVact)
+- **cVactDa** = cVact Dollar Amount (reflects the amount of Dollars available to swap from Bitcoin if BitcoinPrice < cpVact)
 - **acVacts** = All cVacts (combines all cVacts)
 - **acVactTas** = All cVactTas (combines all cVactTas)
 - **acVactTaa** = All cVactTaa (combines all cVactTaa)
@@ -53,15 +53,15 @@ The HPM (whenever a sale occurs) subtracts from the lowest price you imported/pu
  - - cVact 1 = $500
  - - cpVact (or HAP) 1 = $60,000 
  - - cVactTa 1 = 0.00833
- - - cVactTaa 1 = 0
- - - cVactDa 1 = 500
+ - - cVactTaa 1 = 0.00833
+ - - cVactDa 1 = 0
  - - cdVatop 1 = $0
  - Vatop Group Combinations
  - - acVatops = $500
  - - acVacts = $500
  - - acVactTas = 0.00833
- - - acVactTaa = 0
- - - acVactDas = 500
+ - - acVactTaa = 0.00833
+ - - acVactDas = 0
  - - acdVatops = $0
 
 2. Bitcoin Price: $54,000
@@ -82,15 +82,15 @@ The HPM (whenever a sale occurs) subtracts from the lowest price you imported/pu
  - - cVact 2 = $600
  - - cpVact (or HAP) 2 = $54,000      
  - - cVactTa 2 = 0.01111
- - - cVactTaa 2 = 0
- - - cVactDa 2 = 600 
+ - - cVactTaa 2 = 0.01111
+ - - cVactDa 2 = 0
  - - cdVatop 2 = $0
  - Vatop Group Combinations
  - - acVatops = $1,100
  - - acVacts = $1,100
  - - acVactTas = 0.01941
- - - acVactTaa = 0
- - - acVactDas = 1,100
+ - - acVactTaa = 0.01111
+ - - acVactDas = 500
  - - acdVatops = $0
 
 3. Bitcoin Price: $55,000
@@ -149,15 +149,15 @@ The HPM (whenever a sale occurs) subtracts from the lowest price you imported/pu
  - - cVact 3 = $200
  - - cpVact (or HAP) 3 = $65,000
  - - cVatopTa 3 = 0.00308
- - - cVactTaa 3 = 0
- - - cVactDa 3 = 200
+ - - cVactTaa 3 = 0.00308
+ - - cVactDa 3 = 0
  - - cdVatop 3 = $0
  - Vatop Group Combinations
  - - acVatops = $1,300
  - - acVacts = $1,464
  - - acVatopTas = 0.02249
- - - acVactTaa = 0.01944
- - - acVactDas = 200
+ - - acVactTaa = 0.02249
+ - - acVactDas = 0
  - - acdVatops = $164 
 
 5. Bitcoin Price: $63,000
@@ -169,8 +169,8 @@ The HPM (whenever a sale occurs) subtracts from the lowest price you imported/pu
  - - cVact 1 = $514
  - - cpVact (or HAP) 1 = $65,000       
  - - cVactTa 1 =  0.00790
- - - cVactTaa 1 = 0.00790
- - - cVactDa 1 = 0
+ - - cVactTaa 1 = 0
+ - - cVactDa 1 = 514
  - - cdVatop 1 = $14
  - Vatop Group 2 *(subtracts from this group first according to the lowest cpVatop)*
  - - cVatop 2 = $0
@@ -194,6 +194,6 @@ The HPM (whenever a sale occurs) subtracts from the lowest price you imported/pu
  - - acVatops = $700
  - - acVacts = $714
  - - acVactTas = 0.01098
- - - acVactTaa = 0.00790
+ - - acVactTaa = 0
+ - - acVactDas = 714
  - - acdVatops = $14
- - - acVactDas = 200
