@@ -11,7 +11,7 @@ It gets even better…
 
 If Bitcoin rises above the price you imported/purchased ($60k in this instance) to $65k then falls to $63k, the $65k price is held. This means, you will never lose any profits you made on the upswing when the downswing occurs (even if the Bitcoin price drops to $0 thanks to MASS).
 
-The HPM (whenever a sale occurs) subtracts from the lowest price you imported/purchased your Bitcoin (or asset) at ensuring you continue to accumulate the maximum amounts of profits possible.
+The HPM (whenever a sale occurs) subtracts from your wallet based on the highest price you imported/purchased your Bitcoin (or asset) at ensuring you continue to accumulate the maximum amounts of profits possible.
 
 ***HPM & MASS in action: [arells.com/concept](https://arells.com/concept)***
 
@@ -161,39 +161,39 @@ The HPM (whenever a sale occurs) subtracts from the lowest price you imported/pu
  - - acdVatops = $164 
 
 5. Bitcoin Price: $63,000
- - $750 worth of Bitcoin is sold
+ - $600 worth of Bitcoin is sold
  - HPAP = $65,000
  - Vatop Group 1
- - - cVatop 1 = $500
+ - - cVatop 1 = $100
  - - cpVatop 1 = $60,000
- - - cVact 1 = $514
+ - - cVact 1 = $114
  - - cpVact (or HAP) 1 = $65,000       
- - - cVactTa 1 =  0.00790
+ - - cVactTa 1 =  0.00174
  - - cVactTaa 1 = 0
- - - cVactDa 1 = 514
+ - - cVactDa 1 = 114
  - - cdVatop 1 = $14
- - Vatop Group 2 *(subtracts from this group first according to the lowest cpVatop)*
- - - cVatop 2 = $0
- - - cpVatop 2 = $0
- - - cVact 2 = $0
- - - cpVact (or HAP) 2 = $0
- - - cVactTa 2 = 0
+ - Vatop Group 2
+ - - cVatop 2 = $600
+ - - cpVatop 2 = $54,000
+ - - cVact 2 = $722
+ - - cpVact (or HAP) 2 = $65,000   
+ - - cVactTa 2 = 0.01111
  - - cVactTaa 2 = 0
- - - cVactDa 2 = 0
- - - cdVatop 2 = $0
+ - - cVactDa 2 = 722
+ - - cdVatop 2 = $122
  - Vatop Group 3 
- - - cVatop 3 = $200
- - - cpVatop 3 = $65,000
- - - cVact 3 = $200
- - - cpVact (or HAP) 3 = $65,000 
- - - cVactTa 3 = 0.00308
+ - - cVatop 3 = $0
+ - - cpVatop 3 = $0
+ - - cVact 3 = $0
+ - - cpVact (or HAP) 3 = $0
+ - - cVatopTa 3 = 0
  - - cVactTaa 3 = 0
- - - cVactDa 3 = 200
- - - cdVatop 3 = $0  
+ - - cVactDa 3 = 0
+ - - cdVatop 3 = $0
  - Vatop Group Combinations
  - - acVatops = $700
- - - acVacts = $714
- - - acVactTas = 0.01098
+ - - acVacts = $836
+ - - acVactTas = 0.01285
  - - acVactTaa = 0
- - - acVactDas = 714
- - - acdVatops = $14
+ - - acVactDas = 836
+ - - acdVatops = $136
