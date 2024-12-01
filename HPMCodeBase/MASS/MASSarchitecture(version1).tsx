@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { fetchUserAttributes } from 'aws-amplify/auth';
 import axios from 'axios';
 
-interface MASSContextType {
+interface MASSarchitectureType {
   cVactTaa: number;
   cVactDa: number;
 }
@@ -20,7 +20,7 @@ interface VatopGroup {
   cdVatop: number;
 }
 
-const MASSContext = createContext<MASSContextType | undefined>(undefined);
+const MASSarchitecture = createContext<MASSarchitectureType | undefined>(undefined);
 
 export const MASSProvider = ({ children }: { children: ReactNode }) => {
   const [email, setEmail] = useState<string>('');
@@ -119,14 +119,14 @@ export const MASSProvider = ({ children }: { children: ReactNode }) => {
   }, [vatopGroups, isInitialLoad]);
 
   return (
-    <MASSContext.Provider value={{ cVactTaa: 0, cVactDa: 0 }}>
+    <MASSarchitecture.Provider value={{ cVactTaa: 0, cVactDa: 0 }}>
       {children}
-    </MASSContext.Provider>
+    </MASSarchitecture.Provider>
   );
 };
 
 export const useMASS = () => {
-  const context = useContext(MASSContext);
+  const context = useContext(MASSarchitecture);
   if (!context) {
     throw new Error('useMASS must be used within a MASSProvider');
   }
