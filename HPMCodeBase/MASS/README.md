@@ -4,61 +4,68 @@ MASS or Market Automated Supplication System is a system built under the [HPM](h
 ## In a Nutshell
 MASS is not an aggregate "supplication system" meaning when activated, it does not automatically supplicate all assets into a stablecoin (and vise versa). The reason for this is because profits cannot be gained if MASS were to aggregatetely supplicate assets. In order for to gain the most amounts of profits as possible, MASS (with HPM) activates individually per Vatop Group.
 
-### Example:
-***note: see [HPM Mechanics Example](https://github.com/Art-Sells/HPM/blob/main/Mechanics.md#expanded) for acronym meanings.***
+## Example Scenario:
 
-1. Bitcoin Price: $60,000
- - $500 worth of Bitcoin is purchased/imported
- - HPAP = $60,000
- - Vatop Group 1
- - - cpVact (or HAP) 1 = $60,000 
- - - cVactTaa 1 = 0.00833
- - Investment Profits & Losses:
- - - ***Profits (acdVatops): $0***
- - - ***Losses: $0***
+### 1. Bitcoin Price: $60,000
+- **Action**: $500 worth of Bitcoin is purchased/imported.
+- **HPAP**: $60,000.
+- **Vatop Group 1**:
+  - cpVact (or HAP): $60,000.
+  - cVactTaa: 0.00833 BTC.
+- **Investment Profits & Losses**:
+  - ***Profits (acdVatops): $0***.
+  - ***Losses: $0***.
 
-2. Bitcoin Price: $54,000
- - $600 worth of Bitcoin is purchased/imported
- - HPAP = $60,000
- - Vatop Group 1 ***(MASS activated)***
- - - cpVact (or HAP) 1 = $60,000
- - - cVactTaa 1 = 0
- - - cVactDa 1 = 500 ***(in USD supplicated from BTC)***
- - Vatop Group 2
- - - cpVact (or HAP) 2 = $54,000      
- - - cVactTaa 2 = 0.01111
- - - cVactDa 2 = 0
- - Investment Profits & Losses:
- - - ***Profits (acdVatops): $0***
- - - ***Losses: $0***
+---
 
-3. Bitcoin Price: $65,000 
- - HPAP = $65,000
- - Vatop Group 1 ***(MASS activated)***
- - - cpVact (or HAP) 1 = $65,000       
- - - cVactTaa 1 = 0.00833 ***(in BTC supplicated from USD)***
- - - cVactDa 1 = 0 
- - Vatop Group 2
- - - cpVact (or HAP) 2 = $65,000   
- - - cVactTaa 2 = 0.01111
- - - cVactDa 2 = 0
- - Investment Profits & Losses:
- - - ***Profits (acdVatops): +$164***
- - - ***Losses: $0***
+### 2. Bitcoin Price: $54,000
+- **Action**: $600 worth of Bitcoin is purchased/imported.
+- **HPAP**: $60,000.
+- **Vatop Group 1** *(MASS activated)*:
+  - cpVact (or HAP): $60,000.
+  - cVactTaa: 0 BTC.
+  - cVactDa: $500 *(in USD swapped from BTC)*.
+- **Vatop Group 2**:
+  - cpVact (or HAP): $54,000.
+  - cVactTaa: 0.01111 BTC.
+  - cVactDa: $0.
+- **Investment Profits & Losses**:
+  - ***Profits (acdVatops): $0***.
+  - ***Losses: $0***.
 
-4. Bitcoin Price: $63,000 
- - HPAP = $65,000
- - Vatop Group 1 ***(MASS activated)***
- - - cpVact (or HAP) 1 = $65,000       
- - - cVactTaa 1 = 0
- - - cVactDa 1 = 542 ***(in USD supplicated from BTC)*** 
- - Vatop Group 2 ***(MASS activated)***
- - - cpVact (or HAP) 2 = $65,000   
- - - cVactTaa 2 = 0
- - - cVactDa 2 = $722 ***(in USD supplicated from BTC)***
- - Investment Profits & Losses:
- - - ***Profits (acdVatops): +$164***
- - - ***Losses: $0***
+---
+
+### 3. Bitcoin Price: $65,000
+- **Action**: No Bitcoin purchased/imported.
+- **HPAP**: $65,000.
+- **Vatop Group 1** *(MASS activated)*:
+  - cpVact (or HAP): $65,000.
+  - cVactTaa: 0.00833 BTC *(swapped back into BTC from USD)*.
+  - cVactDa: $0.
+- **Vatop Group 2**:
+  - cpVact (or HAP): $65,000.
+  - cVactTaa: 0.01111 BTC.
+  - cVactDa: $0.
+- **Investment Profits & Losses**:
+  - ***Profits (acdVatops): +$164***.
+  - ***Losses: $0***.
+
+---
+
+### 4. Bitcoin Price: $63,000
+- **Action**: No Bitcoin purchased/imported.
+- **HPAP**: $65,000.
+- **Vatop Group 1** *(MASS activated)*:
+  - cpVact (or HAP): $65,000.
+  - cVactTaa: 0 BTC.
+  - cVactDa: $542 *(in USD swapped from BTC)*.
+- **Vatop Group 2** *(MASS activated)*:
+  - cpVact (or HAP): $65,000.
+  - cVactTaa: 0 BTC.
+  - cVactDa: $722 *(in USD swapped from BTC)*.
+- **Investment Profits & Losses**:
+  - ***Profits (acdVatops): +$164***.
+  - ***Losses: $0***.
 
 ### FAQ (Frequently Asked Question/s):
 - What about supplication (swapping) fees?
