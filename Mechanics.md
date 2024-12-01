@@ -3,7 +3,7 @@
 ## [Code Base Architecture](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase)
 
 ## In a Nutshell:
-If you purchase/import Bitcoin into Arells at $60k (for example), the HPM holds the price for you and automatically swaps your Bitcoin into a native Stablecoin thanks to a new system called ***[MASS(Market Automated Supplication System)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)***; this is also achieved if the Bitcoin price falls lower than $60k.
+If you purchase/import Bitcoin into Arells at $60k (for example), the HPM holds that price for you while automatically swapping your Bitcoin into a native Stablecoin thanks to a new system called ***[MASS(Market Automated Supplication System)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)***; this is also achieved if the Bitcoin price falls lower than $60k.
 
 Then, once (or if) the Bitcoin price rises over $60k, MASS swaps the native Stablecoin back into Bitcoin, this way, you’re consistently riding up profits during bull markets, and never experiencing losses during bear markets (without even having to think about it).
 
@@ -34,8 +34,8 @@ The HPM (whenever a sale occurs) subtracts from your wallet based on the highest
 - **cVact** = Corresponding Vact (equals the cVatop in the beginning and increases based on the cpVact)
 - **cpVact** = Corresponding Price Vact (equals the cpVatop in the beginning and increases based on the HAP)
 - **cVactTa** = cVact Token Amount (reflects the amount of Bitcoin at time of purchase/import)
-- **cVactTaa** = cVact Token Amount Available (reflects the amount of Bitcoin available to swap from the Stablecoin into Bitcoin if BitcoinPrice >= cpVact)
-- **cVactDa** = cVact Dollar Amount (reflects the amount of Dollars available to swap from Bitcoin into a Stablecoin if BitcoinPrice < cpVact)
+- **cVactTaa** = cVact Token Amount Available (reflects the amount of Bitcoin available to swap from the Stablecoin into Bitcoin if BitcoinPrice >= cpVact *(this is a MASS orchestrated precedure)*)
+- **cVactDa** = cVact Dollar Amount (reflects the amount of Dollars available to swap from Bitcoin into a Stablecoin if BitcoinPrice < cpVact *(this is a MASS orchestrated precedure)*)
 - **acVacts** = All cVacts (combines all cVacts)
 - **acVactTas** = All cVactTas (combines all cVactTas)
 - **acVactTaa** = All cVactTaa (combines all cVactTaa)
