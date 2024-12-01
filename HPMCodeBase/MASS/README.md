@@ -64,6 +64,6 @@ MASS is not an aggregate "supplication system" meaning when activated, it does n
 - What about supplication (swapping) fees?
 - - MASS is currently integrating [Polygon POS](https://polygonscan.com/gastracker) into its framework. Polygon POS currently incurs an average ~$0.00016 fee per supplication(swap), this is only 1.6% of $0.01 so it is exorbitantly cheap. So we're working to keep MASS as efficient as possible by decreasing the mount of activations per second/minute/hour per "Vatop Group", so the more Vatop Groups incured in your account, the less often MASS is activated.
 
-#### Efficieny
+#### Efficiency
 MASS is currently in Version 1 of production so MASS's base "activation time" increments and decrements based on the amount of assets currently held within Arells so (assuming price changes occur frequently) Fee Constraints and Calculations are in-built into the system.
 
