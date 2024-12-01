@@ -26,9 +26,12 @@ export const MASSProvider = ({ children }: { children: ReactNode }) => {
   const [email, setEmail] = useState<string>('');
   const [vatopGroups, setVatopGroups] = useState<VatopGroup[]>([]);
   const [prevVatopGroups, setPrevVatopGroups] = useState<VatopGroup[]>([]);
-  const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true); // Track initial load
+  const [swapIntervalIds, setSwapIntervalIds] = useState<NodeJS.Timeout[]>([]);
 
-  // Fetch email on mount
+  const FEE_PER_SWAP = 0.00016; // $0.00016 per swap
+  const SECONDS_PER_YEAR = 365 * 24 * 60 * 60;
+  const MIN_INTERVAL = 10; // Minimum interval capped at 10 seconds
+
   useEffect(() => {
     const fetchEmail = async () => {
       try {
@@ -44,7 +47,6 @@ export const MASSProvider = ({ children }: { children: ReactNode }) => {
     fetchEmail();
   }, []);
 
-  // Fetch VatopGroups every 3 seconds
   useEffect(() => {
     if (!email) return;
 
@@ -53,43 +55,76 @@ export const MASSProvider = ({ children }: { children: ReactNode }) => {
         const response = await axios.get('/api/fetchVatopGroups', { params: { email } });
         const fetchedVatopGroups = response.data.vatopGroups || [];
 
-        // Ensure no duplicate or redundant groups
         const uniqueVatopGroups = fetchedVatopGroups.filter(
           (group: VatopGroup, index: number, self: VatopGroup[]) =>
             index === self.findIndex((g) => g.cpVatop === group.cpVatop && g.cVactTa === group.cVactTa)
         );
 
         setVatopGroups(uniqueVatopGroups);
-
-        if (isInitialLoad) {
-          setPrevVatopGroups(uniqueVatopGroups); // Initialize prevVatopGroups on first load
-          setIsInitialLoad(false); // Mark initial load as complete
-        }
+        adjustSwaps(uniqueVatopGroups); // Dynamically adjust swaps
       } catch (error) {
         console.error('Error fetching vatop groups:', error);
       }
     };
 
-    fetchVatopGroups(); // Fetch initially
+    const intervalId = setInterval(fetchVatopGroups, MIN_INTERVAL * 1000);
+    fetchVatopGroups();
 
-    const intervalId = setInterval(fetchVatopGroups, 3000); // Fetch every 3 seconds
+    return () => clearInterval(intervalId);
+  }, [email]);
 
-    return () => clearInterval(intervalId); // Cleanup on unmount
-  }, [email, isInitialLoad]);
+  const adjustSwaps = (groups: VatopGroup[]) => {
+    swapIntervalIds.forEach((id) => clearInterval(id));
+    setSwapIntervalIds([]);
 
-  // Swap functions
-  const swapUSDCintoWBTC = async (amount: number) => {
-    // Logic for USDC to WBTC swap goes here
+    const newIntervalIds: NodeJS.Timeout[] = [];
+
+    groups.forEach((group) => {
+      const prevCdVatop = prevVatopGroups.find((prevGroup) => prevGroup.cpVatop === group.cpVatop)?.cdVatop || 0;
+      const currentCdVatop = group.cdVatop;
+
+      // Determine fee behavior based on cdVatop
+      let maxAnnualFee;
+      if (currentCdVatop <= 0.01) {
+        // Allow unlimited swaps if cdVatop <= 0.01
+        maxAnnualFee = Infinity;
+        console.log(
+          `Group ${group.cpVatop}: cdVatop=${currentCdVatop}, enabling unlimited swaps.`
+        );
+      } else if (prevCdVatop > 0 && currentCdVatop > prevCdVatop) {
+        // For growing cdVatop, reduce fee impact dynamically
+        maxAnnualFee = FEE_PER_SWAP * Math.min(500, currentCdVatop * 1000); // Example scaling logic
+        console.log(
+          `Group ${group.cpVatop}: cdVatop=${currentCdVatop}, scaling max fee dynamically.`
+        );
+      } else {
+        maxAnnualFee = 0.10; // Default to $0.10/year for other cases
+      }
+
+      const maxSwapsPerYear = maxAnnualFee === Infinity
+        ? SECONDS_PER_YEAR / MIN_INTERVAL
+        : Math.floor(maxAnnualFee / FEE_PER_SWAP);
+      const calculatedInterval = maxAnnualFee === Infinity
+        ? MIN_INTERVAL
+        : Math.floor(SECONDS_PER_YEAR / maxSwapsPerYear);
+      const interval = Math.max(calculatedInterval, MIN_INTERVAL);
+
+      console.log(
+        `Group ${group.cpVatop}: cdVatop=${currentCdVatop}, Max Fee=${maxAnnualFee}, Max Swaps/Year=${maxSwapsPerYear}, Interval=${interval}s`
+      );
+
+      const intervalId = setInterval(() => {
+        console.log(`Running swap for group ${group.cpVatop}`);
+        // Add your swap logic here
+      }, interval * 1000);
+
+      newIntervalIds.push(intervalId);
+    });
+
+    setSwapIntervalIds(newIntervalIds);
   };
 
-  const swapWBTCintoUSDC = async (amount: number) => {
-    // Logic for WBTC to USDC swap goes here
-  };
-
-  // Monitor VatopGroups for changes and perform swaps
   useEffect(() => {
-    if (isInitialLoad) return; // Prevent swaps on initial load
-
     const prevIds = prevVatopGroups.map((group) => group.cpVatop);
     const currentIds = vatopGroups.map((group) => group.cpVatop);
 
@@ -97,26 +132,37 @@ export const MASSProvider = ({ children }: { children: ReactNode }) => {
     const deletedGroups = prevVatopGroups.filter((group) => !currentIds.includes(group.cpVatop));
 
     if (addedGroups.length > 0 || deletedGroups.length > 0) {
-      setPrevVatopGroups([...vatopGroups]); // Update previous groups
-      return; // Skip swap logic
+      console.log('Groups were added or deleted, skipping swaps.');
+      setPrevVatopGroups([...vatopGroups]);
+      return;
     }
 
     vatopGroups.forEach((group, index) => {
       const prevGroup = prevVatopGroups[index] || {};
 
-      // Check for cVactTaa swap condition
       if (group.cVactTaa > 0.00001 && (!prevGroup.cVactTaa || group.cVactTaa > prevGroup.cVactTaa)) {
+        console.log(`Initiating USDC to WBTC swap for amount: ${group.cVactTaa}`);
         swapUSDCintoWBTC(group.cVactTaa);
       }
 
-      // Check for cVactDa swap condition
       if (group.cVactDa > 0.01 && (!prevGroup.cVactDa || group.cVactDa > prevGroup.cVactDa)) {
+        console.log(`Initiating WBTC to USDC swap for amount: ${group.cVactDa}`);
         swapWBTCintoUSDC(group.cVactDa);
       }
     });
 
-    setPrevVatopGroups([...vatopGroups]); // Update previous groups
-  }, [vatopGroups, isInitialLoad]);
+    setPrevVatopGroups([...vatopGroups]);
+  }, [vatopGroups]);
+
+  const swapUSDCintoWBTC = async (amount: number) => {
+    console.log(`Swapping ${amount} USDC to WBTC`);
+    // Logic for USDC to WBTC swap
+  };
+
+  const swapWBTCintoUSDC = async (amount: number) => {
+    console.log(`Swapping ${amount} WBTC to USDC`);
+    // Logic for WBTC to USDC swap
+  };
 
   return (
     <MASSarchitecture.Provider value={{ cVactTaa: 0, cVactDa: 0 }}>
