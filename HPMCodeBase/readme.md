@@ -1,4 +1,4 @@
-# HPM Code Base Architecture (for Bitcoin)
+# HPM Architecture (for Bitcoin)
 
 ***Built with React (typescript).***
 
