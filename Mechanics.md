@@ -3,7 +3,7 @@
 ## [Code Base Architecture](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase)
 
 ## In a Nutshell:
-If you purchase/import Bitcoin into Arells at $60k (for example), the HPM holds that price for you while automatically swapping your Bitcoin into a native Stablecoin thanks to a new system called ***[MASS(Market Automated Supplication System)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)***; this is also achieved if the Bitcoin price falls lower than $60k.
+If you purchase/import Bitcoin into Arells at $60k (for example), the HPM holds that price for you ensuring your investment never loses value thanks to a new system called ***[MASS(Market Automated Supplication System)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)***; this is also achieved if the Bitcoin price falls lower than $60k.
 
 Then, once (or if) the Bitcoin price rises over $60k, MASS is activated, this way, you’re consistently riding up profits during bull markets, and never experiencing losses during bear markets (without even having to think about it).
 
