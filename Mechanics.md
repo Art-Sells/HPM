@@ -15,185 +15,122 @@ The HPM (whenever a sale occurs) subtracts from your wallet based on the highest
 
 ***HPM & MASS in action: [arells.com/concept](https://arells.com/concept)***
 
-## Expanded:
+## Terminology and Calculations
 
 ### HPAP = Highest Price After Purchase
-- Changes based on the highest cpVact, otherwise 0
+- The highest `cpVact` across all groups. Defaults to 0 if no groups exist.
 
 ### HAP = Highest Asset Price
-- The same value as the cpVact
+- The same value as the `cpVact` for each VatopGroup.
+
+---
 
 ### Vatop = Value At Time Of Purchase
-- **cVatop** = Corresponding Vatop (the value of your Bitcoin investment at time of purchase/import)
-- **cpVatop** = Corresponding Price Vatop (the price of Bitcoin at time of purchase/import)
-- **cdVatop** = Corresponding Difference Vatop (cVact - cVatop = cdVatop)
-- **acVatops** = All cVatops (Combines all cVatops)
-- **acdVatops** = All cdVatops (combines all cdVatops only if positive, otherwise 0)
+- **cVatop**: Value of Bitcoin investment at the time of purchase or import.
+- **cpVatop**: Bitcoin price at the time of purchase or import.
+- **cdVatop**: Difference between `cVact` and `cVatop`: cdVatop = cVact - cVatop
+- **acVatops**: Sum of all `cVatop` values across VatopGroups.
+- **acdVatops**: Sum of all positive `cdVatop` values; negative values are excluded.
+
+---
 
 ### Vact = Value At Current Time
-- **cVact** = Corresponding Vact (equals the cVatop in the beginning and increases based on the cpVact)
-- **cpVact** = Corresponding Price Vact (equals the cpVatop in the beginning and increases based on the HAP)
-- **cVactTa** = cVact Token Amount (reflects the amount of Bitcoin at time of purchase/import)
-- **cVactTaa** = cVact Token Amount Available (reflects the amount of Bitcoin available to swap from the Stablecoin into Bitcoin if BitcoinPrice >= cpVact *(this is a MASS orchestrated precedure)*)
-- **cVactDa** = cVact Dollar Amount (reflects the amount of Dollars available to swap from Bitcoin into a Stablecoin if BitcoinPrice < cpVact *(this is a MASS orchestrated precedure)*)
-- **acVacts** = All cVacts (combines all cVacts)
-- **acVactTas** = All cVactTas (combines all cVactTas)
-- **acVactTaa** = All cVactTaa (combines all cVactTaa)
-- **acVactDas** = All cVactDas (combines all cVactDas)
+- **cVact**: Current value of Bitcoin investment, which starts as `cVatop` and increases as `cpVact` grows.
+- **cpVact**: Current price of Bitcoin; begins as `cpVatop` and adjusts based on the highest Bitcoin price observed (`HAP`).
+- **cVactTa**: Token amount of Bitcoin at purchase/import time.
+- **cVactTaa**: Token amount of Bitcoin available for swapping back to Bitcoin if the current Bitcoin price (`BitcoinPrice`) is greater than or equal to `cpVact`. This triggers MASS orchestration.
+- **cVactDa**: Dollar amount available to swap Bitcoin into a Stablecoin if the current Bitcoin price (`BitcoinPrice`) is less than `cpVact`. This also triggers MASS orchestration.
+- **acVacts**: Sum of all `cVact` values across VatopGroups.
+- **acVactTas**: Sum of all `cVactTa` values across VatopGroups.
+- **acVactTaa**: Sum of all `cVactTaa` values across VatopGroups.
+- **acVactDas**: Sum of all `cVactDa` values across VatopGroups.
 
-#### Example:
-***note: decimal dollar related numbers rounded up/down***
+---
 
-1. Bitcoin Price: $60,000
- - $500 worth of Bitcoin is purchased/imported
- - HPAP = $60,000
- - Vatop Group 1
- - - cVatop 1 = $500
- - - cpVatop 1 = $60,000
- - - cVact 1 = $500
- - - cpVact (or HAP) 1 = $60,000 
- - - cVactTa 1 = 0.00833
- - - cVactTaa 1 = 0.00833
- - - cVactDa 1 = 0
- - - cdVatop 1 = $0
- - Vatop Group Combinations
- - - acVatops = $500
- - - acVacts = $500
- - - acVactTas = 0.00833
- - - acVactTaa = 0.00833
- - - acVactDas = 0
- - - acdVatops = $0
+## Example Scenarios
 
-2. Bitcoin Price: $54,000
- - $600 worth of Bitcoin is purchased/imported
- - HPAP = $60,000
- - Vatop Group 1
- - - cVatop 1 = $500
- - - cpVatop 1 = $60,000
- - - cVact 1 = $500
- - - cpVact (or HAP) 1 = $60,000      
- - - cVactTa 1 = 0.00833
- - - cVactTaa 1 = 0
- - - cVactDa 1 = 500
- - - cdVatop 1 = $0
- - Vatop Group 2
- - - cVatop 2 = $600
- - - cpVatop 2 = $54,000
- - - cVact 2 = $600
- - - cpVact (or HAP) 2 = $54,000      
- - - cVactTa 2 = 0.01111
- - - cVactTaa 2 = 0.01111
- - - cVactDa 2 = 0
- - - cdVatop 2 = $0
- - Vatop Group Combinations
- - - acVatops = $1,100
- - - acVacts = $1,100
- - - acVactTas = 0.01941
- - - acVactTaa = 0.01111
- - - acVactDas = 500
- - - acdVatops = $0
+### 1. Bitcoin Price: $60,000
+- **Action**: $500 worth of Bitcoin purchased/imported.
+- **Results**:
+  - HPAP = $60,000.
+  - Vatop Group 1:
+    - cVatop = $500, cpVatop = $60,000, cVact = $500, cpVact = $60,000.
+    - cVactTa = 0.00833 BTC, cVactTaa = 0.00833 BTC, cVactDa = $0, cdVatop = $0.
+  - Combinations:
+    - acVatops = $500, acVacts = $500.
+    - acVactTas = 0.00833 BTC, acVactTaa = 0.00833 BTC, acVactDas = $0.
+    - acdVatops = $0.
 
-3. Bitcoin Price: $55,000
- - No Bitcoin is purchased/imported
- - HPAP = $60,000
- - Vatop Group 1
- - - cVatop 1 = $500
- - - cpVatop 1 = $60,000
- - - cVact 1 = $500
- - - cpVact (or HAP) 1 = $60,000      
- - - cVactTa 1 = 0.00833
- - - cVactTaa 1 = 0
- - - cVactDa 1 = 500
- - - cdVatop 1 = $0
- - Vatop Group 2
- - - cVatop 2 = $600
- - - cpVatop 2 = $54,000
- - - cVact 2 = $611
- - - cpVact (or HAP) 2 = $55,000      
- - - cVactTa 2 = 0.01111
- - - cVactTaa 2 = 0.01111
- - - cVactDa 2 = 0     
- - - cdVatop 2 = $11
- - Vatop Group Combinations
- - - acVatops = $1,100
- - - acVacts = $1,111
- - - acVactTas = 0.01941
- - - acVactTaa = 0.01111
- - - acVactDas = 500
- - - acdVatops = $11
+---
 
-4. Bitcoin Price: $65,000
- - $200 worth of Bitcoin is purchased/imported
- - HPAP = $65,000
- - Vatop Group 1
- - - cVatop 1 = $500
- - - cpVatop 1 = $60,000
- - - cVact 1 = $542
- - - cpVact (or HAP) 1 = $65,000       
- - - cVactTa 1 = 0.00833
- - - cVactTaa 1 = 0.00833
- - - cVactDa 1 = 0
- - - cdVatop 1 = $42
- - Vatop Group 2
- - - cVatop 2 = $600
- - - cpVatop 2 = $54,000
- - - cVact 2 = $722
- - - cpVact (or HAP) 2 = $65,000   
- - - cVactTa 2 = 0.01111
- - - cVactTaa 2 = 0.01111
- - - cVactDa 2 = 0
- - - cdVatop 2 = $122
- - Vatop Group 3
- - - cVatop 3 = $200
- - - cpVatop 3 = $65,000
- - - cVact 3 = $200
- - - cpVact (or HAP) 3 = $65,000
- - - cVatopTa 3 = 0.00308
- - - cVactTaa 3 = 0.00308
- - - cVactDa 3 = 0
- - - cdVatop 3 = $0
- - Vatop Group Combinations
- - - acVatops = $1,300
- - - acVacts = $1,464
- - - acVatopTas = 0.02249
- - - acVactTaa = 0.02249
- - - acVactDas = 0
- - - acdVatops = $164 
+### 2. Bitcoin Price: $54,000
+- **Action**: $600 worth of Bitcoin purchased/imported.
+- **Results**:
+  - HPAP = $60,000.
+  - Vatop Group 1:
+    - cVatop = $500, cpVatop = $60,000, cVact = $500, cpVact = $60,000.
+    - cVactTa = 0.00833 BTC, cVactTaa = $0 BTC, cVactDa = $500, cdVatop = $0.
+  - Vatop Group 2:
+    - cVatop = $600, cpVatop = $54,000, cVact = $600, cpVact = $54,000.
+    - cVactTa = 0.01111 BTC, cVactTaa = 0.01111 BTC, cVactDa = $0, cdVatop = $0.
+  - Combinations:
+    - acVatops = $1,100, acVacts = $1,100.
+    - acVactTas = 0.01944 BTC, acVactTaa = 0.01111 BTC, acVactDas = $500.
+    - acdVatops = $0.
 
-5. Bitcoin Price: $63,000
- - $600 worth of Bitcoin is sold
- - HPAP = $65,000
- - Vatop Group 1
- - - cVatop 1 = $100
- - - cpVatop 1 = $60,000
- - - cVact 1 = $114
- - - cpVact (or HAP) 1 = $65,000       
- - - cVactTa 1 =  0.00174
- - - cVactTaa 1 = 0
- - - cVactDa 1 = 114
- - - cdVatop 1 = $14
- - Vatop Group 2
- - - cVatop 2 = $600
- - - cpVatop 2 = $54,000
- - - cVact 2 = $722
- - - cpVact (or HAP) 2 = $65,000   
- - - cVactTa 2 = 0.01111
- - - cVactTaa 2 = 0
- - - cVactDa 2 = 722
- - - cdVatop 2 = $122
- - Vatop Group 3 
- - - cVatop 3 = $0
- - - cpVatop 3 = $0
- - - cVact 3 = $0
- - - cpVact (or HAP) 3 = $0
- - - cVatopTa 3 = 0
- - - cVactTaa 3 = 0
- - - cVactDa 3 = 0
- - - cdVatop 3 = $0
- - Vatop Group Combinations
- - - acVatops = $700
- - - acVacts = $836
- - - acVactTas = 0.01285
- - - acVactTaa = 0
- - - acVactDas = 836
- - - acdVatops = $136
+---
+
+### 3. Bitcoin Price: $55,000
+- **Action**: No Bitcoin purchased/imported.
+- **Results**:
+  - HPAP = $60,000.
+  - Vatop Group 1:
+    - cVatop = $500, cpVatop = $60,000, cVact = $500, cpVact = $60,000.
+    - cVactTa = 0.00833 BTC, cVactTaa = $0 BTC, cVactDa = $500, cdVatop = $0.
+  - Vatop Group 2:
+    - cVatop = $600, cpVatop = $54,000, cVact = $611, cpVact = $55,000.
+    - cVactTa = 0.01111 BTC, cVactTaa = 0.01111 BTC, cVactDa = $0, cdVatop = $11.
+  - Combinations:
+    - acVatops = $1,100, acVacts = $1,111.
+    - acVactTas = 0.01944 BTC, acVactTaa = 0.01111 BTC, acVactDas = $500.
+    - acdVatops = $11.
+
+---
+
+### 4. Bitcoin Price: $65,000
+- **Action**: $200 worth of Bitcoin purchased/imported.
+- **Results**:
+  - HPAP = $65,000.
+  - Vatop Group 1:
+    - cVatop = $500, cpVatop = $60,000, cVact = $542, cpVact = $65,000.
+    - cVactTa = 0.00833 BTC, cVactTaa = 0.00833 BTC, cVactDa = $0, cdVatop = $42.
+  - Vatop Group 2:
+    - cVatop = $600, cpVatop = $54,000, cVact = $722, cpVact = $65,000.
+    - cVactTa = 0.01111 BTC, cVactTaa = 0.01111 BTC, cVactDa = $0, cdVatop = $122.
+  - Vatop Group 3:
+    - cVatop = $200, cpVatop = $65,000, cVact = $200, cpVact = $65,000.
+    - cVactTa = 0.00308 BTC, cVactTaa = 0.00308 BTC, cVactDa = $0, cdVatop = $0.
+  - Combinations:
+    - acVatops = $1,300, acVacts = $1,464.
+    - acVactTas = 0.02252 BTC, acVactTaa = 0.02252 BTC, acVactDas = $0.
+    - acdVatops = $164.
+
+---
+
+### 5. Bitcoin Price: $63,000
+- **Action**: $600 worth of Bitcoin sold.
+- **Results**:
+  - HPAP = $65,000.
+  - Vatop Group 1:
+    - cVatop = $100, cpVatop = $60,000, cVact = $114, cpVact = $65,000.
+    - cVactTa = 0.00174 BTC, cVactTaa = $0 BTC, cVactDa = $114, cdVatop = $14.
+  - Vatop Group 2:
+    - cVatop = $600, cpVatop = $54,000, cVact = $722, cpVact = $65,000.
+    - cVactTa = 0.01111 BTC, cVactTaa = $0 BTC, cVactDa = $722, cdVatop = $122.
+  - Vatop Group 3:
+    - cVatop = $0, cpVatop = $0, cVact = $0, cpVact = $0.
+    - cVactTa = $0 BTC, cVactTaa = $0 BTC, cVactDa = $0, cdVatop = $0.
+  - Combinations:
+    - acVatops = $700, acVacts = $836.
+    - acVactTas = 0.01285 BTC, acVactTaa = $0 BTC, acVactDas = $836.
+    - acdVatops = $136.
