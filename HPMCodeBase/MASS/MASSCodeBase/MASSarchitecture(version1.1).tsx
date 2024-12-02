@@ -26,11 +26,10 @@ export const MASSProvider = ({ children }: { children: ReactNode }) => {
   const [email, setEmail] = useState<string>('');
   const [vatopGroups, setVatopGroups] = useState<VatopGroup[]>([]);
   const [prevVatopGroups, setPrevVatopGroups] = useState<VatopGroup[]>([]);
-  const [swapIntervalIds, setSwapIntervalIds] = useState<NodeJS.Timeout[]>([]);
 
   const FEE_PER_SWAP = 0.00016; // $0.00016 per swap
-  const SECONDS_PER_YEAR = 365 * 24 * 60 * 60;
-  const MIN_INTERVAL = 10; // Minimum interval capped at 10 seconds
+  const MAX_FEE_PER_GROUP = 0.01; // Maximum fee per group before pausing swaps
+  const SAFEGUARD_THRESHOLD = 0.9999; // Retain 99.99% of initial cVact
 
   useEffect(() => {
     const fetchEmail = async () => {
@@ -54,74 +53,61 @@ export const MASSProvider = ({ children }: { children: ReactNode }) => {
       try {
         const response = await axios.get('/api/fetchVatopGroups', { params: { email } });
         const fetchedVatopGroups = response.data.vatopGroups || [];
-
-        const uniqueVatopGroups = fetchedVatopGroups.filter(
-          (group: VatopGroup, index: number, self: VatopGroup[]) =>
-            index === self.findIndex((g) => g.cpVatop === group.cpVatop && g.cVactTa === group.cVactTa)
-        );
-
-        setVatopGroups(uniqueVatopGroups);
-        adjustSwaps(uniqueVatopGroups); // Dynamically adjust swaps
+        setVatopGroups(fetchedVatopGroups);
       } catch (error) {
         console.error('Error fetching vatop groups:', error);
       }
     };
 
-    const intervalId = setInterval(fetchVatopGroups, MIN_INTERVAL * 1000);
+    // Read vatopGroups every 10 seconds
+    const intervalId = setInterval(fetchVatopGroups, 10000);
     fetchVatopGroups();
 
     return () => clearInterval(intervalId);
   }, [email]);
 
-  const adjustSwaps = (groups: VatopGroup[]) => {
-    swapIntervalIds.forEach((id) => clearInterval(id));
-    setSwapIntervalIds([]);
+  const handleSwaps = (amount: number, swapType: 'USDCtoWBTC' | 'WBTCtoUSDC', group: VatopGroup) => {
+    const feeSpentPerGroup: Record<string, number> = {};
+    let currentCdVatop = group.cdVatop;
+    let currentCVact = group.cVact;
+    const groupId = group.cpVatop;
 
-    const newIntervalIds: NodeJS.Timeout[] = [];
+    // Calculate safeguard limit (retain 99.99% of initial cVact)
+    const minCVact = currentCVact * SAFEGUARD_THRESHOLD;
 
-    groups.forEach((group) => {
-      const prevCdVatop = prevVatopGroups.find((prevGroup) => prevGroup.cpVatop === group.cpVatop)?.cdVatop || 0;
-      const currentCdVatop = group.cdVatop;
+    // Stop swaps if cVact drops below the safeguard limit
+    if (currentCVact < minCVact) {
+      console.log(`Group ${groupId}: Swaps paused. cVact dropped below safeguard limit ($${minCVact}).`);
+      return;
+    }
 
-      // Determine fee behavior based on cdVatop
-      let maxAnnualFee;
-      if (currentCdVatop <= 0.01) {
-        // Allow unlimited swaps if cdVatop <= 0.01
-        maxAnnualFee = Infinity;
-        console.log(
-          `Group ${group.cpVatop}: cdVatop=${currentCdVatop}, enabling unlimited swaps.`
-        );
-      } else if (prevCdVatop > 0 && currentCdVatop > prevCdVatop) {
-        // For growing cdVatop, reduce fee impact dynamically
-        maxAnnualFee = FEE_PER_SWAP * Math.min(500, currentCdVatop * 1000); // Example scaling logic
-        console.log(
-          `Group ${group.cpVatop}: cdVatop=${currentCdVatop}, scaling max fee dynamically.`
-        );
+    // Handle low cdVatop
+    if (currentCdVatop < 0.01) {
+      console.log(`Group ${groupId} has low cdVatop. Deducting fees from cVact.`);
+      const shortfall = 0.01 - currentCdVatop;
+
+      if (currentCVact >= shortfall) {
+        currentCVact -= shortfall;
+        console.log(`Group ${groupId}: Shortfall of $${shortfall} covered by cVact.`);
       } else {
-        maxAnnualFee = 0.10; // Default to $0.10/year for other cases
+        console.log(`Group ${groupId}: Insufficient cVact to cover shortfall. Skipping swap.`);
+        return;
       }
+    }
 
-      const maxSwapsPerYear = maxAnnualFee === Infinity
-        ? SECONDS_PER_YEAR / MIN_INTERVAL
-        : Math.floor(maxAnnualFee / FEE_PER_SWAP);
-      const calculatedInterval = maxAnnualFee === Infinity
-        ? MIN_INTERVAL
-        : Math.floor(SECONDS_PER_YEAR / maxSwapsPerYear);
-      const interval = Math.max(calculatedInterval, MIN_INTERVAL);
+    // Deduct fees
+    if (currentCdVatop >= FEE_PER_SWAP) {
+      currentCdVatop -= FEE_PER_SWAP;
+      console.log(`Group ${groupId}: Fee of $${FEE_PER_SWAP} deducted from cdVatop.`);
+    } else if (currentCVact >= FEE_PER_SWAP) {
+      currentCVact -= FEE_PER_SWAP;
+      console.log(`Group ${groupId}: Fee of $${FEE_PER_SWAP} deducted from cVact.`);
+    } else {
+      console.log(`Group ${groupId}: Insufficient funds to cover fees. Skipping swap.`);
+      return;
+    }
 
-      console.log(
-        `Group ${group.cpVatop}: cdVatop=${currentCdVatop}, Max Fee=${maxAnnualFee}, Max Swaps/Year=${maxSwapsPerYear}, Interval=${interval}s`
-      );
-
-      const intervalId = setInterval(() => {
-        console.log(`Running swap for group ${group.cpVatop}`);
-        // Add your swap logic here
-      }, interval * 1000);
-
-      newIntervalIds.push(intervalId);
-    });
-
-    setSwapIntervalIds(newIntervalIds);
+    console.log(`Group ${groupId}: Running ${swapType} swap for amount: $${amount}.`);
   };
 
   useEffect(() => {
@@ -142,26 +128,34 @@ export const MASSProvider = ({ children }: { children: ReactNode }) => {
 
       if (group.cVactTaa > 0.00001 && (!prevGroup.cVactTaa || group.cVactTaa > prevGroup.cVactTaa)) {
         console.log(`Initiating USDC to WBTC swap for amount: ${group.cVactTaa}`);
-        swapUSDCintoWBTC(group.cVactTaa);
+        swapUSDCintoWBTC(group.cVactTaa, group);
       }
 
       if (group.cVactDa > 0.01 && (!prevGroup.cVactDa || group.cVactDa > prevGroup.cVactDa)) {
         console.log(`Initiating WBTC to USDC swap for amount: ${group.cVactDa}`);
-        swapWBTCintoUSDC(group.cVactDa);
+        swapWBTCintoUSDC(group.cVactDa, group);
       }
     });
 
     setPrevVatopGroups([...vatopGroups]);
   }, [vatopGroups]);
 
-  const swapUSDCintoWBTC = async (amount: number) => {
+  const swapUSDCintoWBTC = async (amount: number, group: VatopGroup) => {
+    if (amount <= 0) {
+      console.log('Swap amount must be greater than 0. Skipping swap.');
+      return;
+    }
     console.log(`Swapping ${amount} USDC to WBTC`);
-    // Logic for USDC to WBTC swap
+    handleSwaps(amount, 'USDCtoWBTC', group);
   };
 
-  const swapWBTCintoUSDC = async (amount: number) => {
+  const swapWBTCintoUSDC = async (amount: number, group: VatopGroup) => {
+    if (amount <= 0) {
+      console.log('Swap amount must be greater than 0. Skipping swap.');
+      return;
+    }
     console.log(`Swapping ${amount} WBTC to USDC`);
-    // Logic for WBTC to USDC swap
+    handleSwaps(amount, 'WBTCtoUSDC', group);
   };
 
   return (
