@@ -1,8 +1,10 @@
-# MASS Code Base Architecture (version 1) *(for Bitcoin)*
+# MASS Code Base Architecture (version 1.1) *(for Bitcoin)*
 
 ***Built with React (typescript).***
 
 **Free for any organization or person to use and integrate into their own systems inside or outside Bitcoin.**
+
+*Note: each MASS version is being ever so improved based on feedback and fee constrains and calculation arbitrations and differences.*
 
 ## Fee Constraints/Calculations
 
@@ -22,24 +24,25 @@ Example:
   - Swaps Per Year = 0.10 ÷ 0.00016 = **625 swaps/year**.
 ________________________
 
-### 3. Dynamic Interval:
-- **Interval per group**:
-  - Interval (seconds) = Seconds Per Year ÷ Swaps Per Year
-
-Example:
-- For 625 swaps/year:
-  - Interval = (365 × 24 × 60 × 60) ÷ 625 ≈ **50,457 seconds (~14 hours)**.
+### 3. Dynamic Trigger Logic:
+- Swaps are dynamically triggered based on changes to `vatopGroups`:
+  - Additions or deletions of groups cause swaps to pause temporarily for synchronization.
+  - Swaps are resumed when:
+    - `cVactTaa` increases above `0.00001`.
+    - `cVactDa` increases above `0.01`.
 ________________________
 
 ### 4. Unlimited Swaps:
 - If `cdVatop <= 0.01`:
-  - Max annual fee = Infinity.
-  - Minimum interval capped at **10 seconds** to allow frequent swaps.
+  - Unlimited swaps are allowed as long as:
+    - The fee deduction keeps `cdVatop >= 0.009`.
+    - Fees are deducted primarily from `cVact`.
+
 ________________________
 
 ### 5. Adjusting for `cdVatop` Growth:
 - If `cdVatop` grows significantly (e.g., from 0.1 to 0.2):
-  - Dynamically scale `maxAnnualFee` to reduce the relative impact of fees.
+  - Dynamically scale fees for less impact relative to profits (`cdVatop` growth).
   - Formula:
     - Max Annual Fee = Fee Per Swap × Min(500, `cdVatop` × 1000)
 
@@ -51,35 +54,29 @@ ________________________
 ## Algorithm:
 
 ### 1. Fetch and Filter Groups:
-- Fetch `VatopGroups` and filter:
+- Fetch `vatopGroups` dynamically without fixed intervals.
+- Filter:
   - Remove groups with invalid or zero values:
     - `cVatop = 0`, `cVact = 0`, `cVactTa = 0`, and `cdVatop = 0`.
   - Only keep groups where **at least one value** is active.
 
-### 2. Calculate Max Swaps per Group:
-- Based on:
-  - `cdVatop` growth.
-  - Fee constraints.
-
-### 3. Determine Intervals per Group:
-- For `cdVatop <= 0.01`:
-  - Unlimited swaps with a **minimum interval of 10 seconds**.
-- For `cdVatop > 0.01`:
-  - Dynamically adjust intervals to respect the scaled `maxAnnualFee`.
-
-### 4. Adjust for Added/Deleted Groups:
-- If `VatopGroups` are added or deleted:
-  - Skip swap logic until the next cycle.
-  - Update `prevVatopGroups` for accurate comparisons.
-
-### 5. Swap Conditions:
-- For each group:
+### 2. Dynamic Swap Triggers:
+- Based on changes to `vatopGroups`:
   - Trigger `swapUSDCintoWBTC` if:
     - `cVactTaa > 0.00001`.
     - New `cVactTaa` > Previous `cVactTaa`.
   - Trigger `swapWBTCintoUSDC` if:
     - `cVactDa > 0.01`.
     - New `cVactDa` > Previous `cVactDa`.
+
+### 3. Fee Deduction:
+- Deduct fees primarily from `cVact`:
+  - Halt swaps if `cVact` drops below the **safeguard threshold** (e.g., retaining 99.99% of `cVact`).
+
+### 4. Adjust for Added/Deleted Groups:
+- If `vatopGroups` are added or deleted:
+  - Skip swap logic until the next cycle.
+  - Update `prevVatopGroups` for accurate comparisons.
 
 ________________________
 
@@ -88,12 +85,12 @@ ________________________
 ### Case 1: `cdVatop = 0.01`
 - **Max Annual Fee**: Infinity.
 - **Swaps Per Year**: Unlimited.
-- **Interval**: **10 seconds** (minimum cap).
+- **Trigger Logic**: Swaps occur as long as `cdVatop >= 0.009`.
 
 ### Case 2: `cdVatop = 0.2`
 - **Max Annual Fee**: $0.08 (scaled dynamically).
 - **Swaps Per Year**: 0.08 ÷ 0.00016 = **500 swaps/year**.
-- **Interval**: (365 × 24 × 60 × 60) ÷ 500 ≈ **1,577 seconds (~26 minutes)**.
+- **Trigger Logic**: Swaps resume dynamically when `vatopGroups` change.
 
 ### Case 3: `cdVatop = 0.0`
 - Group is removed due to invalid values.
@@ -102,17 +99,18 @@ ________________________
 ### Code Explanation:
 
 1. **Fetching Groups**:
-   - Groups are fetched and filtered to remove inactive ones (`cVatop = 0`, `cVact = 0`, etc.).
+   - Groups are fetched dynamically based on user activity.
+   - No fixed intervals for fetching or swapping.
 
 2. **Dynamic Swaps**:
-   - Unlimited swaps for `cdVatop <= 0.01` with intervals capped at **10 seconds**.
-   - Dynamically scale fees for `cdVatop > 0.01`.
+   - Swaps are triggered based on `useEffect` monitoring `vatopGroups` for changes.
+   - Unlimited swaps are allowed for `cdVatop <= 0.01`.
 
 3. **State Management**:
-   - Preserve `prevVatopGroups` to track changes and trigger swaps appropriately.
+   - Synchronize `prevVatopGroups` to track changes and trigger swaps appropriately.
 
 4. **Swap Logic**:
-   - Swaps are triggered based on changes in `cVactTaa` or `cVactDa`.
-   - Added/deleted groups skip swaps temporarily to ensure state accuracy.
+   - Swaps are wrapped within the `handleSwaps` function to handle fee deduction and safeguards.
+   - Only trigger swaps when conditions are met.
 
 ## Smart Contract *(coming soon)*
