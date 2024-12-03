@@ -53,12 +53,8 @@ ________________________
 
 ## Algorithm:
 
-### 1. Fetch and Filter Groups:
+### 1. Fetch Groups:
 - Fetch `vatopGroups` dynamically without fixed intervals.
-- Filter:
-  - Remove groups with invalid or zero values:
-    - `cVatop = 0`, `cVact = 0`, `cVactTa = 0`, and `cdVatop = 0`.
-  - Only keep groups where **at least one value** is active.
 
 ### 2. Dynamic Swap Triggers:
 - Based on changes to `vatopGroups`:
@@ -91,9 +87,6 @@ ________________________
 - **Max Annual Fee**: $0.08 (scaled dynamically).
 - **Swaps Per Year**: 0.08 ÷ 0.00016 = **500 swaps/year**.
 - **Trigger Logic**: Swaps resume dynamically when `vatopGroups` change.
-
-### Case 3: `cdVatop = 0.0`
-- Group is removed due to invalid values.
 ________________________
 
 ### Code Explanation:
