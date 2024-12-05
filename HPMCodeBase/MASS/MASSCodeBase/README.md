@@ -105,5 +105,3 @@ ________________________
 4. **Supplication Logic**:
    - Supplications are wrapped within the `handleSupplications` function to handle fee deduction and safeguards.
    - Only trigger supplications when conditions are met.
-
-## Smart Contract *(coming soon)*
