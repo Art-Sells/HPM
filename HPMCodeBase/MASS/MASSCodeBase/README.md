@@ -1,4 +1,4 @@
-# MASS Code Base Architecture (version 1.5) *(for Bitcoin)*
+# MASS Code Base Architecture *(for Bitcoin)*
 
 ***Built with React (typescript).***
 
