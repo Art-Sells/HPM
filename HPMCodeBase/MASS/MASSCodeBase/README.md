@@ -1,6 +1,6 @@
 # MASS Code Base Architecture *(for Bitcoin)*
 
-***Built with React (typescript).***
+***Built with `Typescript` `Solidity` & `Javascript`.***
 
 **Free for any organization or person to use and integrate into their own systems inside or outside Bitcoin.**
 
