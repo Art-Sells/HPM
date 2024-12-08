@@ -52,85 +52,85 @@ The HPM (whenever a sale occurs) subtracts from your wallet based on the highest
 ### 1. Bitcoin Price: $60,000
 - **Action**: $500 worth of Bitcoin purchased/imported.
 - **Results**:
-  - HPAP = $60,000.
+  - `HPAP` = $60,000.
   - Vatop Group 1:
-    - cVatop = $500, cpVatop = $60,000, cVact = $500, cpVact = $60,000.
-    - cVactTa = 0.00833 BTC, cVactTaa = 0.00833 BTC, cVactDa = $0, cdVatop = $0.
+    - `cVatop` = $500, `cpVatop` = $60,000, `cVact` = $500, `cpVact` = $60,000.
+    - `cVactTa` = 0.00833 BTC, `cVactTaa` = 0.00833 BTC, `cVactDa` = $0, `cdVatop` = $0.
   - Combinations:
-    - acVatops = $500, acVacts = $500.
-    - acVactTas = 0.00833 BTC, acVactTaa = 0.00833 BTC, acVactDas = $0.
-    - acdVatops = $0.
+    - `acVatops` = $500, `acVacts` = $500.
+    - `acVactTas` = 0.00833 BTC, `acVactTaa` = 0.00833 BTC, `acVactDas` = $0.
+    - `acdVatops` = $0.
 
 ---
 
 ### 2. Bitcoin Price: $54,000
 - **Action**: $600 worth of Bitcoin purchased/imported.
 - **Results**:
-  - HPAP = $60,000.
+  - `HPAP` = $60,000.
   - Vatop Group 1:
-    - cVatop = $500, cpVatop = $60,000, cVact = $500, cpVact = $60,000.
-    - cVactTa = 0.00833 BTC, cVactTaa = $0 BTC, cVactDa = $500, cdVatop = $0.
+    - `cVatop` = $500, `cpVatop` = $60,000, `cVact` = $500, `cpVact` = $60,000.
+    - `cVactTa` = 0.00833 BTC, `cVactTaa` = $0 BTC, `cVactDa` = $500, `cdVatop` = $0.
   - Vatop Group 2:
-    - cVatop = $600, cpVatop = $54,000, cVact = $600, cpVact = $54,000.
-    - cVactTa = 0.01111 BTC, cVactTaa = 0.01111 BTC, cVactDa = $0, cdVatop = $0.
+    - `cVatop` = $600, `cpVatop` = $54,000, `cVact` = $600, `cpVact` = $54,000.
+    - `cVactTa` = 0.01111 BTC, `cVactTaa` = 0.01111 BTC, `cVactDa` = $0, `cdVatop` = $0.
   - Combinations:
-    - acVatops = $1,100, acVacts = $1,100.
-    - acVactTas = 0.01944 BTC, acVactTaa = 0.01111 BTC, acVactDas = $500.
-    - acdVatops = $0.
+    - `acVatops` = $1,100, `acVacts` = $1,100.
+    - `acVactTas` = 0.01944 BTC, `acVactTaa` = 0.01111 BTC, `acVactDas` = $500.
+    - `acdVatops` = $0.
 
 ---
 
 ### 3. Bitcoin Price: $55,000
 - **Action**: No Bitcoin purchased/imported.
 - **Results**:
-  - HPAP = $60,000.
+  - `HPAP` = $60,000.
   - Vatop Group 1:
-    - cVatop = $500, cpVatop = $60,000, cVact = $500, cpVact = $60,000.
-    - cVactTa = 0.00833 BTC, cVactTaa = $0 BTC, cVactDa = $500, cdVatop = $0.
+    - `cVatop` = $500, `cpVatop` = $60,000, `cVact` = $500, `cpVact` = $60,000.
+    - `cVactTa` = 0.00833 BTC, `cVactTaa` = $0 BTC, `cVactDa` = $500, `cdVatop` = $0.
   - Vatop Group 2:
-    - cVatop = $600, cpVatop = $54,000, cVact = $611, cpVact = $55,000.
-    - cVactTa = 0.01111 BTC, cVactTaa = 0.01111 BTC, cVactDa = $0, cdVatop = $11.
+    - `cVatop` = $600, `cpVatop` = $54,000, `cVact` = $611, `cpVact` = $55,000.
+    - `cVactTa` = 0.01111 BTC, `cVactTaa` = 0.01111 BTC, `cVactDa` = $0, `cdVatop` = $11.
   - Combinations:
-    - acVatops = $1,100, acVacts = $1,111.
-    - acVactTas = 0.01944 BTC, acVactTaa = 0.01111 BTC, acVactDas = $500.
-    - acdVatops = $11.
+    - `acVatops` = $1,100, `acVacts` = $1,111.
+    - `acVactTas` = 0.01944 BTC, `acVactTaa` = 0.01111 BTC, `acVactDas` = $500.
+    - `acdVatops` = $11.
 
 ---
 
 ### 4. Bitcoin Price: $65,000
 - **Action**: $200 worth of Bitcoin purchased/imported.
 - **Results**:
-  - HPAP = $65,000.
+  - `HPAP` = $65,000.
   - Vatop Group 1:
-    - cVatop = $500, cpVatop = $60,000, cVact = $542, cpVact = $65,000.
-    - cVactTa = 0.00833 BTC, cVactTaa = 0.00833 BTC, cVactDa = $0, cdVatop = $42.
+    - `cVatop` = $500, `cpVatop` = $60,000, `cVact` = $542, `cpVact` = $65,000.
+    - `cVactTa` = 0.00833 BTC, `cVactTaa` = 0.00833 BTC, `cVactDa` = $0, `cdVatop` = $42.
   - Vatop Group 2:
-    - cVatop = $600, cpVatop = $54,000, cVact = $722, cpVact = $65,000.
-    - cVactTa = 0.01111 BTC, cVactTaa = 0.01111 BTC, cVactDa = $0, cdVatop = $122.
+    - `cVatop` = $600, `cpVatop` = $54,000, `cVact` = $722, `cpVact` = $65,000.
+    - `cVactTa` = 0.01111 BTC, `cVactTaa` = 0.01111 BTC, `cVactDa` = $0, `cdVatop` = $122.
   - Vatop Group 3:
-    - cVatop = $200, cpVatop = $65,000, cVact = $200, cpVact = $65,000.
-    - cVactTa = 0.00308 BTC, cVactTaa = 0.00308 BTC, cVactDa = $0, cdVatop = $0.
+    - `cVatop` = $200, `cpVatop` = $65,000, `cVact` = $200, `cpVact` = $65,000.
+    - `cVactTa` = 0.00308 BTC, `cVactTaa` = 0.00308 BTC, `cVactDa` = $0, `cdVatop` = $0.
   - Combinations:
-    - acVatops = $1,300, acVacts = $1,464.
-    - acVactTas = 0.02252 BTC, acVactTaa = 0.02252 BTC, acVactDas = $0.
-    - acdVatops = $164.
+    - `acVatops` = $1,300, `acVacts` = $1,464.
+    - `acVactTas` = 0.02252 BTC, `acVactTaa` = 0.02252 BTC, `acVactDas` = $0.
+    - `acdVatops` = $164.
 
 ---
 
 ### 5. Bitcoin Price: $63,000
 - **Action**: $600 worth of Bitcoin sold.
 - **Results**:
-  - HPAP = $65,000.
+  - `HPAP` = $65,000.
   - Vatop Group 1:
-    - cVatop = $100, cpVatop = $60,000, cVact = $114, cpVact = $65,000.
-    - cVactTa = 0.00174 BTC, cVactTaa = $0 BTC, cVactDa = $114, cdVatop = $14.
+    - `cVatop` = $100, `cpVatop` = $60,000, `cVact` = $114, `cpVact` = $65,000.
+    - `cVactTa` = 0.00174 BTC, `cVactTaa` = $0 BTC, `cVactDa` = $114, `cdVatop` = $14.
   - Vatop Group 2:
-    - cVatop = $600, cpVatop = $54,000, cVact = $722, cpVact = $65,000.
-    - cVactTa = 0.01111 BTC, cVactTaa = $0 BTC, cVactDa = $722, cdVatop = $122.
+    - `cVatop` = $600, `cpVatop` = $54,000, `cVact` = $722, `cpVact` = $65,000.
+    - `cVactTa` = 0.01111 BTC, `cVactTaa` = $0 BTC, `cVactDa` = $722, `cdVatop` = $122.
   - Vatop Group 3:
-    - cVatop = $0, cpVatop = $0, cVact = $0, cpVact = $0.
-    - cVactTa = $0 BTC, cVactTaa = $0 BTC, cVactDa = $0, cdVatop = $0.
+    - `cVatop` = $0, `cpVatop` = $0, `cVact` = $0, `cpVact` = $0.
+    - `cVactTa` = $0 BTC, `cVactTaa` = $0 BTC, `cVactDa` = $0, `cdVatop` = $0.
   - Combinations:
-    - acVatops = $700, acVacts = $836.
-    - acVactTas = 0.01285 BTC, acVactTaa = $0 BTC, acVactDas = $836.
-    - acdVatops = $136.
+    - `acVatops` = $700, `acVacts` = $836.
+    - `acVactTas` = 0.01285 BTC, `acVactTaa` = $0 BTC, `acVactDas` = $836.
+    - `acdVatops` = $136.
