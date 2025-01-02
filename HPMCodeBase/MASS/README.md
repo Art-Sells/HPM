@@ -24,7 +24,7 @@ MASS is not an aggregate "supplication system" meaning when activated, it does n
 - **Vatop Group 1** *(MASS activated)*:
   - cpVact (or HAP): $60,000.
   - cVactTaa: 0 BTC.
-  - cVactDa: $500 *(in USD swapped from BTC)*.
+  - cVactDa: $500 *(in USD supplicated from BTC)*.
 - **Vatop Group 2**:
   - cpVact (or HAP): $54,000.
   - cVactTaa: 0.01111 BTC.
@@ -40,7 +40,7 @@ MASS is not an aggregate "supplication system" meaning when activated, it does n
 - **HPAP**: $65,000.
 - **Vatop Group 1** *(MASS activated)*:
   - cpVact (or HAP): $65,000.
-  - cVactTaa: 0.00833 BTC *(swapped back into BTC from USD)*.
+  - cVactTaa: 0.00833 BTC *(supplicated back into BTC from USD)*.
   - cVactDa: $0.
 - **Vatop Group 2**:
   - cpVact (or HAP): $65,000.
@@ -58,19 +58,19 @@ MASS is not an aggregate "supplication system" meaning when activated, it does n
 - **Vatop Group 1** *(MASS activated)*:
   - cpVact (or HAP): $65,000.
   - cVactTaa: 0 BTC.
-  - cVactDa: $542 *(in USD swapped from BTC)*.
+  - cVactDa: $542 *(in USD supplicated from BTC)*.
 - **Vatop Group 2** *(MASS activated)*:
   - cpVact (or HAP): $65,000.
   - cVactTaa: 0 BTC.
-  - cVactDa: $722 *(in USD swapped from BTC)*.
+  - cVactDa: $722 *(in USD supplicated from BTC)*.
 - **Investment Profits & Losses**:
   - ***Profits (acdVatops): +$164***.
   - ***Losses: $0***.
 ---
 
 ### FAQ (Frequently Asked Question/s):
-- What about supplication (swapping) fees?
-  - MASS is currently integrating [Polygon POS](https://polygonscan.com/gastracker) into its framework. Polygon POS currently incurs an average ~$0.00016 fee per supplication(swap), this is only 1.6% of $0.01 so it is exorbitantly cheap. So we're working to keep MASS as efficient as possible by decreasing the mount of activations per second/minute/hour per "Vatop Group", so the more Vatop Groups incured in your account, the less often MASS is activated.
+- What about supplication fees?
+  - MASS is currently integrating [BASE](https://base.org) into its framework. Base currently incurs an average ~$0.01 fee per supplication so we're working to keep MASS as efficient as possible by decreasing the mount of activations per second/minute/hour per "Vatop Group". So the more Vatop Groups incured in your account, the less often MASS is activated.
   - More Info: [MASS Fee Constraints & Calculations](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS/MASSCodeBase#fee-constraintscalculations)
 ---
 ### Other Know-how
