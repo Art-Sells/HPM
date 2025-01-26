@@ -3,13 +3,13 @@
 ## [Code Base Architecture](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase)
 
 ## In a Nutshell:
-If you purchase/import Bitcoin into Arells at $60k (for example), the HPM holds that price for you ensuring your investment never loses value thanks to a new system called ***[MASS(Market Automated Supplication System)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)***; this is also achieved if the Bitcoin price falls lower than $60k.
+If you purchase/import Bitcoin into Arells at $60k (for example), the HPM records that price for you ensuring your investment never loses value thanks to a new system called ***[MASS(Market Automated Supplication System)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)***; this is also achieved if the Bitcoin price falls lower than $60k.
 
 Then, once (or if) the Bitcoin price rises over $60k, MASS is activated, this way, you’re consistently riding up profits during bull markets, and never experiencing losses during bear markets (without even having to think about it).
 
 It gets even better…
 
-If Bitcoin rises above the price you imported/purchased ($60k in this instance) to $65k then falls to $63k, the $65k price is held. This means, you will never lose any profits you made on the upswing when the downswing occurs (even if the Bitcoin price drops to $0 thanks to MASS).
+If Bitcoin rises above the price you imported/purchased ($60k in this instance) to $65k then falls to $63k, the $65k price is recorded. This means, you will never lose any profits you made on the upswing when the downswing occurs (even if the Bitcoin price drops to $0 thanks to MASS).
 
 The HPM (whenever a sale occurs) subtracts from your wallet based on the highest price you imported/purchased your Bitcoin (or asset) at ensuring you continue to accumulate the maximum amounts of profits possible.
 
