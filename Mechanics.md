@@ -11,7 +11,7 @@ It gets even better…
 
 If Bitcoin rises above the price you imported/purchased ($60k in this instance) to $65k then falls to $63k, the $65k price is recorded. This means, you will never lose any profits you made on the upswing when the downswing occurs (even if the Bitcoin price drops to $0 thanks to MASS).
 
-The HPM (whenever a sale occurs) subtracts from your wallet based on the highest price you imported/purchased your Bitcoin (or asset) at ensuring you continue to accumulate the maximum amounts of profits possible.
+The HPM (whenever a sale occurs) subtracts from your wallet based on the highest price you imported/purchased your Bitcoin (or asset) at ensuring you continue to accumulate the maximum amount of profits possible.
 
 ***HPM & MASS in action: [arells.com/concept](https://arells.com/concept)***
 
