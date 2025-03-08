@@ -1,4 +1,4 @@
-# MASS Code Base Architecture *(for Bitcoin)*
+# MASS Code Base Architecture *(for Bitcoin on Base)*
 
 ***Built with `Typescript` & `Javascript`.***
 
