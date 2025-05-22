@@ -1,6 +1,6 @@
 # LPP: Liquidity Pool Pollination (based on MASS v1)
 
-## 🌱 Concept Overview
+## 🌱 Overview
 
 **Liquidity Pool Pollination (LPP)** is a core innovation of the **[Market Automated Supplication System (MASS)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)**. It uses automated supplication logic to navigate price divergence between different liquidity pools.
 
