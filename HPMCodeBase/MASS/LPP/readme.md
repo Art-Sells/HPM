@@ -2,14 +2,14 @@
 
 ## 🌱 Overview
 
-**Liquidity Pool Pollination (LPP)** is a core innovation of the **[Market Automated Supplication System (MASS)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)**. It uses automated supplication logic to navigate price divergence between different liquidity pools.
+**Liquidity Pool Pollination (LPP)** is an autonomous algorithmic mechanism that harvests volatility between liquidity pools and migrates value across them efficiently. It uses automated supplication logic to navigate price divergence between different liquidity pools; a core innovation of the **[Market Automated Supplication System (MASS)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)**. 
+
+---
 
 MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity pools, simulates ±$100 divergence between pool prices, and dynamically determines when to:
 
 - **Supplicate cbBTC** (convert USDC into cbBTC at the lower pool)
 - **Supplicate USDC** (convert cbBTC into USDC at the higher pool)
-
-LPP is not a trading strategy—it is an autonomous algorithmic mechanism that harvests volatility between liquidity pools and migrates value across them efficiently.
 
 ---
 
@@ -46,14 +46,8 @@ Scenario:
 - **Supplications, not trades:** All conversions occur via controlled MASS mechanisms.
 - **Invariant supply logic:** cbBTC and USDC are always 100% accounted for.
 
-### Final Outcome
+### Result
 
-- **Start (Apr 25):** Started with $5,000 → wallet value: `$5,000.00`
-- **May 2:** Supplicated USDC → wallet grew to `$5,407.96`
-- **May 16:** Supplicated cbBTC → wallet value: `$5,413.18`
-- **May 21:** Supplicated USDC again → wallet reached **$5,616.64**
-
-### 📊 Result
-
-- **Total Growth**: `$616.64`
+- **Losses**: `$0.00`
+- **Profits**: `$616.64`
 - **% Return**: `+12.33%` over 4 weeks
