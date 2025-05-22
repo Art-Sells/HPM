@@ -2,7 +2,7 @@
 
 ## 🌱 Concept Overview
 
-**Liquidity Pool Pollination (LPP)** is a core innovation of the **Market Automated Supplication System (MASS)**. It uses automated supplication logic to navigate price divergence between cbBTC liquidity pools.
+**Liquidity Pool Pollination (LPP)** is a core innovation of the **[Market Automated Supplication System (MASS)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)**. It uses automated supplication logic to navigate price divergence between cbBTC liquidity pools.
 
 MASS observes weekly **median cbBTC prices** derived from two liquidity pools, simulates ±$100 divergence between pool prices, and dynamically determines when to:
 
