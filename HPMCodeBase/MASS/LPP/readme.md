@@ -1,4 +1,4 @@
-# LPP: Liquidity Pool Pollination (based on MASS v1)
+# LPP: Liquidity Pool Pollination
 
 ## 🌱 Overview
 
