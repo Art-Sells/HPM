@@ -52,7 +52,7 @@ LPP is not a trading strategy—it is an autonomous algorithmic mechanism that h
 
 ## 📈 Wallet Value Progression
 
-<img src="https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/cbBTCWalletValueOverTime(basedonMASSv1).png" width="600px"> 
+<img src="https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/WalletValueOverTime(basedonMASSv1LPP).png" width="600px"> 
 
 ---
 
