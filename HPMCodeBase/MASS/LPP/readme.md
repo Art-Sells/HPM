@@ -42,14 +42,14 @@ MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity
 - **% Return:** `+4.24%`
 
 **Bear Market Wallet Value (with HPM-MASS v1):**
-- **Initial Value:** `$5,000.00`
-- **Final Value:** `$4,978.63`
-- **Net Loss:** `$21.37`
-- **% Return:** `-0.43%`
+- **Total Gains:** `$63.46`
+- **Total Losses:** `$0.00`
+- **Net Profit:** `$63.46`
+- **% Return:** `+1.27%`
 
 **Bear Market Wallet Value (without HPM-MASS v1):**
-- **Initial Value:** `$5,012.42`
-- **Final Value:** `$4,738.26`
+- **Total Gains:** `$0.00`
+- **Total Losses:** `$274.16`
 - **Net Loss:** `$274.16`
 - **% Return:** `-5.47%`
 
@@ -57,7 +57,7 @@ MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity
 
 ### In Summary:
 
-LPP (using MASS v1) gives up a small portion of upside in exchange for massive downside insulation built to render bear markets obsolete.
+LPP (using MASS v1) gives up a small portion of upside in exchange for no downside insulation built to render bear markets obsolete.
 
 #### Bull Market Simulation Log
 
