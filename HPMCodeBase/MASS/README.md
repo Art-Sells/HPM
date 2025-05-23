@@ -1,10 +1,10 @@
 # MASS (Market Automated Supplication System)
-MASS or Market Automated Supplication System is a system built under the [HPM](https://github.com/Art-Sells/HPM) that automatically supplicates a native Stablecoin<>Asset in order to ensure losses aren't incured (and profits never lost) during market downswings and profits are always gained during upswings, this is technically acheived through [LPP](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS/LPP).
+MASS or Market Automated Supplication System is a system built under the [HPM](https://github.com/Art-Sells/HPM) that automatically supplicates a native Stablecoin<>Asset in order to ensure losses are rarely incured (and profits rarely lost) during market downswings and profits are always gained during upswings, this is technically acheived through [LPP](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS/LPP).
 
 ## In a Nutshell
 MASS is not an aggregate "supplication system" meaning when activated, it does not automatically supplicate all assets into a stablecoin (and vise versa). The reason for this is because profits cannot be gained if MASS were to aggregatetely supplicate assets. In order to gain the most amounts of profits as possible, MASS (with HPM) activates individually per Vatop Group.
 
-## Example Scenario:
+## Example Scenario (without LPP):
 
 ### 1. Bitcoin Price: $60,000
 - **Action**: $500 worth of Bitcoin is purchased/imported.
