@@ -27,7 +27,7 @@ MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity
 
 ### Wallet Value (Bull vs Bear)
 
-<img src="https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/BullVsBearMarketWallets.png" width="800px"> 
+<img src="https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/BullVsBearMarketWalletComparison.png" width="800px"> 
 
 **Bull Market Wallet Value (with HPM-MASS v1):**
 - **Total Gains:** `$198.96`
@@ -42,10 +42,10 @@ MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity
 - **% Return:** `+4.24%`
 
 **Bear Market Wallet Value (with HPM-MASS v1):**
-- **Total Gains:** `$63.46`
+- **Total Gains:** `$0.47`
 - **Total Losses:** `$0.00`
-- **Net Profit:** `$63.46`
-- **% Return:** `+1.27%`
+- **Net Profit:** `$0.47`
+- **% Return:** `+0.009%`
 
 **Bear Market Wallet Value (without HPM-MASS v1):**
 - **Total Gains:** `$0.00`
@@ -59,7 +59,7 @@ MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity
 
 LPP (using MASS v1) gives up a small portion of upside in exchange for no downside insulation built to render bear markets obsolete.
 
-#### Bull Market Simulation Log
+#### Bull Market Simulation Log (with HPM-MASS v1)
 
 | Date         | Supplication        | cbBTC Price | Low Pool | High Pool | cbBTC Held | USDC Held | Wallet Value |
 |--------------|---------------------|-------------|----------|-----------|------------|-----------|--------------|
@@ -73,17 +73,18 @@ LPP (using MASS v1) gives up a small portion of upside in exchange for no downsi
 | May 13 - 8am | Supplicate USDC     | 103,679.00  | 103,479.00| 103,679.00| 0.00000    | 5,185.46  | $5,185.46    |
 | May 22 - 8pm | Hold                | 106,500.00  | 106,300.00| 106,700.00| 0.00000    | 5,185.46  | $5,185.46    |
 
-#### Bear Market Simulation Log
+#### Bear Market Simulation Log (with HPM-MASS v1)
 
-| Date         | Supplication        | cbBTC Price | Low Pool | High Pool | cbBTC Held | USDC Held | Wallet Value |
-|--------------|---------------------|-------------|----------|-----------|------------|-----------|--------------|
-| Apr 22 - 4pm | Initial Investment  | 93,198.30   | 93,198.30 | 93,398.30 | 0.05365    | 0.00      | $5,000.00    |
-| Apr 22 - 8pm | Hold                | 93,200.00   | 93,200.00 | 93,400.00 | 0.05365    | 0.00      | $5,001.15    |
-| Apr 28 - 8pm | Supplicate USDC     | 92,750.00   | 92,600.00 | 92,800.00 | 0.00000    | 4,978.63  | $4,978.63    |
-| Apr 29 - 8am | Hold                | 92,450.00   | 92,300.00 | 92,500.00 | 0.00000    | 4,978.63  | $4,978.63    |
-| May 6 - 4pm  | Hold                | 91,700.00   | 91,500.00 | 91,800.00 | 0.00000    | 4,978.63  | $4,978.63    |
-| May 6 - 8pm  | Hold                | 91,400.00   | 91,200.00 | 91,500.00 | 0.00000    | 4,978.63  | $4,978.63    |
-| May 12 - 8pm | Hold                | 91,000.00   | 90,800.00 | 91,100.00 | 0.00000    | 4,978.63  | $4,978.63    |
-| May 13 - 8am | Hold                | 90,500.00   | 90,200.00 | 90,600.00 | 0.00000    | 4,978.63  | $4,978.63    |
-| May 22 - 8pm | Hold                | 90,000.00   | 89,800.00 | 90,100.00 | 0.00000    | 4,978.63  | $4,978.63    |
+| Date           | Supplication        | cbBTC Price | Low Pool   | High Pool  | cbBTC Held | USDC Held | Wallet Value |
+|----------------|---------------------|-------------|------------|------------|------------|-----------|--------------|
+| Apr 22 - 4pm   | Initial Investment  | 110,809.00  | 110,609.00 | 111,009.00 | 0.04512    | 0.00      | $5,000.00    |
+| Apr 22 - 8pm   | Hold                | 111,809.00  | 111,609.00 | 112,009.00 | 0.04512    | 0.00      | $5,037.93    |
+| Apr 23 - 12am  | Supplicate USDC     | 110,878.00  | 110,678.00 | 111,078.00 | 0.00000    | 5,000.47  | $5,000.47    |
+| Apr 28 - 8pm   | Hold                | 101,772.00  | 101,572.00 | 101,972.00 | 0.00000    | 5,000.47  | $5,000.47    |
+| Apr 29 - 8am   | Hold                | 96,521.80   | 96,321.80  | 96,721.80  | 0.00000    | 5,000.47  | $5,000.47    |
+| May 6 - 4pm    | Hold                | 96,824.30   | 96,624.30  | 97,024.30  | 0.00000    | 5,000.47  | $5,000.47    |
+| May 6 - 8pm    | Hold                | 94,868.60   | 94,668.60  | 94,868.60  | 0.00000    | 5,000.47  | $5,000.47    |
+| May 12 - 8pm   | Hold                | 94,703.90   | 94,503.90  | 94,703.90  | 0.00000    | 5,000.47  | $5,000.47    |
+| May 13 - 8am   | Hold                | 94,181.20   | 94,181.20  | 94,381.20  | 0.00000    | 5,000.47  | $5,000.47    |
+| May 22 - 8pm   | Hold                | 93,198.30   | 93,198.30  | 93,398.30  | 0.00000    | 5,000.47  | $5,000.47    |
 
