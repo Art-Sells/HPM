@@ -25,39 +25,25 @@ MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity
 - Supplicate cbBTC when low pool price rises above last USDC supplication.
 - **Avoid losses** by holding USDC in sustained downtrends.
 
-### Wallet Value (Bull vs Bear)
+### Investment Value (Bull vs Bear (April 25' - May 25' prices))
 
 <img src="https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/BullVsBearMarketWalletComparison.png" width="800px"> 
 
-**Bull Market Wallet Value (with HPM-MASS v1):**
-- **Total Gains:** `$198.96`
-- **Total Losses:** `$10.52`
-- **Net Profit:** `$188.44`
-- **% Return:** `+3.77%`
+### With HPM-MASS v1
+- **Bull Return:** `+3.77%`
+- **Bear Return:** `+0.009%`
+- **Profits:** `+3.779%`
 
-**Bull Market Wallet Value (without HPM-MASS v1):**
-- **Total Gains:** `$300.09`
-- **Total Losses:** `$88.61`
-- **Net Profit:** `$211.48`
-- **% Return:** `+4.24%`
-
-**Bear Market Wallet Value (with HPM-MASS v1):**
-- **Total Gains:** `$0.47`
-- **Total Losses:** `$0.00`
-- **Net Profit:** `$0.47`
-- **% Return:** `+0.009%`
-
-**Bear Market Wallet Value (without HPM-MASS v1):**
-- **Total Gains:** `$0.00`
-- **Total Losses:** `$274.16`
-- **Net Loss:** `$274.16`
-- **% Return:** `-5.47%`
-
----
+### Without HPM-MASS v1
+- **Bull Return:** `+4.24%`
+- **Bear Return:** `-5.47%`
+- **Losses:** `-1.23%`
 
 ### In Summary:
 
-LPP (using MASS v1) gives up a small portion of upside in exchange for no downside insulation built to render bear markets obsolete.
+LPP (using MASS v1) gives up a small portion of upside during bull markets in exchange for virtualy no downsides in bear markets thus rendering bear markets obsolete.
+
+---
 
 #### Bull Market Simulation Log (with HPM-MASS v1)
 
