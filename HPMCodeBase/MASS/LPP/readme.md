@@ -15,7 +15,9 @@ MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity
 
 ## ⚙️ LPP Supplication Logic *(for MASS v1)*
 
-**Based on a $5,000 cbBTC investment starting April 22, 2025.**
+*The below scenario is based on publicly available prices (which display by hours (and not seconds)).*
+
+**Real MASS v1 USDC supplications activate with every minor price downswing (seconds and not hours) thus real losses will be much more negligible.**
 
 ### Scenario:
 
@@ -25,7 +27,7 @@ MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity
 - Supplicate cbBTC when low pool price rises above last USDC supplication.
 - **Avoid losses** by holding USDC in sustained downtrends.
 
-### Investment Value (Bull vs Bear (April 25' - May 25' prices))
+### Investment Value (Bull vs Bear (April 25' - May 25' prices):
 
 <img src="https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/BullVsBearMarketWalletComparison.png" width="800px"> 
 
