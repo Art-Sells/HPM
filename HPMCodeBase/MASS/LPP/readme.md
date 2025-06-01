@@ -27,7 +27,7 @@ MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity
 - Supplicate cbBTC when low pool price rises above last USDC supplication.
 - **Avoid losses** by holding USDC in sustained downtrends.
 
-### Investment Value (Bull vs Bear (April 25' - May 25' prices):
+### Investment Value (Bull vs Bear (April 25' - May 25' prices)):
 
 <img src="https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/BullVsBearMarketWalletComparison.png" width="800px"> 
 
