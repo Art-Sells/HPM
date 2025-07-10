@@ -1,5 +1,6 @@
 # MASS Code Base Architecture 
 
+## Current Version: v1
 *(for Bitcoin on Base)*  
 ***Built with `Typescript` & `Javascript`.***
 
