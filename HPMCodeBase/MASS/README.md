@@ -8,7 +8,7 @@ MASS is powered by **[LPP](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBas
 
 ## How MASS Works
 
-- MASS activates **per Vatop Group**, not globally.
+- MASS activates **per Vatop Group**.
 - Each group maintains its own **cpVact (HAP)** — the price at which the last supplication was made using the **lowest pool price**.
 - **LPP logic** ensures supplication occurs:
   - **USDC → cbBTC** at the **lowest pool**
