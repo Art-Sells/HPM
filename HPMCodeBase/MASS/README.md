@@ -4,11 +4,6 @@
 
 MASS is powered by **[LPP](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS/LPP)** (Liquidity Pool Pollination), which ensures that all supplications occur at favorable prices across multiple liquidity pools — minimizing slippage, fees, and losses.
 
-## Current Version
-
-- **MASS v1**
-  - Activation frequency: 7-day hold-release logic based on LPP.
-
 ---
 
 ## How MASS Works
