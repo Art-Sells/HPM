@@ -4,6 +4,11 @@
 
 MASS is powered by **[LPP](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS/LPP)** (Liquidity Pool Pollination), which ensures that all supplications occur at favorable prices across multiple liquidity pools — minimizing slippage, fees, and losses.
 
+## Current Version
+
+- **MASS v1**
+  - Activation frequency: 7-day hold-release logic based on LPP.
+
 ---
 
 ## How MASS Works
@@ -92,20 +97,7 @@ MASS is powered by **[LPP](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBas
 
 - **Chain**: [BASE](https://base.org)  
 - **Avg Supplication Fee**: ~$0.01  
-- MASS optimizes:
-  - Activation **frequency** (via 7-day hold logic)
-  - Supplication **per Vatop Group**, not globally
 - Details: [MASS Fee Constraints & Calculations](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS/MASSCodeBase#fee-constraintscalculations)
-
----
-
-## Current Version
-
-- **MASS v1**
-  - Tracks `cpVact` from the **lowest pool price**
-  - Uses LPP logic for all supplications
-  - Updates only after confirmed price trends and divergence
-  - Built-in hold durations to minimize churn and gas waste
 
 ---
 
@@ -120,7 +112,6 @@ A: Aggregate supplication prevents optimization. MASS is **Vatop-specific**, mea
 **Q: What is cpVact?**  
 A: The **current price at supplication**, derived from the lowest pool price at time of activation. This ensures future swaps are benchmarked against a real, opportunistic floor.
 
----
 ---
 ### Other Know-how
 MASS is currently in Version 1 of production so MASS's base "activation time" increments and decrements based on the amount of assets currently held within Arells so (assuming price changes occur frequently) Fee Constraints and Calculations are in-built into the system.
