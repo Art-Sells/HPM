@@ -17,7 +17,7 @@ MASS is powered by **[LPP](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBas
 
 ---
 
-## Example (with LPP Divergence):
+## Example (without LPP convergence):
 
 ### 1. Bitcoin Price: $60,000  
 - **Action**: $500 worth of cbBTC is imported using the lowest pool  
