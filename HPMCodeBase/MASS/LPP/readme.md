@@ -1,8 +1,13 @@
 # LPP: Liquidity Pool Pollination
 
-## 🌱 Overview
+## Overview
 
 **Liquidity Pool Pollination (LPP)** is an autonomous algorithmic mechanism that harvests volatility between liquidity pools and migrates value across them efficiently. It uses automated supplication logic to navigate price divergence between different liquidity pools; a core innovation of the **[Market Automated Supplication System (MASS)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)**. 
+
+#### Maximum Bear Market Investment losses 
+
+- With HPM: -1%~
+- Without HPM:: -100%~
 
 *For expanded results, see **[LPPv1 Results](https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/v1Results.md
 )***
@@ -16,7 +21,7 @@ MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity
 
 ---
 
-## ⚙️ LPP Supplication Logic *(for MASS v1)*
+## LPP v1 Scenario *(for MASS v1)*
 
 *The below scenario is based on publicly available prices (which display by hours (and not seconds)).*
 
@@ -34,12 +39,12 @@ MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity
 
 <img src="https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/BullVsBearMarketWalletComparison.png" width="800px"> 
 
-### With HPM-MASS v1
+### With HPM-MASS-LPP v1
 - **Bull Return:** `+3.77%`
 - **Bear Return:** `+0.009%`
 - **Profits:** `+3.779%`
 
-### Without HPM-MASS v1
+### Without HPM-MASS-LPP v1
 - **Bull Return:** `+4.24%`
 - **Bear Return:** `-5.47%`
 - **Losses:** `-1.23%`
@@ -50,7 +55,7 @@ LPP (using MASS v1) gives up a small portion of upside during bull markets in ex
 
 ---
 
-#### Bull Market Simulation Log (with HPM-MASS v1)
+#### Bull Market Simulation Log (with HPM-MASS-LPP v1)
 
 | Date         | Supplication        | cbBTC Price | Low Pool   | High Pool  | cbBTC Held | USDC Held | Wallet Value |
 |--------------|---------------------|-------------|------------|------------|------------|-----------|--------------|
@@ -66,7 +71,7 @@ LPP (using MASS v1) gives up a small portion of upside during bull markets in ex
 
 ---
 
-#### Bear Market Simulation Log (with HPM-MASS v1)
+#### Bear Market Simulation Log (with HPM-MASS-LPP v1)
 
 | Date           | Supplication        | cbBTC Price | Low Pool   | High Pool  | cbBTC Held | USDC Held | Wallet Value |
 |----------------|---------------------|-------------|------------|------------|------------|-----------|--------------|
