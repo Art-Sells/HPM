@@ -3,7 +3,6 @@
 ## Bull Market:
 
 *Period: Jun 2024 → Aug 26, 2025*  
-*External price = BTC closes (cbBTC proxy), Pools ±$100*  
 
 ---
 
