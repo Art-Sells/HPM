@@ -9,7 +9,7 @@
 - With HPM: -1%~
 - Without HPM: -100%~
 
-*For expanded results, see **[LPPv1 Results](https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/v1Results.md
+*For expanded results, see **[LPP v1 Results](https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/v1Results.md
 )***
 
 ---
