@@ -43,7 +43,7 @@
 
 ---
 
-## Without LPPv1 (straight buys, no sells)
+## Without LPPv1 (buys, no sells)
 
 | Scenario       | Invested | Final Value | Profits ($)   | Profits (%) | Losses ($) | Losses (%) |
 |----------------|---------:|------------:|----------:|--------:|------------------:|------------------:|
@@ -58,7 +58,7 @@
 
 ---
 
-## With LPPv1 (straight buys, no sells)
+## With LPPv1 (buys, no sells)
 
 | Scenario       | Invested | Final Value | Profits ($)   | Profits (%) | Losses ($) | Losses (%) |
 |----------------|---------:|------------:|----------:|--------:|--------------------:|--------------------:|
