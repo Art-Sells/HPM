@@ -9,3 +9,12 @@ Records the highest price of an asset after its import or purchase limiting the 
 - **Sloth Market: a market in which investments stagnate.**
 
 <img src="https://github.com/Art-Sells/Arells/blob/test/Art/Marketing/BeforeandAfterArellss.png" width="500px"> 
+
+_______________________________________
+
+### Maximum Bear Market Investment losses 
+
+- With HPM: -1%~
+- Without HPM: -100%~
+
+*See **[LPP](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS/LPP)** for more info.*
