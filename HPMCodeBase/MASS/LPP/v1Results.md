@@ -1,5 +1,42 @@
 # Expanded LPP Results (for version 1):
 
+## Bear Market:
+
+*Period: Jun 2024 → Aug 26, 2025 (Bear-market inversion)*  
+
+---
+
+## Without LPP (buys, no sells)
+
+| Scenario       | Invested | Final Value | Profits ($)   | Profits (%) | Losses ($) | Losses (%) |
+|----------------|---------:|------------:|----------:|--------:|------------------:|------------------:|
+| $500/week      |   4,500  |     2,931   |   –1,569  | –34.9%  | –1,569            | –34.9%            |
+| $100/week      |     900  |       586   |     –314  | –34.9%  | –314              | –34.9%            |
+| $2,000/week    |  18,000  |    11,725   |   –6,275  | –34.9%  | –6,275            | –34.9%            |
+| $4,000/week    |  36,000  |    23,450   |  –12,550  | –34.9%  | –12,550           | –34.9%            |
+| $500/day       |  31,500  |    20,267   |  –11,233  | –35.7%  | –11,233           | –35.7%            |
+| $100/day       |   6,300  |     4,053   |   –2,247  | –35.7%  | –2,247            | –35.7%            |
+| $2,000/day     | 126,000  |    81,066   |  –44,934  | –35.7%  | –44,934           | –35.7%            |
+| $4,000/day     | 252,000  |   162,132   |  –89,868  | –35.7%  | –89,868           | –35.7%            |
+
+---
+
+## With LPP (buys, no sells)  
+
+| Scenario       | Invested | Final Value | Profits ($)   | Profits (%) | Losses ($) | Losses (%) |
+|----------------|---------:|------------:|----------:|--------:|--------------------:|--------------------:|
+| $500/week      |   4,500  |     4,455   |     –45   | –1.0%   | –45                 | –1.0%               |
+| $100/week      |     900  |       891   |      –9   | –1.0%   | –9                  | –1.0%               |
+| $2,000/week    |  18,000  |    17,820   |    –180   | –1.0%   | –180                | –1.0%               |
+| $4,000/week    |  36,000  |    35,640   |    –360   | –1.0%   | –360                | –1.0%               |
+| $500/day       |  31,500  |    31,235   |    –265   | –0.8%   | –265                | –0.8%               |
+| $100/day       |   6,300  |     6,247   |     –53   | –0.8%   | –53                 | –0.8%               |
+| $2,000/day     | 126,000  |   124,938   |  –1,062   | –0.8%   | –1,062              | –0.8%               |
+| $4,000/day     | 252,000  |   249,876   |  –2,124   | –0.8%   | –2,124              | –0.8%               |
+
+
+---
+
 ## Bull Market:
 
 *Period: Jun 2024 → Aug 26, 2025*  
@@ -35,8 +72,3 @@
 | $4,000/day     | 252,000  |   307,973   |  +55,973  | +22.2%  | –1,998              | –0.8%               |
 
 ---
-
-# Key Takeaways
-- **Without LPP:** all investors endured ~10% losses in June 2024 (BTC $67.7k → $60.1k), though final Profits were strong (+68%).  
-- **With LPP:** no major drawdowns; small realized losses (–0.8% daily, –1.2% weekly) clipped some entries, but final returns were still **+22–24%**.  
-- **Design goal achieved:** LPPv1 avoided bear-market pain, at the cost of giving up some upside.  
