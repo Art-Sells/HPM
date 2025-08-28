@@ -4,6 +4,9 @@
 
 **Liquidity Pool Pollination (LPP)** is an autonomous algorithmic mechanism that harvests volatility between liquidity pools and migrates value across them efficiently. It uses automated supplication logic to navigate price divergence between different liquidity pools; a core innovation of the **[Market Automated Supplication System (MASS)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)**. 
 
+*For expanded results, see **[LPPv1 Results](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS](https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/v1Results.md
+)***
+
 ---
 
 MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity pools, simulates ±$100 divergence between pool prices, and dynamically determines when to:
@@ -77,4 +80,3 @@ LPP (using MASS v1) gives up a small portion of upside during bull markets in ex
 | May 12 - 8pm   | Hold                | 94,703.90   | 94,703.90  | 94,803.90  | 0.00000    | 5,000.47  | $5,000.47    |
 | May 13 - 8am   | Hold                | 94,181.20   | 94,181.20  | 94,281.20  | 0.00000    | 5,000.47  | $5,000.47    |
 | May 22 - 8pm   | Hold                | 93,198.30   | 93,198.30  | 93,298.30  | 0.00000    | 5,000.47  | $5,000.47    |
-
