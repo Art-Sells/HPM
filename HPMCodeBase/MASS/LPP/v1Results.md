@@ -1,6 +1,6 @@
 # Expanded LPP Results (for version 1):
 
-#### Example: For CBBTC Jun 24' - Aug 25', which is better?
+#### Investing in cbBTC Jun 24' - Aug 25', which is better?
 
 - **In Bear Markets Buys:**  
   - **Without LPP v1**, investors suffer catastrophic losses (–35%).  
@@ -16,7 +16,7 @@ __________________________________________
 
 ## Bear Market Buys:
 
-*CBBTC Period: Jun 2024 → Aug 26, 2025 (Bear-market inversion)*  
+*cbBTC Period: Jun 2024 → Aug 26, 2025 (Bear-market inversion)*  
 
 ### Without LPP v1
 
@@ -50,7 +50,7 @@ __________________________________________
 
 ## Bull Market Buys:
 
-*CBBTC Period: Jun 2024 → Aug 26, 2025*  
+*cbBTC Period: Jun 2024 → Aug 26, 2025*  
 
 
 ### Without LPP v1
