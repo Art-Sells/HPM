@@ -51,7 +51,7 @@ MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity
 
 ### In Summary:
 
-LPP (using MASS v1) gives up a small portion of upside during bull markets in exchange for virtually no downsides in bear markets thus rendering bear markets obsolete.
+LPP v1 (using MASS v1) gives up a small portion of upside during bull markets in exchange for virtually no downsides in bear markets thus rendering bear markets obsolete.
 
 ---
 
