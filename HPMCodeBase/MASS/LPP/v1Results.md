@@ -2,12 +2,12 @@
 
 #### Example: For CBBTC Jun 24' - Aug 25', which is better?
 
-- **In Bear Markets:**  
+- **In Bear Markets Buys:**  
   - **Without LPP v1**, investors suffer catastrophic losses (–35%).  
   - **With LPP v1** prevents major damage, holding losses to ~–1%.  
   - *Result: With LPP v1, investors are essentially bear-market immune.*
 
-- **In Bull Markets:**  
+- **In Bull Markets Buys:**  
   - **Without LPP v1**, investors capture the full upside (+68%) but must tolerate large downswings (~–10%).  
   - **With LPP v1** reduces drawdowns to ~–1%, but also caps profits to ~+22–24%.  
   - *Tradeoff: upside trimmed significantly in exchange for peace of mind.*
