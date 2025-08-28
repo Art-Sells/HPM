@@ -1,15 +1,15 @@
-# Expanded LPP Results (for version 1):
+# Expanded LPP Results (for MASS v1):
 
 #### Investing in cbBTC Jun 24' - Aug 25', which is better?
 
 - **In Bear Markets Buys:**  
-  - **Without LPP v1**, investors suffer catastrophic losses (–35%).  
-  - **With LPP v1** prevents major damage, holding losses to ~–1%.  
-  - *Result: With LPP v1, investors are essentially bear-market immune.*
+  - **Without MASS-LPP v1**, investors suffer catastrophic losses (–35%).  
+  - **With MASS-LPP v1** prevents major damage, holding losses to ~–1%.  
+  - *Result: With MASS-LPP v1, investors are essentially bear-market immune.*
 
 - **In Bull Markets Buys:**  
-  - **Without LPP v1**, investors capture the full upside (+68%) but must tolerate large downswings (~–10%).  
-  - **With LPP v1** reduces drawdowns to ~–1%, but also caps profits to ~+22–24%.  
+  - **Without MASS-LPP v1**, investors capture the full upside (+68%) but must tolerate large downswings (~–10%).  
+  - **With MASS-LPP v1** reduces drawdowns to ~–1%, but also caps profits to ~+22–24%.  
   - *Tradeoff: upside trimmed significantly in exchange for peace of mind.*
 
 __________________________________________
@@ -18,7 +18,7 @@ __________________________________________
 
 *cbBTC Period: Jun 2024 → Aug 26, 2025 (Bear-market inversion)*  
 
-### Without LPP v1
+### Without MASS-LPP v1
 
 | Scenario       | Invested | Final Value | Profits ($) | Profits (%) | Losses ($) | Losses (%) |
 |----------------|---------:|------------:|---------------------:|---------------------:|--------------------:|--------------------:|
@@ -32,7 +32,7 @@ __________________________________________
 | $4,000/day     | 252,000  |   162,132   |       0              |  0.0%               | –89,868             | –35.7%              |
 
 
-### With LPP v1
+### With MASS-LPP v1
 
 | Scenario       | Invested | Final Value | Profits ($) | Profits (%) | Losses ($) | Losses (%) |
 |----------------|---------:|------------:|---------------------:|---------------------:|--------------------:|--------------------:|
@@ -53,7 +53,7 @@ __________________________________________
 *cbBTC Period: Jun 2024 → Aug 26, 2025*  
 
 
-### Without LPP v1
+### Without MASS-LPP v1
 
 | Scenario       | Invested | Final Value | Profits ($) | Profits (%) | Losses ($) | Losses (%) |
 |----------------|---------:|------------:|---------------------:|---------------------:|--------------------:|--------------------:|
@@ -67,7 +67,7 @@ __________________________________________
 | $4,000/day     | 252,000  |   424,252   | 172,252              | +68.3%              | –23,808             | –9.5%               |
 
 
-### With LPP v1
+### With MASS-LPP v1
 
 | Scenario       | Invested | Final Value | Profits ($) | Profits (%) | Losses ($) | Losses (%) |
 |----------------|---------:|------------:|---------------------:|---------------------:|--------------------:|--------------------:|
