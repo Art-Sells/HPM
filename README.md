@@ -15,6 +15,6 @@ _______________________________________
 #### Bear Market Investments
 
 - With HPM: +0.3%-1%~ minimum profits, 0% losses.
-- Without HPM: -100% maximum losses
+- Without HPM: -100% maximum losses.
 
 *See **[LPP](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS/LPP)** for more info.*
