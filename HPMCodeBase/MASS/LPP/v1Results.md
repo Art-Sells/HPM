@@ -3,14 +3,14 @@
 #### Investing in cbBTC Jun 24' – Aug 25', which is better?
 
 - **In Bear Markets Buys:**  
-  - **Without MASS-LPP v1**, investors suffer catastrophic losses (≈ –35%).  
-  - **With MASS-LPP v1**, investors capture *small profits* from cross-pool spread harvesting (+0.3% to +1.0%), with **zero losses**.  
-  - *Result: With MASS-LPP v1, investors are essentially bear-market immune and still finish green.*  
+  - **Without MASS-LPP v1**, investors suffer major net losses (≈ –35%), *but some individual buys do realize short-term profits during rebounds*.  
+  - **With MASS-LPP v1**, investors capture *small realized profits* (+0.3% to +1.0%) with **zero realized losses**.  
+  - *Result: MASS-LPP v1 converts a catastrophic outcome into positive returns.*
 
 - **In Bull Markets Buys:**  
-  - **Without MASS-LPP v1**, investors capture the full upside (+68%) but must tolerate large downswings (~–10%).  
-  - **With MASS-LPP v1**, reduces drawdowns to ~–1%, but also caps profits to ~+22–24%.  
-  - *Tradeoff: upside trimmed significantly in exchange for peace of mind.*
+  - **Without MASS-LPP v1**, investors capture the full upside (+68%) but some buys still realize short-term losses during local dips.  
+  - **With MASS-LPP v1**, drawdowns are reduced (~–1%), profits trimmed to +22–24%.  
+  - *Tradeoff: protection from deep drawdowns, but capped upside.*
 
 ---
 
@@ -22,14 +22,14 @@
 
 | Scenario       | Invested | Profits ($) | Losses ($) | Final Value | Profits (%) | Losses (%) |
 |----------------|---------:|------------:|-----------:|------------:|------------:|-----------:|
-| $500/week      |   4,500  |       0     | –1,569     |     2,931   |  0.0%       | –34.9%     |
-| $100/week      |     900  |       0     | –314       |       586   |  0.0%       | –34.9%     |
-| $2,000/week    |  18,000  |       0     | –6,275     |    11,725   |  0.0%       | –34.9%     |
-| $4,000/week    |  36,000  |       0     | –12,550    |    23,450   |  0.0%       | –34.9%     |
-| $500/day       |  31,500  |       0     | –11,233    |    20,267   |  0.0%       | –35.7%     |
-| $100/day       |   6,300  |       0     | –2,247     |     4,053   |  0.0%       | –35.7%     |
-| $2,000/day     | 126,000  |       0     | –44,934    |    81,066   |  0.0%       | –35.7%     |
-| $4,000/day     | 252,000  |       0     | –89,868    |   162,132   |  0.0%       | –35.7%     |
+| $500/week      |   4,500  |   +320      | –1,889     |     2,931   | +7.1%       | –41.9%     |
+| $100/week      |     900  |    +64      | –378       |       586   | +7.1%       | –41.9%     |
+| $2,000/week    |  18,000  | +1,280      | –7,555     |    11,725   | +7.1%       | –41.9%     |
+| $4,000/week    |  36,000  | +2,560      | –15,110    |    23,450   | +7.1%       | –41.9%     |
+| $500/day       |  31,500  | +2,242      | –13,475    |    20,267   | +7.1%       | –42.8%     |
+| $100/day       |   6,300  |   +448      | –2,695     |     4,053   | +7.1%       | –42.8%     |
+| $2,000/day     | 126,000  | +8,967      | –53,901    |    81,066   | +7.1%       | –42.8%     |
+| $4,000/day     | 252,000  | +17,934     | –107,802   |   162,132   | +7.1%       | –42.8%     |
 
 ### With MASS-LPP v1
 
@@ -54,14 +54,14 @@
 
 | Scenario       | Invested | Profits ($) | Losses ($) | Final Value | Profits (%) | Losses (%) |
 |----------------|---------:|------------:|-----------:|------------:|------------:|-----------:|
-| $500/week      |   4,500  |   3,045     | –442       |     7,103   | +67.7%      | –9.8%      |
-| $100/week      |     900  |     609     | –88        |     1,421   | +67.7%      | –9.8%      |
-| $2,000/week    |  18,000  |  12,180     | –1,767     |    28,413   | +67.7%      | –9.8%      |
-| $4,000/week    |  36,000  |  24,361     | –3,534     |    56,827   | +67.7%      | –9.8%      |
-| $500/day       |  31,500  |  21,532     | –2,976     |    50,056   | +68.3%      | –9.5%      |
-| $100/day       |   6,300  |   4,306     | –595       |    10,011   | +68.3%      | –9.5%      |
-| $2,000/day     | 126,000  |  86,126     | –11,904    |   200,222   | +68.3%      | –9.5%      |
-| $4,000/day     | 252,000  | 172,252     | –23,808    |   400,444   | +68.3%      | –9.5%      |
+| $500/week      |   4,500  |   3,487     | –384       |     7,603   | +77.5%      | –8.5%      |
+| $100/week      |     900  |     697     | –77        |     1,520   | +77.5%      | –8.5%      |
+| $2,000/week    |  18,000  |  13,949     | –1,538     |    30,411   | +77.5%      | –8.5%      |
+| $4,000/week    |  36,000  |  27,898     | –3,077     |    60,821   | +77.5%      | –8.5%      |
+| $500/day       |  31,500  |  23,877     | –2,642     |    52,735   | +75.8%      | –8.4%      |
+| $100/day       |   6,300  |   4,775     | –529       |    10,546   | +75.8%      | –8.4%      |
+| $2,000/day     | 126,000  |  95,508     | –10,568    |   210,940   | +75.8%      | –8.4%      |
+| $4,000/day     | 252,000  | 191,016     | –21,136    |   421,880   | +75.8%      | –8.4%      |
 
 ### With MASS-LPP v1
 
