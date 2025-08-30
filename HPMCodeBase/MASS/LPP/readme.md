@@ -4,10 +4,10 @@
 
 **Liquidity Pool Pollination (LPP)** is an autonomous algorithmic mechanism that harvests volatility between liquidity pools and migrates value across them efficiently. It uses automated supplication logic to navigate price divergence between different liquidity pools; a core innovation of the **[Market Automated Supplication System (MASS)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)**. 
 
-#### Bear Market Investment profits & losses 
+#### Bear Market Investments
 
-- With HPM-MASS-LPP: +0.3%-1%~ minimum profits
-- Without HPM-MASS-LPP: -100% maximum losses
+- With HPM-MASS-LPP: 0% maximum losses, +0.3%-1%~ minimum profits.
+- Without HPM-MASS-LPP: -100% maximum losses, unknown minimum profits.
 
 *For more info, see **[LPP v1 Expanded Results](https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/v1Results.md
 )***
