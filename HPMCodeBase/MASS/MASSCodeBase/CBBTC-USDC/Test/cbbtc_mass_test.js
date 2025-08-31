@@ -7,15 +7,22 @@ import { TickMath } from "@uniswap/v3-sdk";
 
 dotenv.config();
 
-// ✅ Uniswap Contract Addresses
+const __abiCache = new Map(); // address(lowercased) -> abi array
+
+const POOLS = {
+  500: "0xfBB6Eed8e7aa03B138556eeDaF5D271A5E1e43ef",
+  3000: "0xeC558e484cC9f2210714E345298fdc53B253c27D",
+};
+
+// Contract Addresses
 const QUOTER_ADDRESS = "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a";
 const FACTORY_ADDRESS = "0x33128a8fC17869897dcE68Ed026d694621f6FDfD";
 
-// ✅ Token Addresses
+// Token Addresses
 const USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 const CBBTC = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf";
 
-// ✅ Set Up Ethereum Provider & Wallet
+// Set Up Ethereum Provider & Wallet
 const provider = new ethers.JsonRpcProvider(process.env.BASE_RPC_URL);
 const userWallet = new ethers.Wallet(process.env.PRIVATE_KEY_TEST, provider);
 console.log(`✅ Using Test Wallet: ${userWallet.address}`);
@@ -28,20 +35,45 @@ const USDCContract = new ethers.Contract(USDC, [
 
 
 async function fetchABI(contractAddress) {
+  const key = contractAddress.toLowerCase();
+  if (__abiCache.has(key)) return __abiCache.get(key);
+
+  // reuse a previously learned pool ABI for known pool addresses
+  const knownPools = Object.values(POOLS).map(a => a.toLowerCase());
+  if (knownPools.includes(key) && __abiCache.has("uniswapPoolABI")) {
+    return __abiCache.get("uniswapPoolABI");
+  }
+
+  const attempt = async () => {
+    console.log(`🔍 Fetching ABI for ${contractAddress} from BaseScan...`);
+    const { data } = await axios.get(
+      `https://api.basescan.org/api?module=contract&action=getabi&address=${contractAddress}&apikey=${process.env.BASESCAN_API_KEY}`
+    );
+    if (data.status !== "1") throw new Error(`BaseScan API Error: ${data.message}`);
+    const abi = JSON.parse(data.result);
+
+    if (abi.some(i => i.name === "slot0" && Array.isArray(i.inputs) && i.inputs.length === 0)) {
+      __abiCache.set("uniswapPoolABI", abi);
+    }
+    __abiCache.set(key, abi);
+    return abi;
+  };
+
   try {
-      console.log(`🔍 Fetching ABI for ${contractAddress} from BaseScan...`);
-      const response = await axios.get(
-          `https://api.basescan.org/api?module=contract&action=getabi&address=${contractAddress}&apikey=${process.env.BASESCAN_API_KEY}`
-      );
-
-      if (response.data.status !== "1") throw new Error(`BaseScan API Error: ${response.data.message}`);
-
-      const abi = JSON.parse(response.data.result);
-
-      return abi;
-  } catch (error) {
-      console.error("❌ Failed to fetch ABI:", error.message);
+    return await attempt();
+  } catch (e1) {
+    // brief backoff; avoids NOTOK bursts without adding manual ABIs
+    await new Promise(r => setTimeout(r, 200));
+    try {
+      return await attempt();
+    } catch (e2) {
+      console.error("❌ Failed to fetch ABI:", e2.message);
+      if (__abiCache.has("uniswapPoolABI") && knownPools.includes(key)) {
+        console.log("♻️ Reusing cached Uniswap pool ABI");
+        return __abiCache.get("uniswapPoolABI");
+      }
       return null;
+    }
   }
 }
 
@@ -50,7 +82,7 @@ async function getPoolAddress() {
     if (!factoryABI) return null;
 
     const factory = new ethers.Contract(FACTORY_ADDRESS, factoryABI, provider);
-    const feeTiers = [500]; // 0.01%, 0.05%, 0.3%, 1%
+    const feeTiers = [500];
 
     for (let fee of feeTiers) {
         try {
@@ -110,13 +142,13 @@ async function simulateWithQuoter(params) {
     });
 
     const [amountOut] = iface.decodeFunctionResult("quoteExactInputSingle", result);
-    console.log(`🔁 Simulated amountOut: ${ethers.formatUnits(amountOut, 6)} USDC`);
     return amountOut;
   } catch (err) {
-    console.warn("⚠️ QuoterV2 simulation failed:", err.reason || err.message || err);
+    // console.warn("⚠️ QuoterV2 simulation failed:", err.reason || err.message || err);
     return null;
   }
 }
+
 
 
 async function checkFeeFreeRoute(amountIn) {
@@ -127,45 +159,76 @@ async function checkFeeFreeRoute(amountIn) {
 
   const factory = new ethers.Contract(FACTORY_ADDRESS, factoryABI, provider);
   const feeFreeRoutes = [];
+  const feeTiers = [500, 3000]; // check both pools
+  const results = [];
 
-  const fee = 500; // Only check 0.05% fee tier
-  try {
-    const poolAddress = await factory.getPool(USDC, CBBTC, fee);
-    if (poolAddress === ethers.ZeroAddress) return [];
-
-    const poolData = await checkPoolLiquidity(poolAddress);
-    if (!poolData || poolData.liquidity === 0) return [];
-
-    const tickSpacing = Number(poolData.tickSpacing);
-    const baseTick = Math.floor(Number(poolData.tick) / tickSpacing) * tickSpacing;
-
-    for (let i = 0; i < 3; i++) {
-      const testTick = baseTick + i * tickSpacing;
-      try {
-        const sqrtPriceLimitX96 = BigInt(TickMath.getSqrtRatioAtTick(testTick).toString());
-        const amountInWei = ethers.parseUnits(amountIn.toString(), 8);
-
-        const simulation = await simulateWithQuoter({
-          tokenIn: CBBTC,
-          tokenOut: USDC,
-          fee,
-          amountIn: amountInWei,
-          sqrtPriceLimitX96
-        });
-    
-        if (simulation && simulation > 0n) {
-          console.log(`✅ Route at tick ${testTick} is valid. Estimated out: ${ethers.formatUnits(simulation, 6)} USDC`);
-          feeFreeRoutes.push({ poolAddress, fee, sqrtPriceLimitX96, poolData, tick: testTick });
-        } else {
-          // console.log(`❌ Route at tick ${testTick} returned zero or failed`);
-        }
-      } catch (err) {
-        console.warn(`⚠️ Skip tick ${testTick}: ${err.message}`);
+  for (let fee of feeTiers) {
+    console.log(`\n--- 🌊 Checking Pool Fee Tier: ${fee} ---`);
+    try {
+      const poolAddress = await factory.getPool(USDC, CBBTC, fee);
+      if (poolAddress === ethers.ZeroAddress) {
+        console.log(`❌ No pool for fee tier ${fee}`);
+        results.push({ amount: amountIn, pool: fee, usdc: "❌ Pool not deployed" });
+        continue;
       }
+
+      const poolData = await checkPoolLiquidity(poolAddress);
+      if (!poolData) {
+        results.push({ amount: amountIn, pool: fee, usdc: "⚠️ ABI unavailable" });
+        continue;
+      }
+      if (poolData.liquidity === 0n) {
+        console.log(`❌ Skipping fee ${fee}: no liquidity`);
+        results.push({ amount: amountIn, pool: fee, usdc: "❌ No liquidity" });
+        continue;
+      }
+
+      console.log(`\n--- 🐝 LPP v1 Quoting 🐝 ---`);
+
+      const tickSpacing = Number(poolData.tickSpacing);
+      const baseTick = Math.floor(Number(poolData.tick) / tickSpacing) * tickSpacing;
+      let bestQuote = null;
+
+      // Test 3 ticks around base
+      for (let i = 0; i < 3; i++) {
+        const testTick = baseTick + i * tickSpacing;
+        try {
+          const sqrtPriceLimitX96 = BigInt(TickMath.getSqrtRatioAtTick(testTick).toString());
+          const amountInWei = ethers.parseUnits(amountIn.toString(), 8);
+
+          const simulation = await simulateWithQuoter({
+            tokenIn: CBBTC,
+            tokenOut: USDC,
+            fee,
+            amountIn: amountInWei,
+            sqrtPriceLimitX96
+          });
+
+          if (simulation && simulation > 0n) {
+            const formatted = ethers.formatUnits(simulation, 6);
+            console.log(`✅ Pool ${fee}: Tick ${testTick} → ${formatted} USDC`);
+            feeFreeRoutes.push({ poolAddress, fee, sqrtPriceLimitX96, poolData, tick: testTick });
+
+            // keep the last non-zero simulation for table summary
+            bestQuote = formatted;
+          } else {
+            console.log(`⚠️ Skipping Pool ${fee}: Tick ${testTick} returned zero or failed`);
+          }
+        } catch (err) {
+          console.warn(`⚠️ Pool ${fee}: skip tick ${testTick} → ${err.message}`);
+        }
+      }
+
+      results.push({ amount: amountIn, pool: fee, usdc: bestQuote ?? "❌ Quote failed" });
+
+    } catch (err) {
+      console.warn(`⚠️ Fee tier ${fee} skipped: ${err.message}`);
+      results.push({ amount: amountIn, pool: fee, usdc: "⚠️ Factory error" });
     }
-  } catch (err) {
-    console.warn(`⚠️ Fee tier 500 skipped: ${err.message}`);
   }
+
+  // 📊 side-by-side summary
+  console.table(results);
 
   return feeFreeRoutes;
 }
@@ -188,6 +251,7 @@ async function getBalances() {
     cbbtc: ethers.formatUnits(cbbtcBalance, 8)
   };
 }
+
 
 async function approveCBBTC(amountIn) {
   console.log(`🔑 Approving Swap Router to spend ${amountIn} CBBTC...`);
@@ -231,152 +295,194 @@ async function checkETHBalance() {
   return true;
 }
 
-export async function executeSupplication(amountIn) {
-  console.log(`\n🚀 Executing Swap: ${amountIn} CBBTC → USDC`);
+async function quotePoolsForAmount(amountInCBBTC) {
+  const amountInWei = ethers.parseUnits(amountInCBBTC.toString(), 8);
+  const results = [];
 
-  const balance = await checkCBBTCBalance();
-  if (balance < ethers.parseUnits(amountIn.toString(), 8)) {
-    console.error(`❌ ERROR: Insufficient CBBTC balance!`);
-    return;
-  }
+  for (const [fee] of Object.entries(POOLS)) {
+    const out = await simulateWithQuoter({
+      tokenIn: CBBTC,
+      tokenOut: USDC,
+      fee: Number(fee),
+      amountIn: amountInWei,
+      sqrtPriceLimitX96: 0n, // safe default
+    });
 
-  const poolInfo = await getPoolAddress();
-  if (!poolInfo) return;
-  const { poolAddress, fee } = poolInfo;
-
-  const poolData = await checkPoolLiquidity(poolAddress);
-  if (!poolData || poolData.liquidity === 0) {
-    console.error("❌ No liquidity available.");
-    return;
-  }
-
-  const feeFreeRoutes = await checkFeeFreeRoute(amountIn);
-  if (!feeFreeRoutes || feeFreeRoutes.length === 0) {
-    console.error("❌ No fee-free route available. Aborting.");
-    return;
-  }
-
-  console.log("✅ Fee-Free Route Confirmed!");
-
-  await approveCBBTC(amountIn);             
-  if (!(await checkETHBalance())) return;     
-  
-  let lastError = null;
-
-  const before = await checkCBBTCBalance();
-
-  for (const route of feeFreeRoutes) {
-    const { poolAddress, fee, sqrtPriceLimitX96, poolData } = route;
-  
-    const tickSpacing = Number(poolData.tickSpacing);
-    const baseTick = Math.floor(Number(poolData.tick) / tickSpacing) * tickSpacing;
-  
-    for (let i = 0; i < 3; i++) {
-      const testTick = baseTick + (i * tickSpacing);
-      console.log(`🔁 Trying supplication for fee ${fee} at tick ${testTick}`);
-  
-      let limitX96;
-      try {
-        limitX96 = BigInt(TickMath.getSqrtRatioAtTick(testTick).toString());
-      } catch (err) {
-        console.warn(`⚠️ Failed sqrtPriceLimitX96 for tick ${testTick}: ${err.message}`);
-        lastError = err;
-        continue;
-      }
-  
-      const params = {
-        tokenIn: CBBTC,
-        tokenOut: USDC,
-        fee,
-        recipient: userWallet.address,
-        deadline: Math.floor(Date.now() / 1000) + 600,
-        amountIn: ethers.parseUnits(amountIn.toString(), 8),
-        amountOutMinimum: ethers.parseUnits("0.01", 6),
-        sqrtPriceLimitX96: limitX96,
-      };
-  
-      console.log("🔍 Attempting supplication with params:", params);
-  
-      const swapRouterABI = await fetchABI(swapRouterAddress);
-      const iface = new ethers.Interface(swapRouterABI);
-      const functionData = iface.encodeFunctionData("exactInputSingle", [params]);
-  
-      try {
-        const feeData = await provider.getFeeData();
-        const tx = await userWallet.sendTransaction({
-          to: swapRouterAddress,
-          data: functionData,
-          gasLimit: 300000,
-          maxFeePerGas: feeData.maxFeePerGas,
-          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas ?? ethers.parseUnits("1", "gwei"),
-        });
-  
-        console.log("⏳ Waiting for confirmation...");
-        const receipt = await tx.wait();
-        console.log("✅ Supplication Transaction Confirmed:");
-        console.log(`🔗 Tx Hash: ${receipt.hash}`);
-        const after = await checkCBBTCBalance();
-        const used = before - after;
-        console.log(`⚠️ Actually used: ${ethers.formatUnits(used, 8)} CBBTC`);
-        return;
-      } catch (err) {
-        console.error(`❌ Supplication failed at tick ${testTick}:`, err.reason || err.message || err);
-        lastError = err;
-      }
+    if (out && out > 0n) {
+      results.push({ amount: amountInCBBTC, pool: fee, usdc: ethers.formatUnits(out, 6) });
+    } else {
+      results.push({ amount: amountInCBBTC, pool: fee, usdc: "❌ Quote failed" });
     }
   }
 
-console.error("❌ All fee-free tick attempts failed.");
-throw lastError;
-
-  
+  console.table(results);
 }
 
+// LPP (Liquidity Pool Polination) v1 logic below
+async function LPPv1(amountIn) {
+  const amountInWei = ethers.parseUnits(amountIn.toString(), 8);
+  const routes = await checkFeeFreeRoute(amountIn);
+  if (!routes || routes.length === 0) return [];
+
+  const scored = [];
+  for (const r of routes) {
+    const out = await simulateWithQuoter({
+      tokenIn: CBBTC,
+      tokenOut: USDC,
+      fee: r.fee,
+      amountIn: amountInWei,
+      sqrtPriceLimitX96: r.sqrtPriceLimitX96, // match how we'll actually swap
+    });
+    if (out && out > 0n) {
+      scored.push({ ...r, amountOut: out });
+    }
+  }
+
+  console.log(`\n--- 🐝 LPP v1 Sorting 🐝 ---`);
+  scored.sort((a, b) => (a.amountOut === b.amountOut ? 0 : (a.amountOut < b.amountOut ? 1 : -1)));
+
+
+  console.table(
+    scored.map(s => ({
+      fee: s.fee,
+      tick: s.tick,
+      usdcOut: ethers.formatUnits(s.amountOut, 6),
+      pool: s.poolAddress,
+    }))
+  );
+
+  return scored;
+}
+// LPP (Liquidity Pool Polination) v1 logic above
 
 
 
 
+export async function executeSupplication(amountIn) {
+  console.log(`\n🚀 Executing Swap: ${amountIn} CBBTC → USDC`);
 
+  // 1) Balance & gas checks
+  const bal = await checkCBBTCBalance();
+  if (bal < ethers.parseUnits(amountIn.toString(), 8)) {
+    console.error(`❌ ERROR: Insufficient CBBTC balance!`);
+    return;
+  }
+  if (!(await checkETHBalance())) return;
+
+  // 2) LPP
+  const lpp = await LPPv1(amountIn);
+  if (lpp.length === 0) {
+    console.error("❌ LPP quote failed for this amount.");
+    return;
+  }
+
+  // 3) Approve (once) before attempting swaps
+  await approveCBBTC(amountIn);
+
+  // 4) Try routes from best to worst (highest USDC first)
+  const before = await checkCBBTCBalance();
+  const swapRouterABI = await fetchABI(swapRouterAddress);
+  if (!swapRouterABI) {
+    console.error("❌ Swap router ABI unavailable.");
+    return;
+  }
+  const iface = new ethers.Interface(swapRouterABI);
+
+  for (const route of lpp) {
+    const { fee, sqrtPriceLimitX96, tick } = route;
+
+    // dynamic minOut: 0.5% slippage guard (and never below 0.01 USDC)
+    const minOut = (() => {
+      const calc = (route.amountOut * 995n) / 1000n;
+      const floor = ethers.parseUnits("0.01", 6);
+      return calc > floor ? calc : floor;
+    })();
+
+    const params = {
+      tokenIn: CBBTC,
+      tokenOut: USDC,
+      fee,
+      recipient: userWallet.address,
+      deadline: Math.floor(Date.now() / 1000) + 600,
+      amountIn: ethers.parseUnits(amountIn.toString(), 8),
+      amountOutMinimum: minOut,
+      sqrtPriceLimitX96, // exactly what we quoted with
+    };
+
+    console.log(
+      `🔁 Trying best route: fee ${fee}, tick ${tick}, minOut ${ethers.formatUnits(minOut, 6)} USDC`
+    );
+    // console.log("🔍 Params:", params);
+
+    const data = iface.encodeFunctionData("exactInputSingle", [params]);
+
+    try {
+      const feeData = await provider.getFeeData();
+      const tx = await userWallet.sendTransaction({
+        to: swapRouterAddress,
+        data,
+        gasLimit: 300000,
+        maxFeePerGas: feeData.maxFeePerGas,
+        maxPriorityFeePerGas: feeData.maxPriorityFeePerGas ?? ethers.parseUnits("1", "gwei"),
+      });
+
+      console.log("⏳ Waiting for confirmation...");
+      const receipt = await tx.wait();
+      console.log("✅ Swap Confirmed!");
+      console.log(`🔗 Tx Hash: ${receipt.hash}`);
+
+      const after = await checkCBBTCBalance();
+      const used = before - after;
+      console.log(`⚠️ Actually used: ${ethers.formatUnits(used, 8)} CBBTC`);
+      return;
+    } catch (err) {
+      console.error(
+        `❌ Route failed (fee ${fee}, tick ${tick}):`,
+        err.reason || err.message || err
+      );
+    }
+  }
+
+  console.error("❌ All fee-free routes (by highest Quoter amount) failed.");
+}
 
 
 const swapRouterAddress = "0x2626664c2603336E57B271c5C0b26F421741e481";
 
+
+
 async function main() {
-  console.log("\n🔍 Checking for a Fee-Free Quote...");
-  // ✅ CBBTC amounts (8 decimals)
-  const cbbtcAmounts = [
-    0.002323, 
-    0.0120323, 
-    1.3233, 
-    0.50012345, 
-    2.12345678];
+  // console.log("\n🔍 Checking for Fee-Free Quotes across fee tiers 500 (0.05%) & 3000 (0.3%)...");
 
-  let foundFeeFree = false; // Track if any fee-free route was found
+  // const cbbtcAmounts = [0.002323, 0.0120323, 1.3233, 0.50012345, 2.12345678];
 
-  // // ✅ Check for CBBTC → USDC
   // for (const amount of cbbtcAmounts) {
-  //     const feeFree = await checkFeeFreeRoute(amount, "CBBTC", "USDC", 8);
+  //   console.log(`\n==============================`);
+  //   console.log(`💰 Checking amount: ${amount} CBBTC`);
+  //   console.log(`==============================`);
 
-  //     if (feeFree) {
-  //         console.log(`\n✅ **Fee-Free Quote Found at ${amount} CBBTC!** 🚀`);
-  //         foundFeeFree = true;
-  //     }
-  // }
-  // if (!foundFeeFree) {
-  //   console.log("\n❌ **No Fee-Free Quote Available for Any Checked Amounts.** Try Again Later.");
-  // } else {
-  //     console.log("\n🎉 **Fee-Free Routes Checked for All Amounts!** 🚀");
+  //   await quotePoolsForAmount(amount);
+
+  //   const routes = await checkFeeFreeRoute(amount); 
+  //   if (routes.length === 0) {
+  //     console.log(`❌ No valid quotes found for ${amount} CBBTC at either fee tier.`);
+  //   } else {
+  //     console.log(`🎉 Found ${routes.length} valid route(s) for ${amount} CBBTC!`);
+  //   }
   // }
 
-  const cbbtcAmountToTrade = 0.0000358;
-  await executeSupplication(cbbtcAmountToTrade);
+  await executeSupplication(0.0000358);
 }
 
-
-
-main().catch(console.error);
+main().catch((err) => {
+  console.error("❌ Script failed:", err);
+  process.exitCode = 1;
+});
 
 //to test run: yarn hardhat run test/cbbtc_mass_test.js --network base
+
+
+
 
 
 
