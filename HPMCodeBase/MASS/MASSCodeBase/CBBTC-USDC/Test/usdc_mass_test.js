@@ -1,81 +1,101 @@
-import { ethers } from "ethers";
+import { ethers } from "ethers"; 
 import dotenv from "dotenv";
 import axios from "axios";
-
 import { TickMath } from "@uniswap/v3-sdk";
 
 dotenv.config();
 
-// ✅ Uniswap Contract Addresses
+const __abiCache = new Map(); // address(lowercased) -> abi array
+
+const POOLS = {
+  500: "0xfBB6Eed8e7aa03B138556eeDaF5D271A5E1e43ef",
+  3000: "0xeC558e484cC9f2210714E345298fdc53B253c27D",
+};
+
+// Contract Addresses
 const QUOTER_ADDRESS = "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a";
 const FACTORY_ADDRESS = "0x33128a8fC17869897dcE68Ed026d694621f6FDfD";
+const swapRouterAddress = "0x2626664c2603336E57B271c5C0b26F421741e481";
 
-// ✅ Token Addresses
-const USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
+// Token Addresses (flipped: USDC -> CBBTC)
+const USDC  = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 const CBBTC = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf";
 
-
-// ✅ Set Up Ethereum Provider & Wallet
-const provider = new ethers.JsonRpcProvider(process.env.BASE_RPC_URL);
+// Set Up Ethereum Provider & Wallet
+const provider   = new ethers.JsonRpcProvider(process.env.BASE_RPC_URL);
 const userWallet = new ethers.Wallet(process.env.PRIVATE_KEY_TEST, provider);
-const signer = userWallet.connect(provider);
 console.log(`✅ Using Test Wallet: ${userWallet.address}`);
 
-// ✅ Get Token Contract Instances
 const USDCContract = new ethers.Contract(USDC, [
-    "function balanceOf(address) view returns (uint256)",
-    "function approve(address, uint256)",
-    "function allowance(address, address) view returns (uint256)"  // ✅ Add `allowance`
+  "function balanceOf(address) view returns (uint256)",
+  "function approve(address, uint256)",
+  "function allowance(address, address) view returns (uint256)"
 ], userWallet);
-const CBBTCContract = new ethers.Contract(CBBTC, ["function balanceOf(address) view returns (uint256)"], userWallet);
 
-
-console.log(`🔥 Ethers.js Version: ${ethers.version}`);
-/**
- * ✅ Fetch ABI from BaseScan
- */
 async function fetchABI(contractAddress) {
-    try {
-        console.log(`🔍 Fetching ABI for ${contractAddress} from BaseScan...`);
-        const response = await axios.get(
-            `https://api.basescan.org/api?module=contract&action=getabi&address=${contractAddress}&apikey=${process.env.BASESCAN_API_KEY}`
-        );
+  const key = contractAddress.toLowerCase();
+  if (__abiCache.has(key)) return __abiCache.get(key);
 
-        if (response.data.status !== "1") throw new Error(`BaseScan API Error: ${response.data.message}`);
+  // reuse a previously learned pool ABI for known pool addresses
+  const knownPools = Object.values(POOLS).map(a => a.toLowerCase());
+  if (knownPools.includes(key) && __abiCache.has("uniswapPoolABI")) {
+    return __abiCache.get("uniswapPoolABI");
+  }
 
-        const abi = JSON.parse(response.data.result);
+  const attempt = async () => {
+    console.log(`🔍 Fetching ABI for ${contractAddress} from BaseScan...`);
+    const { data } = await axios.get(
+      `https://api.basescan.org/api?module=contract&action=getabi&address=${contractAddress}&apikey=${process.env.BASESCAN_API_KEY}`
+    );
+    if (data.status !== "1") throw new Error(`BaseScan API Error: ${data.message}`);
+    const abi = JSON.parse(data.result);
 
-        return abi;
-    } catch (error) {
-        console.error("❌ Failed to fetch ABI:", error.message);
-        return null;
+    if (abi.some(i => i.name === "slot0" && Array.isArray(i.inputs) && i.inputs.length === 0)) {
+      __abiCache.set("uniswapPoolABI", abi);
     }
+    __abiCache.set(key, abi);
+    return abi;
+  };
+
+  try {
+    return await attempt();
+  } catch (e1) {
+    // brief backoff; avoids NOTOK bursts without adding manual ABIs
+    await new Promise(r => setTimeout(r, 200));
+    try {
+      return await attempt();
+    } catch (e2) {
+      console.error("❌ Failed to fetch ABI:", e2.message);
+      if (__abiCache.has("uniswapPoolABI") && knownPools.includes(key)) {
+        console.log("♻️ Reusing cached Uniswap pool ABI");
+        return __abiCache.get("uniswapPoolABI");
+      }
+      return null;
+    }
+  }
 }
 
-/**
- * ✅ Check Pool Liquidity
- */
 async function getPoolAddress() {
-    const factoryABI = await fetchABI(FACTORY_ADDRESS);
-    if (!factoryABI) return null;
+  const factoryABI = await fetchABI(FACTORY_ADDRESS);
+  if (!factoryABI) return null;
 
-    const factory = new ethers.Contract(FACTORY_ADDRESS, factoryABI, provider);
-    const feeTiers = [500]; // 0.01%, 0.05%, 0.3%, 1%
+  const factory = new ethers.Contract(FACTORY_ADDRESS, factoryABI, provider);
+  const feeTiers = [500];
 
-    for (let fee of feeTiers) {
-        try {
-            const poolAddress = await factory.getPool(USDC, CBBTC, fee);
-            if (poolAddress !== ethers.ZeroAddress) {
-                console.log(`✅ Found Pool for fee tier ${fee}: ${poolAddress}`);
-                return { poolAddress, fee };
-            }
-        } catch (error) {
-            console.warn(`⚠️ Failed to get pool for fee tier ${fee}: ${error.message}`);
-        }
+  for (let fee of feeTiers) {
+    try {
+      const poolAddress = await factory.getPool(USDC, CBBTC, fee);
+      if (poolAddress !== ethers.ZeroAddress) {
+        console.log(`✅ Found Pool for fee tier ${fee}: ${poolAddress}`);
+        return { poolAddress, fee };
+      }
+    } catch (error) {
+      console.warn(`⚠️ Failed to get pool for fee tier ${fee}: ${error.message}`);
     }
+  }
 
-    console.error("❌ No Uniswap V3 Pool found for USDC-CBBTC.");
-    return null;
+  console.error("❌ No Uniswap V3 Pool found for USDC-CBBTC.");
+  return null;
 }
 
 async function checkPoolLiquidity(poolAddress) {
@@ -83,8 +103,8 @@ async function checkPoolLiquidity(poolAddress) {
   if (!poolABI) return null;
   const pool = new ethers.Contract(poolAddress, poolABI, provider);
   try {
-    const slot0 = await pool.slot0();
-    const liquidity = await pool.liquidity();
+    const slot0       = await pool.slot0();
+    const liquidity   = await pool.liquidity();
     const tickSpacing = await pool.tickSpacing();
     console.log("\n🔍 Pool Liquidity Data:");
     console.log(`   - sqrtPriceX96: ${slot0[0]}`);
@@ -105,9 +125,9 @@ async function simulateWithQuoter(params) {
   const iface = new ethers.Interface(quoterABI);
 
   const functionData = iface.encodeFunctionData("quoteExactInputSingle", [{
-    tokenIn: params.tokenIn,
+    tokenIn:  params.tokenIn,
     tokenOut: params.tokenOut,
-    fee: params.fee,
+    fee:      params.fee,
     amountIn: params.amountIn,
     sqrtPriceLimitX96: params.sqrtPriceLimitX96
   }]);
@@ -119,17 +139,13 @@ async function simulateWithQuoter(params) {
     });
 
     const [amountOut] = iface.decodeFunctionResult("quoteExactInputSingle", result);
-    console.log(`🔁 Simulated amountOut: ${ethers.formatUnits(amountOut, 8)} CBBTC`);
+    // USDC -> CBBTC, so amountOut is cbBTC (8 decimals)
     return amountOut;
-  } catch (err) {
-    console.warn("⚠️ QuoterV2 simulation failed:", err.reason || err.message || err);
+  } catch {
     return null;
   }
 }
 
-/**
- * ✅ Check Fee-Free Route
- */
 async function checkFeeFreeRoute(amountIn) {
   console.log(`\n🚀 Checking Fee-Free Routes for ${amountIn} USDC → CBBTC`);
 
@@ -138,247 +154,317 @@ async function checkFeeFreeRoute(amountIn) {
 
   const factory = new ethers.Contract(FACTORY_ADDRESS, factoryABI, provider);
   const feeFreeRoutes = [];
+  const feeTiers = [500, 3000]; // check both pools
+  const results = [];
 
-  const fee = 500; // Only check 0.05% fee tier
-  try {
-    const poolAddress = await factory.getPool(USDC, CBBTC, fee);
-    if (poolAddress === ethers.ZeroAddress) return [];
-
-    const poolData = await checkPoolLiquidity(poolAddress);
-    if (!poolData || poolData.liquidity === 0) return [];
-
-    const tickSpacing = Number(poolData.tickSpacing);
-    const baseTick = Math.floor(Number(poolData.tick) / tickSpacing) * tickSpacing;
-
-    for (let i = 0; i < 3; i++) {
-      const testTick = baseTick + i * tickSpacing;
-      try {
-        const sqrtPriceLimitX96 = BigInt(TickMath.getSqrtRatioAtTick(testTick).toString());
-        const amountInWei = ethers.parseUnits(amountIn.toString(), 6);
-    
-        const simulation = await simulateWithQuoter({
-          tokenIn: USDC,
-          tokenOut: CBBTC,
-          fee,
-          amountIn: amountInWei,
-          sqrtPriceLimitX96
-        });
-    
-        if (simulation && simulation > 0n) {
-          console.log(`✅ Route at tick ${testTick} is valid. Estimated out: ${ethers.formatUnits(simulation, 8)} CBBTC`);
-          feeFreeRoutes.push({ poolAddress, fee, sqrtPriceLimitX96, poolData, tick: testTick });
-        } else {
-          // console.log(`❌ Route at tick ${testTick} returned zero or failed`);
-        }
-      } catch (err) {
-        console.warn(`⚠️ Skip tick ${testTick}: ${err.message}`);
+  for (let fee of feeTiers) {
+    console.log(`\n--- 🌊 Checking Pool Fee Tier: ${fee} ---`);
+    try {
+      const poolAddress = await factory.getPool(USDC, CBBTC, fee);
+      if (poolAddress === ethers.ZeroAddress) {
+        console.log(`❌ No pool for fee tier ${fee}`);
+        results.push({ amount: amountIn, pool: fee, cbbtc: "❌ Pool not deployed" });
+        continue;
       }
+
+      const poolData = await checkPoolLiquidity(poolAddress);
+      if (!poolData) {
+        results.push({ amount: amountIn, pool: fee, cbbtc: "⚠️ ABI unavailable" });
+        continue;
+      }
+      if (poolData.liquidity === 0n) {
+        console.log(`❌ Skipping fee ${fee}: no liquidity`);
+        results.push({ amount: amountIn, pool: fee, cbbtc: "❌ No liquidity" });
+        continue;
+      }
+
+      console.log(`\n--- 🐝 LPP v1 Quoting 🐝 ---`);
+
+      const tickSpacing = Number(poolData.tickSpacing);
+      const baseTick    = Math.floor(Number(poolData.tick) / tickSpacing) * tickSpacing;
+      let bestQuote = null;
+
+      // Test 3 ticks around base
+      for (let i = 0; i < 3; i++) {
+        const testTick = baseTick + i * tickSpacing;
+        try {
+          const sqrtPriceLimitX96 = BigInt(TickMath.getSqrtRatioAtTick(testTick).toString());
+          const amountInWei = ethers.parseUnits(amountIn.toString(), 6); // USDC decimals
+
+          const simulation = await simulateWithQuoter({
+            tokenIn:  USDC,
+            tokenOut: CBBTC,
+            fee,
+            amountIn: amountInWei,
+            sqrtPriceLimitX96
+          });
+
+          if (simulation && simulation > 0n) {
+            const formatted = ethers.formatUnits(simulation, 8);
+            console.log(`✅ Pool ${fee}: Tick ${testTick} → ${formatted} cbBTC`);
+            feeFreeRoutes.push({ poolAddress, fee, sqrtPriceLimitX96, poolData, tick: testTick });
+
+            // keep the last non-zero simulation for table summary
+            bestQuote = formatted;
+          } else {
+            console.log(`⚠️ Skipping Pool ${fee}: Tick ${testTick} returned zero or failed`);
+          }
+        } catch (err) {
+          console.warn(`⚠️ Pool ${fee}: skip tick ${testTick} → ${err.message}`);
+        }
+      }
+
+      results.push({ amount: amountIn, pool: fee, cbbtc: bestQuote ?? "❌ Quote failed" });
+
+    } catch (err) {
+      console.warn(`⚠️ Fee tier ${fee} skipped: ${err.message}`);
+      results.push({ amount: amountIn, pool: fee, cbbtc: "⚠️ Factory error" });
     }
-  } catch (err) {
-    console.warn(`⚠️ Fee tier 500 skipped: ${err.message}`);
   }
+
+  // 📊 side-by-side summary
+  console.table(results);
 
   return feeFreeRoutes;
 }
 
-/**
- * ✅ Execute Swap Transaction
- */
-const swapRouterAddress = "0x2626664c2603336E57B271c5C0b26F421741e481"; // ✅ Correct SwapRouter02 on Base
+async function checkUSDCBalance() {
+  const balance = await USDCContract.balanceOf(userWallet.address);
+  console.log(`💰 USDC Balance: ${ethers.formatUnits(balance, 6)} USDC`);
+  return balance;
+}
 
 async function getBalances() {
-    const usdcBalance = await USDCContract.balanceOf(userWallet.address);
-    const cbbtcBalance = await CBBTCContract.balanceOf(userWallet.address);
-
-    return {
-        usdc: ethers.formatUnits(usdcBalance, 6), // USDC has 6 decimals
-        cbbtc: ethers.formatUnits(cbbtcBalance, 8) // CBBTC has 8 decimals
-    };
+  const usdcBal  = await USDCContract.balanceOf(userWallet.address);
+  const cbbtcCtr = new ethers.Contract(CBBTC, ["function balanceOf(address) view returns (uint256)"], provider);
+  const cbbtcBal = await cbbtcCtr.balanceOf(userWallet.address);
+  return {
+    usdc:  ethers.formatUnits(usdcBal, 6),
+    cbbtc: ethers.formatUnits(cbbtcBal, 8)
+  };
 }
 
 async function approveUSDC(amountIn) {
-    console.log(`🔑 Approving Swap Router to spend ${amountIn} USDC...`);
+  console.log(`🔑 Approving Swap Router to spend ${amountIn} USDC...`);
 
-    const allowance = await USDCContract.allowance(userWallet.address, swapRouterAddress);
-    console.log(`✅ USDC Allowance: ${ethers.formatUnits(allowance, 6)} USDC`);
-    
-    if (allowance >= ethers.parseUnits(amountIn.toString(), 6)) {
-        console.log("✅ Approval already granted.");
-        return;
-    }
+  const allowance = await USDCContract.allowance(userWallet.address, swapRouterAddress);
+  console.log(`✅ USDC Allowance: ${ethers.formatUnits(allowance, 6)} USDC`);
+  
+  if (allowance >= ethers.parseUnits(amountIn.toString(), 6)) {
+    console.log("✅ Approval already granted.");
+    return;
+  }
 
-    // 🔥 Fetch current gas price
-    const feeData = await provider.getFeeData();
-    const gasPrice = feeData.gasPrice; // ✅ Correct for Ethers v6
-    console.log(`⛽ Current Gas Price: ${ethers.formatUnits(gasPrice, "gwei")} Gwei`);
+  // 🔥 Fetch current gas price
+  const feeData = await provider.getFeeData();
+  const gasPrice = feeData.gasPrice;
+  console.log(`⛽ Current Gas Price: ${ethers.formatUnits(gasPrice, "gwei")} Gwei`);
 
-    // 🔥 Calculate max gas units for $0.03
-    const ethPriceInUSD = 2100; // 🟢 Update this with real-time ETH price
-    const maxETHForGas = 0.03 / ethPriceInUSD; // Convert $0.03 to ETH
-    const maxGasUnits = Math.floor(maxETHForGas / ethers.formatUnits(gasPrice, "ether"));
+  // 🔥 Calculate max gas units for $0.03 (static cap; adjust as you like)
+  const ethPriceInUSD = 2100; 
+  const maxETHForGas  = 0.03 / ethPriceInUSD; // Convert $0.03 to ETH
+  const maxGasUnits   = Math.floor(maxETHForGas / ethers.formatUnits(gasPrice, "ether"));
 
-    console.log(`🔹 Max Gas Allowed: ${maxGasUnits} units (equivalent to $0.03 in ETH)`);
+  console.log(`🔹 Max Gas Allowed: ${maxGasUnits} units (≈ $0.03 in ETH)`);
 
-    const tx = await USDCContract.approve(
-        swapRouterAddress,
-        ethers.parseUnits(amountIn.toString(), 6),
-        { gasLimit: maxGasUnits } // 🔥 Limit gas usage
-    );
+  const tx = await USDCContract.approve(
+    swapRouterAddress,
+    ethers.parseUnits(amountIn.toString(), 6),
+    { gasLimit: maxGasUnits }
+  );
 
-    await tx.wait();
-    console.log("✅ Approval Successful!");
+  await tx.wait();
+  console.log("✅ Approval Successful!");
 }
 
 async function checkETHBalance() {
-    const ethBalance = await provider.getBalance(userWallet.address);
-    console.log(`💰 ETH Balance: ${ethers.formatEther(ethBalance)} ETH`);
+  const ethBalance = await provider.getBalance(userWallet.address);
+  console.log(`💰 ETH Balance: ${ethers.formatEther(ethBalance)} ETH`);
 
-    // 🔥 Fetch gas price
-    const feeData = await provider.getFeeData();
-    const gasPrice = feeData.gasPrice;  // ✅ Ensure gasPrice is defined here
+  const feeData = await provider.getFeeData();
+  const gasPrice = feeData.gasPrice;
+  const maxGasUnitsNumber = 70000n; // example limit
+  const requiredGasETH = gasPrice * maxGasUnitsNumber;
 
-    // 🔥 Define max gas units allowed
-    const maxGasUnitsNumber = 70000n; // Example fixed value, adjust as needed
-    const requiredGasETH = gasPrice * maxGasUnitsNumber; // ✅ Now it has gasPrice
-
-    if (ethBalance < requiredGasETH) {
-        console.error(`❌ Not enough ETH for gas fees! Required: ${ethers.formatEther(requiredGasETH)} ETH`);
-        return false;
-    }
-    return true;
+  if (ethBalance < requiredGasETH) {
+    console.error(`❌ Not enough ETH for gas fees! Required: ${ethers.formatEther(requiredGasETH)} ETH`);
+    return false;
+  }
+  return true;
 }
 
+async function quotePoolsForAmount(amountInUSDC) {
+  const amountInWei = ethers.parseUnits(amountInUSDC.toString(), 6);
+  const results = [];
+
+  for (const [fee] of Object.entries(POOLS)) {
+    const out = await simulateWithQuoter({
+      tokenIn: USDC,
+      tokenOut: CBBTC,
+      fee: Number(fee),
+      amountIn: amountInWei,
+      sqrtPriceLimitX96: 0n, // safe default
+    });
+
+    if (out && out > 0n) {
+      results.push({ amount: amountInUSDC, pool: fee, cbbtc: ethers.formatUnits(out, 8) });
+    } else {
+      results.push({ amount: amountInUSDC, pool: fee, cbbtc: "❌ Quote failed" });
+    }
+  }
+
+  console.table(results);
+}
+
+// LPP (Liquidity Pool Polination) v1 logic below
+async function LPPv1(amountIn) {
+  const amountInWei = ethers.parseUnits(amountIn.toString(), 6); // USDC decimals
+  const routes = await checkFeeFreeRoute(amountIn);
+  if (!routes || routes.length === 0) return [];
+
+  const scored = [];
+  for (const r of routes) {
+    const out = await simulateWithQuoter({
+      tokenIn:  USDC,
+      tokenOut: CBBTC,
+      fee: r.fee,
+      amountIn: amountInWei,
+      sqrtPriceLimitX96: r.sqrtPriceLimitX96, // match how we'll actually swap
+    });
+    if (out && out > 0n) {
+      scored.push({ ...r, amountOut: out });
+    }
+  }
+
+  console.log(`\n--- 🐝 LPP v1 Sorting 🐝 ---`);
+  scored.sort((a, b) => (a.amountOut === b.amountOut ? 0 : (a.amountOut < b.amountOut ? 1 : -1)));
+
+  console.table(
+    scored.map(s => ({
+      fee: s.fee,
+      tick: s.tick,
+      cbBTCOut: ethers.formatUnits(s.amountOut, 8),
+      pool: s.poolAddress,
+    }))
+  );
+
+  return scored;
+}
+// LPP (Liquidity Pool Polination) v1 logic above
 
 export async function executeSupplication(amountIn) {
   console.log(`\n🚀 Executing Swap: ${amountIn} USDC → CBBTC`);
 
-  const poolInfo = await getPoolAddress();
-  if (!poolInfo) return;
-  const { poolAddress, fee } = poolInfo;
-
-  const poolData = await checkPoolLiquidity(poolAddress);
-  if (!poolData || poolData.liquidity === 0) {
-    console.error("❌ No liquidity available.");
+  // 1) Balance & gas checks
+  const usdcBal = await USDCContract.balanceOf(userWallet.address);
+  if (usdcBal < ethers.parseUnits(amountIn.toString(), 6)) {
+    console.error(`❌ ERROR: Insufficient USDC balance!`);
     return;
   }
-
-  const feeFreeRoutes = await checkFeeFreeRoute(amountIn);
-  if (!feeFreeRoutes || feeFreeRoutes.length === 0) {
-    console.error("❌ No Fee-Free Route Available! Swap will NOT proceed.");
-    return;
-  }
-  // console.log("✅ Fee-Free Route Confirmed!");
-
-  await approveUSDC(amountIn);
   if (!(await checkETHBalance())) return;
 
-  const swapRouterABI = await fetchABI(swapRouterAddress);
-  if (!swapRouterABI) {
-    console.error("❌ Failed to fetch SwapRouter ABI.");
+  // 2) LPP
+  const lpp = await LPPv1(amountIn);
+  if (lpp.length === 0) {
+    console.error("❌ LPP quote failed for this amount.");
     return;
   }
 
-  let lastError = null;
+  // 3) Approve (once) before attempting swaps
+  await approveUSDC(amountIn);
 
-  for (const route of feeFreeRoutes) {
-    const { poolAddress, fee, sqrtPriceLimitX96, poolData } = route;
-  
-    const tickSpacing = Number(poolData.tickSpacing);
-    const baseTick = Math.floor(Number(poolData.tick) / tickSpacing) * tickSpacing;
+  // 4) Try routes from best to worst (highest cbBTC first)
+  const beforeUSDC = await USDCContract.balanceOf(userWallet.address);
+  const swapRouterABI = await fetchABI(swapRouterAddress);
+  if (!swapRouterABI) {
+    console.error("❌ Swap router ABI unavailable.");
+    return;
+  }
+  const iface = new ethers.Interface(swapRouterABI);
 
-    for (let i = 0; i < 3; i++) {
-      const testTick = baseTick + (i * tickSpacing);
-      console.log(`🔁 Trying Supplication for fee ${fee} at tick ${testTick}`);
+  for (const route of lpp) {
+    const { fee, sqrtPriceLimitX96, tick, amountOut } = route;
 
-      let limitX96;
-      try {
-        limitX96 = BigInt(TickMath.getSqrtRatioAtTick(testTick).toString());
-      } catch (err) {
-        console.warn(`⚠️ Failed sqrtPriceLimitX96 for tick ${testTick}: ${err.message}`);
-        lastError = err;
-        continue;
-      }
+    // dynamic minOut: 0.5% slippage guard (and never below 1 sat)
+    const minOut = (() => {
+      const calc  = (amountOut * 995n) / 1000n; // 0.5% less than quoted
+      const floor = ethers.parseUnits("0.00000001", 8); // 1 satoshi
+      return calc > floor ? calc : floor;
+    })();
 
-      const params = {
-        tokenIn: USDC,
-        tokenOut: CBBTC,
-        fee,
-        recipient: userWallet.address,
-        deadline: Math.floor(Date.now() / 1000) + 600,
-        amountIn: ethers.parseUnits(amountIn.toString(), 6),
-        amountOutMinimum: 1,
-        sqrtPriceLimitX96: limitX96,
-      };
+    const params = {
+      tokenIn:  USDC,
+      tokenOut: CBBTC,
+      fee,
+      recipient: userWallet.address,
+      deadline: Math.floor(Date.now() / 1000) + 600,
+      amountIn: ethers.parseUnits(amountIn.toString(), 6),
+      amountOutMinimum: minOut,
+      sqrtPriceLimitX96, // exactly what we quoted with
+    };
 
-      console.log("🔍 Attempting supplication with params:", params);
+    console.log(
+      `🔁 Trying best route: fee ${fee}, tick ${tick}, minOut ${ethers.formatUnits(minOut, 8)} cbBTC`
+    );
 
-      const swapRouterABI = await fetchABI(swapRouterAddress);
-      const iface = new ethers.Interface(swapRouterABI);
-      const functionData = iface.encodeFunctionData("exactInputSingle", [params]);
+    const data = iface.encodeFunctionData("exactInputSingle", [params]);
 
-      try {
-        const feeData = await provider.getFeeData();
-        const tx = await userWallet.sendTransaction({
-          to: swapRouterAddress,
-          data: functionData,
-          gasLimit: 300000,
-          maxFeePerGas: feeData.maxFeePerGas,
-          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas ?? ethers.parseUnits("1", "gwei"),
-        });
+    try {
+      const feeData = await provider.getFeeData();
+      const tx = await userWallet.sendTransaction({
+        to: swapRouterAddress,
+        data,
+        gasLimit: 300000,
+        maxFeePerGas: feeData.maxFeePerGas,
+        maxPriorityFeePerGas: feeData.maxPriorityFeePerGas ?? ethers.parseUnits("1", "gwei"),
+      });
 
-        console.log("⏳ Waiting for confirmation...");
-        const receipt = await tx.wait();
-        console.log("✅ Supplicstion Transaction Confirmed:");
-        console.log(`🔗 Tx Hash: ${receipt.hash}`);
-        return;
-      } catch (err) {
-        console.error(`❌ Supplication failed at tick ${testTick}:`, err.reason || err.message || err);
-        lastError = err;
-      }
+      console.log("⏳ Waiting for confirmation...");
+      const receipt = await tx.wait();
+      console.log("✅ Swap Confirmed!");
+      console.log(`🔗 Tx Hash: ${receipt.hash}`);
+
+      const afterUSDC = await USDCContract.balanceOf(userWallet.address);
+      const spent = beforeUSDC - afterUSDC;
+      console.log(`⚠️ Actually spent: ${ethers.formatUnits(spent, 6)} USDC`);
+      return;
+    } catch (err) {
+      console.error(
+        `❌ Route failed (fee ${fee}, tick ${tick}):`,
+        err.reason || err.message || err
+      );
     }
-  }  
+  }
 
-  console.error("❌ All fee-free supplication attempts failed.");
-  if (lastError) throw lastError;
+  console.error("❌ All fee-free routes (by highest Quoter amount) failed.");
 }
 
-
-/**
- * ✅ Main Function: Execute Swap for $5 USDC
- */
 async function main() {
-  console.log("\n🔍 Checking for a Fee-Free Quote...");
-  // ✅ USDC amounts (6 decimals)
-  const usdcAmounts = [
-    5.03, 
-    10.22, 
-    25.000011, 
-    50.12233, 
-    1000.013232,
-    10000.013232, 
-    100000.013232];
+  // console.log("\n🔍 Checking for Fee-Free Quotes across fee tiers 500 (0.05%) & 3000 (0.3%)...");
 
-  let foundFeeFree = false; // Track if any fee-free route was found
+  // const usdcAmounts = [50, 100, 250, 500, 1000];
 
-  // // ✅ Check for USDC → CBBTC
   // for (const amount of usdcAmounts) {
-  //     const feeFree = await checkFeeFreeRoute(amount, "USDC", "CBBTC", 6);
+  //   console.log(`\n==============================`);
+  //   console.log(`💰 Checking amount: ${amount} USDC`);
+  //   console.log(`==============================`);
 
-  //     if (feeFree) {
-  //         console.log(`\n✅ **Fee-Free Quote Found at ${amount} USDC!** 🚀`);
-  //         foundFeeFree = true;
-  //     }
-  // }
-  // if (!foundFeeFree) {
-  //   console.log("\n❌ **No Fee-Free Quote Available for Any Checked Amounts.** Try Again Later.");
-  // } else {
-  //     console.log("\n🎉 **Fee-Free Routes Checked for All Amounts!** 🚀");
+  //   await quotePoolsForAmount(amount);
+
+  //   const routes = await checkFeeFreeRoute(amount); 
+  //   if (routes.length === 0) {
+  //     console.log(`❌ No valid quotes found for ${amount} USDC at either fee tier.`);
+  //   } else {
+  //     console.log(`🎉 Found ${routes.length} valid route(s) for ${amount} USDC!`);
+  //   }
   // }
 
-  const usdcAmountToTrade = 3; // Adjust as needed
-  await executeSupplication(usdcAmountToTrade);
+  await executeSupplication(3); // example run
 }
 
-main().catch(console.error);
+main().catch((err) => {
+  console.error("❌ Script failed:", err);
+  process.exitCode = 1;
+});
 
-//to test run: yarn hardhat run test/usdc_mass_test.js --network base
+// to test run: yarn hardhat run test/usdc_mass_test.js --network base
