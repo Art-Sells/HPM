@@ -2,7 +2,7 @@
 
 ## Version 1
 
-This system performs **fee-free swaps** between `CBBTC` and `USDC` using Uniswap V3 on the Base network. It leverages tick-level routing and QuoterV2 simulations to ensure that all swaps avoid liquidity fees.
+This system performs **supplications** between `CBBTC` and `USDC` using Uniswap V3 on the Base network. It leverages tick-level routing and QuoterV2 simulations to ensure that all swaps avoid liquidity fees.
 
 ---
 
@@ -14,10 +14,10 @@ There are two primary flows:
 - **USDC → CBBTC Supplication**
 
 Each flow:
-- Checks for a valid fee-free tick
+- Checks for a valid tick
 - Simulates the output using Uniswap's Quoter contract
 - Approves token allowances
-- Executes the swap only if fee-free conditions are met
+- Executes the swap only if tick conditions are met
 
 ---
 
@@ -32,9 +32,9 @@ The code defines and interacts with:
 
 ---
 
-## 3. Fee-Free Route Discovery
+## 3. Tick Route Discovery
 
-The system determines whether a fee-free route exists by:
+The system determines whether a tick route exists by:
 
 1. Fetching the current tick and liquidity from the target pool.
 2. Identifying a set of 3 consecutive ticks within the pool’s tick spacing.
@@ -43,7 +43,7 @@ The system determines whether a fee-free route exists by:
    - Simulating the swap using the QuoterV2 contract.
    - Validating the output is non-zero (indicating the route is viable).
 
-If a valid simulation result is returned, the tick is considered fee-free.
+If a valid simulation result is returned, the tick is considered executionable.
 
 ---
 
@@ -81,7 +81,7 @@ Before any swap executes:
 
 Each supplication function wraps the entire process in a retry loop:
 
-- It continuously checks for a fee-free route.
+- It continuously checks for a tick route.
 - If one is found, it attempts the swap.
 - If the transaction fails, it logs the error and waits 15 seconds before retrying.
 - This allows the system to adapt to pool changes in real-time and avoid failed swaps due to shifting liquidity or gas price spikes.
