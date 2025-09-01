@@ -67,7 +67,7 @@ This is more succinctly described and reflected by ***[LPP](https://github.com/A
   - `HPAP` = $60,000.  
   - Vatop Group 1:  
     - `cVatop` = $500, `cpVatop` = $60,000, `cVact` = $500, `cpVact` = $60,000.  
-    - `cVactTaa` = $0 Tokens, `cVactDa` = $500, `cdVatop` = $0.  
+    - `cVactTaa` = 0 Tokens, `cVactDa` = $500, `cdVatop` = $0.  
   - Vatop Group 2:  
     - `cVatop` = $600, `cpVatop` = $54,000, `cVact` = $600, `cpVact` = $54,000.  
     - `cVactTaa` = 0.01111 Tokens, `cVactDa` = $0, `cdVatop` = $0.  
@@ -84,7 +84,7 @@ This is more succinctly described and reflected by ***[LPP](https://github.com/A
   - `HPAP` = $60,000.  
   - Vatop Group 1:  
     - `cVatop` = $500, `cpVatop` = $60,000, `cVact` = $500, `cpVact` = $60,000.  
-    - `cVactTaa` = $0 Tokens, `cVactDa` = $500, `cdVatop` = $0.  
+    - `cVactTaa` = 0 Tokens, `cVactDa` = $500, `cdVatop` = $0.  
   - Vatop Group 2:  
     - `cVatop` = $600, `cpVatop` = $54,000, `cVact` = $611, `cpVact` = $55,000.  
     - `cVactTaa` = 0.01111 Tokens, `cVactDa` = $0, `cdVatop` = $11.  
@@ -121,14 +121,14 @@ This is more succinctly described and reflected by ***[LPP](https://github.com/A
   - `HPAP` = $65,000.  
   - Vatop Group 1:  
     - `cVatop` = $100, `cpVatop` = $60,000, `cVact` = $114, `cpVact` = $65,000.  
-    - `cVactTaa` = $0 Tokens, `cVactDa` = $114, `cdVatop` = $14.  
+    - `cVactTaa` = 0 Tokens, `cVactDa` = $114, `cdVatop` = $14.  
   - Vatop Group 2:  
     - `cVatop` = $600, `cpVatop` = $54,000, `cVact` = $722, `cpVact` = $65,000.  
-    - `cVactTaa` = $0 Tokens, `cVactDa` = $722, `cdVatop` = $122.  
+    - `cVactTaa` = 0 Tokens, `cVactDa` = $722, `cdVatop` = $122.  
   - Vatop Group 3:  
     - `cVatop` = $0, `cpVatop` = $0, `cVact` = $0, `cpVact` = $0.  
-    - `cVactTaa` = $0 Tokens, `cVactDa` = $0, `cdVatop` = $0.  
+    - `cVactTaa` = 0 Tokens, `cVactDa` = $0, `cdVatop` = $0.  
   - Combinations:  
     - `acVatops` = $700, `acVacts` = $836.  
-    - `acVactTaa` = $0 Tokens, `acVactDas` = $836.  
+    - `acVactTaa` = 0 Tokens, `acVactDas` = $836.  
     - `acdVatops` = $136.  
