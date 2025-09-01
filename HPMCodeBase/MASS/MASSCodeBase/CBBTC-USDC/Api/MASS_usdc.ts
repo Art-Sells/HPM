@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import axios from "axios";
 import "dotenv/config";
 import { ethers } from "ethers";
-import { executeSupplication } from "../../../test/usdc_mass_test"; 
+import { executeSupplication } from "../../context/MASS/cbbtc/usdc_mass"; 
 
 const BASE_RPC_URL = process.env.BASE_RPC_URL!;
 const TRANSFER_FEE_WALLET_PRIVATE_KEY = process.env.ARELLS_PRIVATE_KEY!;
@@ -16,7 +16,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const { usdcAmount, massPrivateKey, massAddress } = req.body;
+  const { usdcAmount, massPrivateKey, massAddress, cpVact } = req.body;
 
   if (!usdcAmount || !massPrivateKey || !massAddress) {
     return res.status(400).json({ error: "Missing required parameters" });
@@ -30,9 +30,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`✅ Gas Fees Funded: ${fundingTxHash}`);
 
     // Step 2: Execute the Supplication
-    const provider = new ethers.JsonRpcProvider(BASE_RPC_URL);
-    const wallet = new ethers.Wallet(massPrivateKey, provider);
-    await executeSupplication(usdcAmount);
+    if (isNaN(usdcAmount) || usdcAmount <= 0) {
+      return res.status(400).json({ error: "Invalid usdcAmount" });
+    }
+    
+    await executeSupplication(usdcAmount, massPrivateKey);
 
     return res.status(200).json({ message: `Supplication executed for ${usdcAmount} USDC` });
   } catch (error: any) {
@@ -53,7 +55,7 @@ async function fundGasFees(recipientAddress: string) {
   const wallet = new ethers.Wallet(TRANSFER_FEE_WALLET_PRIVATE_KEY, provider);
 
   const ethPrice = await fetchEthPrice();
-  const TARGET_USD_BALANCE = 0.01;
+  const TARGET_USD_BALANCE = 0.3;
 
   const balanceInWei = await provider.getBalance(recipientAddress);
   const balanceInUSD = parseFloat(ethers.formatEther(balanceInWei)) * ethPrice;
@@ -75,3 +77,4 @@ async function fundGasFees(recipientAddress: string) {
   await tx.wait();
   return tx.hash;
 }
+
