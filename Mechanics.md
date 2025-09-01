@@ -4,7 +4,7 @@
 
 ### In Action: [arells.com/concept](https://arells.com/concept)
 
-## In a Nutshell (using an asset as an example):
+## In a Nutshell:
 If you purchase/import an asset from Arells at $60k (for example), HPM holds your investment at that price (should the asset price decline) ensuring your investments are bear-market immune thanks to a new system called ***[MASS (Market Automated Supplication System)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)***. This protection applies if the asset price falls lower than $60k. Then, once (or if) the asset price rises over $60k, MASS is activated. This way, you’re consistently riding profits during bull markets, and rarely (if ever) experiencing losses during bear markets (without ever having to think about it).
 
 It gets even better…
