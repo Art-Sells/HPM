@@ -3,6 +3,8 @@ import dotenv from "dotenv";
 import axios from "axios";
 import { TickMath } from "@uniswap/v3-sdk";
 
+
+
 dotenv.config();
 
 const __abiCache = new Map(); // address(lowercased) -> abi array
@@ -101,17 +103,32 @@ async function getPoolAddress() {
 async function checkPoolLiquidity(poolAddress) {
   const poolABI = await fetchABI(poolAddress);
   if (!poolABI) return null;
+
   const pool = new ethers.Contract(poolAddress, poolABI, provider);
+
   try {
-    const slot0 = await pool.slot0();
-    const liquidity = await pool.liquidity();
+    const slot0       = await pool.slot0();
     const tickSpacing = await pool.tickSpacing();
+
+    // ✅ Fetch **CBBTC balance** held in this pool contract
+    const cbbtcContract = new ethers.Contract(CBBTC, [
+      "function balanceOf(address) view returns (uint256)"
+    ], provider);
+
+    const cbbtcBalance = await cbbtcContract.balanceOf(poolAddress);
+
     console.log("\n🔍 Pool Liquidity Data:");
     console.log(`   - sqrtPriceX96: ${slot0[0]}`);
     console.log(`   - Current Tick: ${slot0[1]}`);
-    console.log(`   - Liquidity: ${liquidity}`);
+    console.log(`   - CBBTC Liquidity (actual token balance): ${ethers.formatUnits(cbbtcBalance, 8)} CBBTC`);
     console.log(`   - Tick Spacing: ${tickSpacing}`);
-    return { liquidity, sqrtPriceX96: slot0[0], tick: slot0[1], tickSpacing };
+
+    return {
+      cbbtcLiquidity: cbbtcBalance,  // raw BigInt
+      sqrtPriceX96: slot0[0],
+      tick: slot0[1],
+      tickSpacing
+    };
   } catch (error) {
     console.error("❌ Failed to fetch liquidity:", error.message);
     return null;
@@ -147,7 +164,24 @@ async function simulateWithQuoter(params) {
   }
 }
 
+function decodeSqrtPrice(sqrtPriceX96) {
+  // Convert to bigint if not already
+  const sqrt = BigInt(sqrtPriceX96);
 
+  // (sqrtPriceX96^2) / 2^192
+  const numerator   = sqrt * sqrt;
+  const denominator = 1n << 192n;
+  const rawPrice    = Number(numerator) / Number(denominator);
+
+  // Token decimals
+  const usdcDecimals  = 6;
+  const cbbtcDecimals = 8;
+
+  // Flip to USDC per CBBTC and adjust decimals
+  const adjustedPrice = (1 / rawPrice) * (10 ** (cbbtcDecimals - usdcDecimals));
+
+  return adjustedPrice;
+}
 
 async function checkFeeFreeRoute(amountIn) {
   console.log(`\n🚀 Checking Fee-Free Routes for ${amountIn} CBBTC → USDC`);
@@ -179,6 +213,13 @@ async function checkFeeFreeRoute(amountIn) {
         console.log(`❌ Skipping fee ${fee}: no liquidity`);
         results.push({ amount: amountIn, pool: fee, usdc: "❌ No liquidity" });
         continue;
+      }
+
+      try {
+        const decodedPrice = decodeSqrtPrice(poolData.sqrtPriceX96);
+        console.log(`💵 Decoded price (fee ${fee}): ${decodedPrice.toLocaleString()} USDC/CBBTC`);
+      } catch (e) {
+        console.warn(`⚠️ Failed to decode sqrtPrice for fee ${fee}: ${e.message}`);
       }
 
       console.log(`\n--- 🐝 LPP v1 Quoting 🐝 ---`);
@@ -240,16 +281,6 @@ async function checkCBBTCBalance() {
   console.log(`💰 CBBTC Balance: ${ethers.formatUnits(balance, 8)} CBBTC`);
   return balance;
 }
-
-async function getBalances() {
-  const usdcBalance = await USDCContract.balanceOf(userWallet.address);
-  const cbbtcBalance = await checkCBBTCBalance();
-  return {
-    usdc: ethers.formatUnits(usdcBalance, 6),
-    cbbtc: ethers.formatUnits(cbbtcBalance, 8)
-  };
-}
-
 
 async function approveCBBTC(amountIn) {
   console.log(`🔑 Approving Swap Router to spend ${amountIn} CBBTC...`);
@@ -469,6 +500,8 @@ async function main() {
   //   }
   // }
 
+  // await checkFeeFreeRoute(0.0000358);
+
   await executeSupplication(0.0000358);
 }
 
@@ -478,9 +511,5 @@ main().catch((err) => {
 });
 
 //to test run: yarn hardhat run test/cbbtc_mass_test.js --network base
-
-
-
-
 
 
