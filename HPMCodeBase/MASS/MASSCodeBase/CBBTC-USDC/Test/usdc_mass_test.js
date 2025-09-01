@@ -101,17 +101,28 @@ async function getPoolAddress() {
 async function checkPoolLiquidity(poolAddress) {
   const poolABI = await fetchABI(poolAddress);
   if (!poolABI) return null;
+
   const pool = new ethers.Contract(poolAddress, poolABI, provider);
+
   try {
     const slot0       = await pool.slot0();
-    const liquidity   = await pool.liquidity();
     const tickSpacing = await pool.tickSpacing();
+
+    // ✅ Fetch **USDC balance** held in this pool contract
+    const usdcBalance = await USDCContract.balanceOf(poolAddress);
+
     console.log("\n🔍 Pool Liquidity Data:");
     console.log(`   - sqrtPriceX96: ${slot0[0]}`);
     console.log(`   - Current Tick: ${slot0[1]}`);
-    console.log(`   - Liquidity: ${liquidity}`);
+    console.log(`   - USDC Liquidity (actual token balance): ${ethers.formatUnits(usdcBalance, 6)} USDC`);
     console.log(`   - Tick Spacing: ${tickSpacing}`);
-    return { liquidity, sqrtPriceX96: slot0[0], tick: slot0[1], tickSpacing };
+
+    return {
+      usdcLiquidity: usdcBalance,    // raw BigInt
+      sqrtPriceX96: slot0[0],
+      tick: slot0[1],
+      tickSpacing
+    };
   } catch (error) {
     console.error("❌ Failed to fetch liquidity:", error.message);
     return null;
@@ -146,6 +157,25 @@ async function simulateWithQuoter(params) {
   }
 }
 
+function decodeSqrtPrice(sqrtPriceX96) {
+  // Convert to bigint if not already
+  const sqrt = BigInt(sqrtPriceX96);
+
+  // (sqrtPriceX96^2) / 2^192
+  const numerator   = sqrt * sqrt;
+  const denominator = 1n << 192n;
+  const rawPrice    = Number(numerator) / Number(denominator);
+
+  // Token decimals
+  const usdcDecimals  = 6;
+  const cbbtcDecimals = 8;
+
+  // Flip to USDC per CBBTC and adjust decimals
+  const adjustedPrice = (1 / rawPrice) * (10 ** (cbbtcDecimals - usdcDecimals));
+
+  return adjustedPrice;
+}
+
 async function checkFeeFreeRoute(amountIn) {
   console.log(`\n🚀 Checking Fee-Free Routes for ${amountIn} USDC → CBBTC`);
 
@@ -176,6 +206,13 @@ async function checkFeeFreeRoute(amountIn) {
         console.log(`❌ Skipping fee ${fee}: no liquidity`);
         results.push({ amount: amountIn, pool: fee, cbbtc: "❌ No liquidity" });
         continue;
+      }
+
+      try {
+        const decodedPrice = decodeSqrtPrice(poolData.sqrtPriceX96);
+        console.log(`💵 Decoded price (fee ${fee}): ${decodedPrice.toLocaleString()} USDC/CBBTC`);
+      } catch (e) {
+        console.warn(`⚠️ Failed to decode sqrtPrice for fee ${fee}: ${e.message}`);
       }
 
       console.log(`\n--- 🐝 LPP v1 Quoting 🐝 ---`);
@@ -232,16 +269,6 @@ async function checkUSDCBalance() {
   const balance = await USDCContract.balanceOf(userWallet.address);
   console.log(`💰 USDC Balance: ${ethers.formatUnits(balance, 6)} USDC`);
   return balance;
-}
-
-async function getBalances() {
-  const usdcBal  = await USDCContract.balanceOf(userWallet.address);
-  const cbbtcCtr = new ethers.Contract(CBBTC, ["function balanceOf(address) view returns (uint256)"], provider);
-  const cbbtcBal = await cbbtcCtr.balanceOf(userWallet.address);
-  return {
-    usdc:  ethers.formatUnits(usdcBal, 6),
-    cbbtc: ethers.formatUnits(cbbtcBal, 8)
-  };
 }
 
 async function approveUSDC(amountIn) {
@@ -356,9 +383,9 @@ export async function executeSupplication(amountIn) {
   console.log(`\n🚀 Executing Swap: ${amountIn} USDC → CBBTC`);
 
   // 1) Balance & gas checks
-  const usdcBal = await USDCContract.balanceOf(userWallet.address);
-  if (usdcBal < ethers.parseUnits(amountIn.toString(), 6)) {
-    console.error(`❌ ERROR: Insufficient USDC balance!`);
+  const bal = await checkUSDCBalance();
+  if (bal < ethers.parseUnits(amountIn.toString(), 8)) {
+    console.error(`❌ ERROR: Insufficient CBBTC balance!`);
     return;
   }
   if (!(await checkETHBalance())) return;
@@ -459,7 +486,9 @@ async function main() {
   //   }
   // }
 
-  await executeSupplication(3); // example run
+  // await checkFeeFreeRoute(3);
+
+  await executeSupplication(3);
 }
 
 main().catch((err) => {
