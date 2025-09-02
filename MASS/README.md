@@ -2,7 +2,7 @@
 
 **MASS** is an asset management engine within the [HPM framework](https://github.com/Art-Sells/HPM) that automatically converts between a native Stablecoin and a volatile Asset (e.g., USDC and cbBTC) to preserve capital in downtrends and secure profits in upswings. This is achieved through activation per **Vatop Group**, not as an aggregate conversion system.
 
-MASS is powered by **[LPP](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS/LPP)** (Liquidity Pool Pollination), which ensures that all supplications occur at favorable prices across multiple liquidity pools — minimizing slippage, fees, and losses.
+MASS is powered by **[LPP](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP)** (Liquidity Pool Pollination), which ensures that all supplications occur at favorable prices across multiple liquidity pools — minimizing slippage, fees, and losses.
 
 ---
 
@@ -90,5 +90,5 @@ MASS is powered by **[LPP](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBas
 
 ## Fees & Constraints
 
-- Details: [MASS Fee Constraints & Calculations](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS/MASSCodeBase#fee-constraintscalculations)
+- Details: [MASS Fee Constraints & Calculations](https://github.com/Art-Sells/HPM/tree/main/MASS/MASSCodeBase#fee-constraintscalculations)
 
