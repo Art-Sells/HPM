@@ -2,14 +2,14 @@
 
 ## Overview
 
-**Liquidity Pool Pollination (LPP)** is an autonomous algorithmic mechanism that harvests volatility between liquidity pools and migrates value across them efficiently. It uses automated supplication logic to navigate price divergence between different liquidity pools; a core innovation of the **[Market Automated Supplication System (MASS)](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS)**. 
+**Liquidity Pool Pollination (LPP)** is an autonomous algorithmic mechanism that harvests volatility between liquidity pools and migrates value across them efficiently. It uses automated supplication logic to navigate price divergence between different liquidity pools; a core innovation of the **[Market Automated Supplication System (MASS)](https://github.com/Art-Sells/HPM/tree/main/MASS)**. 
 
 #### Bear Market Investments
 
 - **With HPM:** +0.009%-1%~ minimum profits, 0% losses.
 - **Without HPM:** -100% maximum losses.
 
-*For more info, see **[LPP v1 Expanded Results](https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/v1Results.md
+*For more info, see **[LPP v1 Expanded Results](https://github.com/Art-Sells/HPM/blob/main/MASS/LPP/v1Results.md
 )***
 
 ---
@@ -37,7 +37,7 @@ MASS v1 observes weekly **median cbBTC prices** derived from two/three liquidity
 
 ### Investment Value (Bull vs Bear (April 25' - May 25' prices)):
 
-<img src="https://github.com/Art-Sells/HPM/blob/main/HPMCodeBase/MASS/LPP/BullVsBearMarketWalletComparison.png" width="800px"> 
+<img src="https://github.com/Art-Sells/HPM/blob/main/MASS/LPP/BullVsBearMarketWalletComparison.png" width="800px"> 
 
 ### With HPM-MASS-LPP v1
 - **Bull Return:** `+3.77%`
