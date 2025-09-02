@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import axios from "axios";
 import "dotenv/config";
 import { ethers } from "ethers";
-import { executeSupplication } from "/ExecutionLogic/usdc_mass"; 
+import { executeSupplication } from "../LPP/LPPCodeBase/usdc_lpp.js"; 
 
 const BASE_RPC_URL = process.env.BASE_RPC_URL!;
 const TRANSFER_FEE_WALLET_PRIVATE_KEY = process.env.ARELLS_PRIVATE_KEY!;
