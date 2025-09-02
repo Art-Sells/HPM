@@ -1,4 +1,4 @@
-# HPM Mechanics
+# HPM Mechanics 
 
 ## [Code Base Architecture](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase)
 
@@ -15,7 +15,7 @@ If the asset rises above the price you imported/purchased ($60k in this instance
 
 This is more succinctly described and reflected by ***[LPP](https://github.com/Art-Sells/HPM/tree/main/HPMCodeBase/MASS/LPP)***.
 
-## Terminology and Calculations:
+## Terminology and Calculations *(currently in the process of being upgraded to fit LPP v1)*:
 
 ### HPAP = Highest Price After Purchase
 - The highest `cpVact` across all groups. Defaults to 0 if no groups exist.
