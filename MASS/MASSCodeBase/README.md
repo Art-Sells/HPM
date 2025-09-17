@@ -66,3 +66,7 @@
 2. **Dynamic Supplications**:
    - Supplications are triggered based on `useEffect` monitoring `vatopGroups` for changes.
    - Each `vatopGroup` can have only one supplication per **7 days**.
+
+---
+
+⚠️ **Note:** This repository should not be considered production-ready. It is a **sandbox for innovation**, where experiments are intentionally pushed beyond conventional assumptions.
