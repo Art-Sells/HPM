@@ -2,7 +2,7 @@
 
 ## Checklist
 
-- [ ] Fork **core** and **periphery**; keep GPL headers/NOTICE  
+- [X] Fork, then begin dismantling and rebuilding **core** and **periphery**: [Infrastructure](https://github.com/Art-Sells/LPPInfrastructureFoundation/tree/main) & [Foundation](https://github.com/Art-Sells/LPPInfrastructureFoundation)
 - [ ] Publish periphery as **`@hpm/lpp-periphery`** (router & position helpers)  
 - [ ] Enable **fee = 0** tier in Factory; add tests for fee=0 math  
 - [ ] Set governance (Safe multisig); protocol fee disabled  
