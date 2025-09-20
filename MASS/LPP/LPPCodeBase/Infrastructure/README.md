@@ -2,8 +2,7 @@
 
 ## Checklist
 
-- [X] Fork, then begin dismantling and rebuilding **core** and **periphery**: [Infrastructure](https://github.com/Art-Sells/LPPInfrastructureFoundation/tree/main) & [Foundation](https://github.com/Art-Sells/LPPInfrastructureFoundation)
-- [ ] Publish periphery as **`@hpm/lpp-periphery`** (router & position helpers)  
+- [X] Begin dismantling and rebuilding **Protocol** and **Periphery**: [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Preriphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery)
 - [ ] Enable **fee = 0** tier in Factory; add tests for fee=0 math  
 - [ ] Set governance (Safe multisig); protocol fee disabled  
 - [ ] Implement **LPPOracleAdapter** (BTC/USD, staleness & deviation checks)  
