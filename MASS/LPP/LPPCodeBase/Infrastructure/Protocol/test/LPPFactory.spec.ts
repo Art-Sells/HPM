@@ -1,6 +1,6 @@
 import { Wallet } from 'ethers'
 import { ethers, waffle } from 'hardhat'
-import { UniswapV3Factory } from '../typechain/UniswapV3Factory'
+import { LPPFactory } from '../typechain/LPPFactory'
 import { expect } from './shared/expect'
 import snapshotGasCost from './shared/snapshotGasCost'
 
@@ -15,14 +15,14 @@ const TEST_ADDRESSES: [string, string] = [
 
 const createFixtureLoader = waffle.createFixtureLoader
 
-describe('UniswapV3Factory', () => {
+describe('LPPFactory', () => {
   let wallet: Wallet, other: Wallet
 
-  let factory: UniswapV3Factory
+  let factory: LPPFactory
   let poolBytecode: string
   const fixture = async () => {
-    const factoryFactory = await ethers.getContractFactory('UniswapV3Factory')
-    return (await factoryFactory.deploy()) as UniswapV3Factory
+    const factoryFactory = await ethers.getContractFactory('LPPFactory')
+    return (await factoryFactory.deploy()) as LPPFactory
   }
 
   let loadFixture: ReturnType<typeof createFixtureLoader>
@@ -33,7 +33,7 @@ describe('UniswapV3Factory', () => {
   })
 
   before('load pool bytecode', async () => {
-    poolBytecode = (await ethers.getContractFactory('UniswapV3Pool')).bytecode
+    poolBytecode = (await ethers.getContractFactory('LPPPool')).bytecode
   })
 
   beforeEach('deploy factory', async () => {
@@ -77,7 +77,7 @@ describe('UniswapV3Factory', () => {
     expect(await factory.getPool(tokens[0], tokens[1], feeAmount), 'getPool in order').to.eq(create2Address)
     expect(await factory.getPool(tokens[1], tokens[0], feeAmount), 'getPool in reverse').to.eq(create2Address)
 
-    const poolContractFactory = await ethers.getContractFactory('UniswapV3Pool')
+    const poolContractFactory = await ethers.getContractFactory('LPPPool')
     const pool = poolContractFactory.attach(create2Address)
     expect(await pool.factory(), 'pool factory address').to.eq(factory.address)
     expect(await pool.token0(), 'pool token0').to.eq(TEST_ADDRESSES[0])
