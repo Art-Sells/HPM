@@ -1,9 +1,9 @@
 # LPPv1 Infrastructure — Blueprint
 
-## Checklist
+## Progress Checklist
 
-- [ ] Dismantle and rebuild [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Preriphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery)
-- [ ] Enable **fee = 0** tier in Factory; add tests for fee=0 math  
+- [X] Dismantle and rebuild [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Preriphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery): **Complete**
+- [ ] Enable **fee = 0** tier in Factory; add tests for fee=0 math: ***In-Progress***
 - [ ] Set governance (Safe multisig); protocol fee disabled  
 - [ ] Implement **LPPOracleAdapter** (BTC/USD, staleness & deviation checks)  
 - [ ] **Create 3 pools** (cbBTC/USDC, fee=0) and **initialize** at oracle price  
