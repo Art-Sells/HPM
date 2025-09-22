@@ -9,12 +9,13 @@
 - [ ] Implement **LPPOracleAdapter** (BTC/USD with staleness & deviation guards)
 - [ ] **Create 3 pools** (cbBTC/USDC, fee=0) & **initialize** at oracle price
 - [ ] **Seed liquidity**: tight **primary** range + tiny **fallback** range for each pool
-- [ ] Make arbs find LPP pools: contract **verification**, **Subgraph**, `RebalanceNeeded` event, **Solver Kit**
-- [ ] Implement **MEV‑as‑LP incentives** (rebates in deposited asset; **LPP retention**)
+- [ ] **LPPRouter.recenterAndMint()** (atomic: price re‑center **and** LP mint in one tx)
+- [ ] Make arbs find pools: contract **verification**, **Subgraph**, `RebalanceNeeded` event, **Solver Kit**
+- [ ] Implement **MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention**
 - [ ] **Wire 1% profit‑share via JS** (off‑chain orchestrator; no on‑chain logic changes)
 - [ ] Frontend/API: router prefers **A/B/C (0‑fee)**, metrics & drift badge
-- [ ] Tests: zero‑fee math, range flips, oracle failure, MEV re‑center sim, **rebate logic**
-- [ ] Deploy to Base, verify, publish docs, and announce to searchers
+- [ ] Tests: zero‑fee math, range flips, oracle failure, **atomic recenter & rebate logic**
+- [ ] Deploy to Base, verify, publish docs, announce to searchers
 
 ---
 
@@ -30,26 +31,26 @@
 ## 2. Zero‑Fee Tier (Factory & Math)
 
 - Expose owner‑gated `enableFeeAmount(uint24 fee, int24 tickSpacing)` and call with **`fee = 0`**, **tickSpacing = 10** (example).  
-- Audit Pool/SwapMath: **fee=0** must result in **no fee accrual** and **no div‑by‑zero**.  
-- Tests: swap through a 0‑fee pool and assert `feeGrowthGlobal{0,1}X128 == 0` and protocol fee paths are inert.
+- Audit Pool/SwapMath: **fee=0** ⇒ no fee accrual & no div‑by‑zero anywhere.  
+- Tests: swap through 0‑fee pool and assert `feeGrowthGlobal{0,1}X128 == 0` and protocol fee paths are inert.
 
 ---
 
 ## 3. Governance & Safety
 
-- Owner of Factory/params = **Safe** (2–3 signers).  
+- Factory/params owner = **Safe** (2–3 signers).  
 - **Protocol swap fee disabled** (LP fee is 0 ⇒ protocol slice must be 0).  
-- Optional **LPPRouter** (front‑door) with **pause** flag (core pools stay permissionless).
+- Optional **LPPRouter** pause flag (core pools stay permissionless).
 
 ---
 
 ## 4. Oracle Adapter (USD → raw token amounts)
 
 **`LPPOracleAdapter`**:  
-- Source **BTC/USD** (e.g., Chainlink).  
-- Guardrails: **staleness** (`now - updatedAt <= maxAge`) & **max deviation** vs last good price.  
+- Source: **BTC/USD** (e.g., Chainlink).  
+- Guards: **staleness** (`now - updatedAt <= maxAge`) & **max deviation** vs last good price.  
 - Helpers (cbBTC **8d**, USDC **6d**):
-```
+```txt
 usdcRaw(USD)  = USD * 10^6
 cbBtcRaw(USD) = floor((USD * 10^8) / P)   // P = BTC price in USD, scaled to 1e8
 ```
@@ -60,7 +61,7 @@ cbBtcRaw(USD) = floor((USD * 10^8) / P)   // P = BTC price in USD, scaled to 1e8
 
 - Token order: `token0 = cbBTC (8d)`, `token1 = USDC (6d)`.  
 - `factory.createPool(token0, token1, 0)`, then:
-```
+```txt
 price = USDC per 1 cbBTC (scaled)
 sqrtPriceX96 = encodeSqrtRatioX96(price * 10^(dec1 - dec0))
 pool.initialize(sqrtPriceX96)
@@ -70,7 +71,7 @@ pool.initialize(sqrtPriceX96)
 
 ## 6. Seed Liquidity (primary + fallback)
 
-**Goal:** always quote and create small profitable drifts for external MEV.
+**Goal:** always quote and create tiny profitable drifts for external MEV (to re‑center).
 
 - **Pool A (anchor):** USDC = **$100**, cbBTC ≈ **$100** (≈ 0.001 cbBTC)\*  
 - **Pool B (mid):**    USDC = **$50**,  cbBTC ≈ **$50**  (≈ 0.0005 cbBTC)\*  
@@ -86,118 +87,100 @@ For each pool:
 
 ---
 
-## 7. External MEV Re‑Centering (no swap bounties)
+## 7. **Atomic recenterAndMint** (one‑tx: re‑center price **and** LP)
 
-- Choose drift threshold `ε` (e.g., **20–30 bps**) vs oracle.  
-- If `|drift| > ε`, searchers arb: buy cheap from 0‑fee pools and sell on fee’d venues (or A↔C internally).  
-- **Fallback range** guarantees quotability for instant execution.
-
----
-
-## 8. Discovery & Solver Adoption
-
-- Verify contracts on **BaseScan** (ABIs/decimals discoverable).  
-- **Subgraph**: pools, slot0, liquidity, TWAP, drift vs oracle.  
-- Emit **`RebalanceNeeded(int256 driftBps)`** on threshold breach.  
-- **Solver Kit** (TS + Foundry): `getPoolStates()`, `getOraclePrice()`, `computeDriftAndSize()`, and private‑bundle templates.
-
----
-
-## 9. MEV‑as‑LP Incentives (rebates **in‑kind**, with **LPP retention**)
-*(On‑chain, immutable parameters once deployed — tiers can be encoded in the hook or governed by immutable constants.)*
-
-### 9.1 Contracts
-- **`LPPRebateVault`** (USDC vault + cbBTC vault) — holds reserves; pays rebates **in‑kind**; emits `RebatePaid`.
-- **`LPPMintHook`** — wraps NPM; computes **eligible tier**; **skims** `(rebate + retention)` **off‑pool**; calls vault & treasury.
-- **`LPPTreasury`** — receives retention; may route a portion to **POL** for A/B/C.
-
-### 9.2 Eligibility
-Qualify if any:
-- Mint during **Rebalance Window** (N blocks after `RebalanceNeeded`).  
-- Mint adds **≥ X% of current pool TVL**.  
-- Position centered within **δ ticks** of oracle at mint.
-
-### 9.3 Tiered **Deposit‑Share → Rebate** (example schedule)
-Let `S = minted notional / pool TVL` (USD via adapter).
-
-| Tier | S (share of TVL) | **LP Rebate** | **LPP Retention** |
-|------|------------------:|:-------------:|:-----------------:|
-| T1   |  5% – <10%        | **1.0%**      | **0.5%**          |
-| T2   | 10% – <20%        | **2.0%**      | **1.0%**          |
-| T3   | 20% – <35%        | **3.5%**      | **1.5%**          |
-| T4   | 35% – <50%        | **5.0%**      | **2.0%**          |
-| T5   | ≥50% (capped)     | **6.0%**      | **2.5%**          |
-
-- **Denomination:** payouts follow the same asset mix supplied (USDC/cbBTC).  
-- **Caps & Vesting:** per‑mint & per‑epoch caps; 1–24h vest; early exit slash.  
-- **Funding:** mint surcharge (off‑pool), optional epoch top‑ups, optional growth drip when weekly TVL ↑ ≥5%.
-
----
-
-## 10. **1% Profit‑Share — Off‑Chain JS Orchestrator (Mutable)**
-
-> Profit‑share logic **not** hard‑coded in smart contracts. It runs as a **.js** service that computes 1% of users’ realized profits and sends rewards to MEV participants. Parameters (weights, cadence, caps) are **mutable** via config.
-
-### 10.1 Responsibilities (JS)
-- **Ingest P&L:** read users’ realized profits (router/accounting helpers, subgraph, or indexed events).  
-- **Allocate 1%** of realized profits into a **MEV rewards pot** (USDC/cbBTC split by realized side).  
-- **Score actors**: recent re‑center trades, LP hold time, and volume (from Subgraph).  
-- **Payout**: initiate USDC/cbBTC transfers from **LPPTreasury** or a signer wallet to MEV addresses.  
-- **Logs**: write a Merkle snapshot (address → amounts) to IPFS or a repo for auditability.
-
-### 10.2 Config (example)
-```json
-{
-  "epochSeconds": 86400,
-  "pnlShareBps": 100,                // 1% of realized profits
-  "minPayout": { "USDC": 25e6, "cbBTC": 1000 }, // dust thresholds (raw)
-  "weights": { "lpHold": 0.4, "recenter": 0.4, "volume": 0.2 },
-  "caps": { "perEpochUsd": 25000, "perAddrUsd": 2500 }
-}
+### 7.1 Router Entry
+```solidity
+function recenterAndMint(
+  address pool,
+  uint256 maxIn0,
+  uint256 maxIn1,
+  uint16  minImproveBps,     // required improvement vs oracle
+  MintParams calldata mint   // tickLower, tickUpper, amounts, recipient
+) external returns (uint256 tokenId, uint8 tierApplied, uint16 improveBps);
 ```
 
-### 10.3 Minimal On‑Chain Touchpoints
-- **`LPPTreasury`** or **`ProfitShareEscrow`** contract that simply **holds funds** and exposes `transfer(address token, address to, uint256 amount)` — *no logic inside*.  
-- JS runner holds keys (or uses a Safe) to authorize transfers per epoch snapshot.
+### 7.2 Execution Flow
+1. Read oracle & pool `slot0`; compute current **drift** (in bps).  
+2. Compute the **direction and size** of the internal 0‑fee swap to move price **toward** oracle (bounded by `maxIn{0,1}`).  
+3. Execute swap on the LPP pool.  
+4. Recompute drift; require improvement **≥ `minImproveBps`** (revert otherwise).  
+5. Immediately call `LPPMintHook.mintWithRebate(mint)` to add narrowly‑centered liquidity (±1–2 ticks).  
+6. Hook calculates tier (diminishing returns), pays **rebate in‑kind**, sends **retention** to treasury.  
+7. Emit `RecenteredAndMinted(lp, pool, improveBps, usdNotional, tierApplied)`.
+
+> *(Optional)* Whitelist a single **external call** inside the router to settle the “other leg” (e.g., sell on a fee’d AMM) so the whole arb + mint is atomic.
 
 ---
 
-## 11. Routing & UI
+## 8. MEV‑as‑LP Rebates (in‑kind, **diminishing returns**, anti‑centralization)
 
-- **LPPRouter** prefers A/B/C 0‑fee pools; cascades to public pools if order size exceeds tight ranges.  
-- `/quote` shows best path & **drift badge**.  
-- UI: composition gauges, drift pill, **MEV‑as‑LP** panel (tiers, vault liquidity), and **Profit‑Share** epoch stats.
+Let `S = minted notional / pool TVL at mint` (USD via adapter).  
+Rebate paid in **the same asset mix** deposited (USDC/cbBTC). LPP keeps a fraction (**retention**) to fund ops/POL.
+
+| Tier | S (share of TVL) | **LP Rebate** | **LPP Retention** |
+|-----:|------------------:|:-------------:|:-----------------:|
+| T1   | 5% – <10%         | **1.0%**      | **0.5%**          |
+| T2   | 10% – <20%        | **1.8%**      | **0.9%**          |
+| T3   | 20% – <35%        | **2.5%**      | **1.25%**         |
+| T4   | ≥50% (capped)     | **3.5%**      | **1.75%**         |
+
+**Guards & UX:**
+- **Centered‑only**: mint must be within **±δ ticks** of oracle.  
+- **Per‑mint/epoch caps** to prevent vault exhaustion.  
+- **Short vesting** (e.g., 1–24h) and **hold** requirement; early large withdraw slashes unvested rebate.  
+- **Rate‑limit** per address; Sybil heuristics (optional).
+
+**Funding (no swap fees):**
+- **Mint surcharge (off‑pool):** at mint time, skim `(rebate + retention)` from submitted tokens; the **remainder** is added as liquidity.  
+- **Epoch top‑ups:** treasury/partners can replenish `LPPRebateVault` if needed.  
+- **Growth drip (optional):** if weekly TVL ↑ ≥5%, drip small bonus to recent MEV‑LPs.
 
 ---
 
-## 12. Tests (must pass before mainnet)
+## 9. 1% Profit‑Share — Off‑Chain JS (mutable)
+
+- JS service reads realized user P&L and routes **1%** into a MEV rewards pot (USDC/cbBTC).  
+- Scores: re‑center events, LP hold time, volume.  
+- Payouts from **LPPTreasury** (or Safe) to MEV addresses; produce Merkle snapshots.
+
+---
+
+## 10. Discovery & Solver Adoption
+
+- Verify contracts on **BaseScan** (ABIs/decimals).  
+- **Subgraph**: pools, slot0, liquidity, TWAP, **drift vs oracle**.  
+- Emit **`RebalanceNeeded(int256 driftBps)`** when crossing threshold.  
+- **Solver Kit** (TS + Foundry): examples for computing drift, sizing `maxIn`, and calling `recenterAndMint` atomically.
+
+---
+
+## 11. Tests
 
 - **Zero‑fee math** invariant.  
-- **Range behavior** (primary one‑sided; fallback still quotes).  
-- **Oracle guards** (stale/invalid → HOLD).  
-- **MEV sim**: external move + backrun → pools re‑center within `ε`.  
-- **Rebate tests**: tiers, vesting, slashing, caps, multi‑asset splits.  
-- **Economic sim**: volume vs vault depletion; dilution under many small mints.  
-- **Off‑chain harness**: deterministic JS allocation against a fixed event log; Merkle snapshot reproducibility.
+- **Atomic flow**: swap improves drift ≥ `minImproveBps`, then mint; combined revert if either fails.  
+- **Rebate math**: tiers, diminishing returns, vesting/slash, per‑epoch caps.  
+- **Economic sim**: dilution under many small mints; vault longevity vs TVL growth.  
+- **Oracle safety**: staleness/deviation; HOLD mode.  
 
 ---
 
-## 13. Deployment Plan (Base)
+## 12. Deployment Plan (Base)
 
-1. Deploy **Factory/Core**, `enableFeeAmount(0, tickSpacing=10)`.  
+1. Deploy **Factory/Core**; `enableFeeAmount(0, tickSpacing=10)`.  
 2. Deploy **`@hpm/lpp-periphery`** (router + mint helpers).  
 3. Deploy **LPPOracleAdapter**; wire feed & guards.  
 4. Deploy **LPPRebateVault**, **LPPMintHook**, **LPPTreasury**; set roles.  
 5. **Create** Pools A/B/C; **initialize** at oracle price.  
-6. **Seed** primary + fallback positions (adapter‑computed amounts).  
-7. Verify, publish **Subgraph** & **Solver Kit**; announce to searchers.  
-8. Stand up the **JS Profit‑Share** service; point it at Safe/Treasury.
+6. **Seed** primary + fallback positions (adapter‑computed).  
+7. Verify contracts; publish **Subgraph** & **Solver Kit**; announce to searchers.  
+8. Stand up **JS Profit‑Share** service; point at Safe/Treasury.
 
 ---
 
-## 14. Amounts & Math 
+## 13. Amounts & Math
 
-```
+```txt
 DECIMALS:
   cbBTC = 8
   USDC  = 6
@@ -208,7 +191,7 @@ usdcRaw(USD)  = USD * 10^6
 cbBtcRaw(USD) = floor((USD * 10^8) / P)
 
 Seed targets:
-  Pool A: USDC = usdcRaw(100), cbBTC = cbBtcRaw(100)    // ≈ 0.001 cbBTC (example)
+  Pool A: USDC = usdcRaw(100), cbBTC = cbBtcRaw(100)    // ≈ 0.001 cbBTC
   Pool B: USDC = usdcRaw(50),  cbBTC = cbBtcRaw(50)     // ≈ 0.0005 cbBTC
   Pool C: USDC = usdcRaw(25),  cbBTC = cbBtcRaw(25)     // ≈ 0.00025 cbBTC
 
@@ -218,7 +201,7 @@ Initialize (token0 = cbBTC, token1 = USDC):
 
 ---
 
-## 15. Minimal Interfaces (optional)
+## 14. Minimal Interfaces (excerpt)
 
 ```solidity
 interface ILPPOracleAdapter {
@@ -244,4 +227,16 @@ interface ILPPMintHook {
   function mintWithRebate(MintParams calldata) external returns (uint256 tokenId, uint8 tierApplied);
   event Qualified(address indexed lp, address indexed pool, uint8 tier, uint256 shareBps);
 }
+
+interface ILPPRouter {
+  function recenterAndMint(
+    address pool,
+    uint256 maxIn0,
+    uint256 maxIn1,
+    uint16  minImproveBps,
+    ILPPMintHook.MintParams calldata mint
+  ) external returns (uint256 tokenId, uint8 tierApplied, uint16 improveBps);
+  event RecenteredAndMinted(address indexed lp, address indexed pool, uint16 improveBps, uint256 usdNotional, uint8 tier);
+}
 ```
+
