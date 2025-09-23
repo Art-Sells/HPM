@@ -239,4 +239,3 @@ interface ILPPRouter {
   event RecenteredAndMinted(address indexed lp, address indexed pool, uint16 improveBps, uint256 usdNotional, uint8 tier);
 }
 ```
-
