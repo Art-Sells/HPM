@@ -30,7 +30,7 @@
 
 ## 2. Zero‑Fee Tier (Factory & Math)
 
-- Expose owner‑gated `enableFeeAmount(uint24 fee, int24 tickSpacing)` and call with **`fee = 0`**, **tickSpacing = 10** (example).  
+- Expose owner‑gated `enableFeeAmount(uint24 fee, int24 tickSpacing)` and call with **`fee = 0`**, **tickSpacing = 5**.  
 - Audit Pool/SwapMath: **fee=0** ⇒ no fee accrual & no div‑by‑zero anywhere.  
 - Tests: swap through 0‑fee pool and assert `feeGrowthGlobal{0,1}X128 == 0` and protocol fee paths are inert.
 
@@ -69,25 +69,31 @@ pool.initialize(sqrtPriceX96)
 
 ---
 
-## 6. Seed Liquidity (primary + fallback)
+## 6. Seed Liquidity (primary + fallback, **equal seeding; no anchor**)
 
 **Goal:** always quote and create tiny profitable drifts for external MEV (to re‑center).
 
-- **Pool A (anchor):** USDC = **$100**, cbBTC ≈ **$100** (≈ 0.001 cbBTC)\*  
-- **Pool B (mid):**    USDC = **$50**,  cbBTC ≈ **$50**  (≈ 0.0005 cbBTC)\*  
-- **Pool C (thin):**   USDC = **$25**,  cbBTC ≈ **$25**  (≈ 0.00025 cbBTC)\*
+**Equal seed for all pools** (via adapter):  
+- **Pool A:** USDC = **$100**, cbBTC ≈ **$100** (≈ 0.001 cbBTC)\*  
+- **Pool B:** USDC = **$100**, cbBTC ≈ **$100** (≈ 0.001 cbBTC)\*  
+- **Pool C:** USDC = **$100**, cbBTC ≈ **$100** (≈ 0.001 cbBTC)\*
 
 \* cbBTC units come from **LPPOracleAdapter** at mint time.
 
-For each pool:  
-- **Primary position:** ultra‑narrow (≈ ±1–2 ticks) around oracle tick.  
-- **Fallback position:** tiny, very wide range to prevent “no‑liquidity”.  
-- Mint via **NonfungiblePositionManager** (wrapped in **`@hpm/lpp-periphery`** helpers).  
-- *(Optional)* centers at −5 bps / 0 / +5 bps for (A/B/C) to allow internal A↔C arbs.
+**Primary position (each pool):** ultra‑narrow (≈ ±1–2 ticks).  
+**Fallback position:** tiny, very wide range to prevent “no‑liquidity”.  
+Mint via **NonfungiblePositionManager** (wrapped in **`@hpm/lpp-periphery`** helpers).
+
+**Center Offsets (relative to oracle at time of seed):**  
+- **Pool A:** **−10 bps** center  
+- **Pool B:** **−5 bps** center  
+- **Pool C:** **+15 bps** center
+
+> Offsetting without an “anchor” intentionally creates internal spreads so external MEV can arb and then **mint** (via the atomic flow below).
 
 ---
 
-## 7. **Atomic recenterAndMint** (one‑tx: re‑center price **and** LP)
+## 7. **Atomic `recenterAndMint`** (one‑tx: re‑center price **and** LP)
 
 ### 7.1 Router Entry
 ```solidity
@@ -101,8 +107,8 @@ function recenterAndMint(
 ```
 
 ### 7.2 Execution Flow
-1. Read oracle & pool `slot0`; compute current **drift** (in bps).  
-2. Compute the **direction and size** of the internal 0‑fee swap to move price **toward** oracle (bounded by `maxIn{0,1}`).  
+1. Read oracle & pool `slot0`; compute current **drift** (bps).  
+2. Compute **direction & size** of the internal 0‑fee swap to move price **toward** oracle (bounded by `maxIn{0,1}`).  
 3. Execute swap on the LPP pool.  
 4. Recompute drift; require improvement **≥ `minImproveBps`** (revert otherwise).  
 5. Immediately call `LPPMintHook.mintWithRebate(mint)` to add narrowly‑centered liquidity (±1–2 ticks).  
@@ -167,12 +173,12 @@ Rebate paid in **the same asset mix** deposited (USDC/cbBTC). LPP keeps a fracti
 
 ## 12. Deployment Plan (Base)
 
-1. Deploy **Factory/Core**; `enableFeeAmount(0, tickSpacing=10)`.  
+1. Deploy **Factory/Core**; `enableFeeAmount(0, tickSpacing=5)`.  
 2. Deploy **`@hpm/lpp-periphery`** (router + mint helpers).  
 3. Deploy **LPPOracleAdapter**; wire feed & guards.  
 4. Deploy **LPPRebateVault**, **LPPMintHook**, **LPPTreasury**; set roles.  
 5. **Create** Pools A/B/C; **initialize** at oracle price.  
-6. **Seed** primary + fallback positions (adapter‑computed).  
+6. **Seed** primary + fallback positions (adapter‑computed) with offsets A −10 bps, B −5 bps, C +15 bps.  
 7. Verify contracts; publish **Subgraph** & **Solver Kit**; announce to searchers.  
 8. Stand up **JS Profit‑Share** service; point at Safe/Treasury.
 
@@ -190,10 +196,8 @@ Given BTC/USD price P (scaled to 1e8):
 usdcRaw(USD)  = USD * 10^6
 cbBtcRaw(USD) = floor((USD * 10^8) / P)
 
-Seed targets:
-  Pool A: USDC = usdcRaw(100), cbBTC = cbBtcRaw(100)    // ≈ 0.001 cbBTC
-  Pool B: USDC = usdcRaw(50),  cbBTC = cbBtcRaw(50)     // ≈ 0.0005 cbBTC
-  Pool C: USDC = usdcRaw(25),  cbBTC = cbBtcRaw(25)     // ≈ 0.00025 cbBTC
+Equal seed targets (all pools):
+  USDC = usdcRaw(100),  cbBTC = cbBtcRaw(100)   // ≈ 0.001~ cbBTC (example)
 
 Initialize (token0 = cbBTC, token1 = USDC):
   sqrtPriceX96 = encodeSqrtRatioX96(price * 10^(dec1 - dec0))
