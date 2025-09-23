@@ -152,12 +152,18 @@ Rebate paid in **the same asset mix** deposited (USDC/cbBTC). LPP keeps a fracti
 
 ---
 
-## 10. Discovery & Solver Adoption
+## 10. Discovery & Solver Adoption (with **Simple UX**)
 
-- Verify contracts on **BaseScan** (ABIs/decimals).  
+- **Verify** contracts on **BaseScan** (ABIs/decimals).  
 - **Subgraph**: pools, slot0, liquidity, TWAP, **drift vs oracle**.  
 - Emit **`RebalanceNeeded(int256 driftBps)`** when crossing threshold.  
-- **Solver Kit** (TS + Foundry): examples for computing drift, sizing `maxIn`, and calling `recenterAndMint` atomically.
+- **Solver Kit (TS + Foundry) & UX:**
+  - Single call: `router.recenterAndMint()` (handles swap sizing + mint + rebate).  
+  - **One endpoint**: `/state` returns `{ oraclePrice, pools[{addr, tick, sqrtP, liq}], suggestedMaxIn }`.  
+  - **Gas estimator** helper (returns calldata + gas).  
+  - **Dry‑run** RPC to simulate revert reasons & tier preview.  
+  - **Minimal example bot** with 50 lines for Base.  
+  - **Dockerfile** for instant deploy.
 
 ---
 
