@@ -6,7 +6,7 @@ import '@lpp/lpp-protocol/contracts/libraries/UnsafeMath.sol';
 import '@lpp/lpp-protocol/contracts/libraries/FixedPoint96.sol';
 
 /// @title Functions based on Q64.96 sqrt price and liquidity
-/// @notice Exposes two functions from @uniswap/v3-core SqrtPriceMath
+/// @notice Exposes two functions from @lpp/lpp-protocol SqrtPriceMath
 /// that use square root of price as a Q64.96 and liquidity to compute deltas
 library SqrtPriceMathPartial {
     /// @notice Gets the amount0 delta between two prices
