@@ -74,11 +74,11 @@ pool.initialize(sqrtPriceX96)
 **Goal:** always quote and create tiny profitable drifts for external MEV (to re‑center).
 
 **Equal seed for all pools** (via adapter):  
-- **Pool A:** USDC = **$25**, cbBTC ≈ **$25** (≈ 0.001 cbBTC)\*  
-- **Pool B:** USDC = **$25**, cbBTC ≈ **$25** (≈ 0.001 cbBTC)\*  
-- **Pool C:** USDC = **$25**, cbBTC ≈ **$25** (≈ 0.001 cbBTC)\*
+- **Pool A:** USDC = **$1**, cbBTC ≈ **$1** (≈ 0.001 cbBTC)\*  
+- **Pool B:** USDC = **$1**, cbBTC ≈ **$1** (≈ 0.001 cbBTC)\*  
+- **Pool C:** USDC = **$1**, cbBTC ≈ **$1** (≈ 0.001 cbBTC)\*
 
-\* cbBTC units come from **LPPOracleAdapter** at mint time.
+\* cbBTC units come from **LPPOracleAdapter** at mint time
 
 **Primary position (each pool):** ultra‑narrow (≈ ±1–2 ticks).  
 **Fallback position:** tiny, very wide range to prevent “no‑liquidity”.  
@@ -90,6 +90,8 @@ Mint via **NonfungiblePositionManager** (wrapped in **`@/periphery`** helpers).
 - **Pool C:** **+15 bps** center
 
 > Offsetting without an “anchor” intentionally creates internal spreads so external MEV can arb and then **mint** (via the atomic flow below).
+
+- Test if prices are off-center, if so, then increase pool seeds
 
 ---
 

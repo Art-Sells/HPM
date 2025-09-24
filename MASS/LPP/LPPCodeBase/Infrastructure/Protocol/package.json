@@ -53,7 +53,8 @@
     "test": "hardhat test"
   },
   "volta": {
-    "node": "20.19.5",
+    "node": "22.20.0",
     "yarn": "1.22.22"
-  }
+  },
+  "type": "module"
 }
