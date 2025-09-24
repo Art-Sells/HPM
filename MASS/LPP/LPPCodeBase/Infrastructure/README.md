@@ -21,9 +21,9 @@
 
 ## 1. Repos & Licensing
 
-- Fork **core** (Factory, PoolDeployer, Pool) and **periphery** (NonfungiblePositionManager, Router).  
+- Create **protocol** (Factory, PoolDeployer, Pool) and **periphery** (NonfungiblePositionManager, Router).  
 - Keep GPL/NOTICE headers intact.  
-- Publish periphery as **`@hpm/lpp-periphery`** (router helpers, mint helpers, utilities).  
+- Publish periphery/protocol as **`@/periphery`**/**`@/protocol`** (router helpers, mint helpers, utilities).  
 - Pin toolchain (Foundry/Hardhat); add CI.
 
 ---
@@ -74,15 +74,15 @@ pool.initialize(sqrtPriceX96)
 **Goal:** always quote and create tiny profitable drifts for external MEV (to re‑center).
 
 **Equal seed for all pools** (via adapter):  
-- **Pool A:** USDC = **$100**, cbBTC ≈ **$100** (≈ 0.001 cbBTC)\*  
-- **Pool B:** USDC = **$100**, cbBTC ≈ **$100** (≈ 0.001 cbBTC)\*  
-- **Pool C:** USDC = **$100**, cbBTC ≈ **$100** (≈ 0.001 cbBTC)\*
+- **Pool A:** USDC = **$25**, cbBTC ≈ **$25** (≈ 0.001 cbBTC)\*  
+- **Pool B:** USDC = **$25**, cbBTC ≈ **$25** (≈ 0.001 cbBTC)\*  
+- **Pool C:** USDC = **$25**, cbBTC ≈ **$25** (≈ 0.001 cbBTC)\*
 
 \* cbBTC units come from **LPPOracleAdapter** at mint time.
 
 **Primary position (each pool):** ultra‑narrow (≈ ±1–2 ticks).  
 **Fallback position:** tiny, very wide range to prevent “no‑liquidity”.  
-Mint via **NonfungiblePositionManager** (wrapped in **`@hpm/lpp-periphery`** helpers).
+Mint via **NonfungiblePositionManager** (wrapped in **`@/periphery`** helpers).
 
 **Center Offsets (relative to oracle at time of seed):**  
 - **Pool A:** **−10 bps** center  
