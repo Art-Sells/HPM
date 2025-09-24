@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "workspaces": [
+    "Protocol",
+    "Periphery"
+  ],
+  "volta": {
+    "node": "22.19.0",
+    "yarn": "1.22.22"
+  }
+}

@@ -1,33 +1,29 @@
 {
-  "name": "@uniswap/v3-core",
-  "description": "🦄 Core smart contracts of Uniswap V3",
-  "license": "BUSL-1.1",
-  "publishConfig": {
-    "access": "public"
-  },
-  "version": "1.0.1",
-  "homepage": "https://uniswap.org",
-  "keywords": [
-    "uniswap",
-    "core",
-    "v3"
-  ],
+  "name": "@lpp/lpp-protocol",
+  "version": "0.1.0",
+  "license": "GPL-2.0-or-later",
+  "description": "Periphery contracts & helpers for LPP",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Uniswap/uniswap-v3-core"
+    "url": "https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol"
   },
   "files": [
+    "contracts/base",
     "contracts/interfaces",
     "contracts/libraries",
-    "artifacts/contracts/UniswapV3Factory.sol/UniswapV3Factory.json",
-    "artifacts/contracts/UniswapV3Pool.sol/UniswapV3Pool.json",
-    "artifacts/contracts/interfaces/**/*.json",
-    "!artifacts/contracts/interfaces/**/*.dbg.json"
+    "artifacts/contracts/**/*.json",
+    "!artifacts/contracts/**/*.dbg.json",
+    "!artifacts/contracts/test/**/*",
+    "!artifacts/contracts/base/**/*"
   ],
   "engines": {
     "node": ">=10"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@lpp/lpp-periphery": "file:../Periphery",
+    "@openzeppelin/contracts": "3.4.2-solc-0.7",
+    "base64-sol": "1.0.1"
+  },
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.2",
     "@nomiclabs/hardhat-etherscan": "^2.1.8",

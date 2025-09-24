@@ -1,20 +1,11 @@
 {
-  "name": "@uniswap/v3-periphery",
-  "description": "🎚 Peripheral smart contracts for interacting with Uniswap V3",
+  "name": "@lpp/lpp-periphery",
+  "version": "0.1.0",
   "license": "GPL-2.0-or-later",
-  "publishConfig": {
-    "access": "public"
-  },
-  "version": "1.4.4",
-  "homepage": "https://uniswap.org",
-  "keywords": [
-    "uniswap",
-    "periphery",
-    "v3"
-  ],
+  "description": "Periphery contracts & helpers for LPP",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Uniswap/uniswap-v3-periphery"
+    "url": "https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery"
   },
   "files": [
     "contracts/base",
@@ -29,10 +20,8 @@
     "node": ">=10"
   },
   "dependencies": {
+    "@lpp/lpp-periphery": "file:../Periphery",
     "@openzeppelin/contracts": "3.4.2-solc-0.7",
-    "@uniswap/lib": "^4.0.1-alpha",
-    "@uniswap/v2-core": "^1.0.1",
-    "@uniswap/v3-core": "^1.0.0",
     "base64-sol": "1.0.1"
   },
   "devDependencies": {
