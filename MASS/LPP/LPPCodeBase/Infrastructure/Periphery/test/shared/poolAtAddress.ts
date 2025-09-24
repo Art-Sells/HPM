@@ -1,4 +1,4 @@
-import { abi as POOL_ABI } from '@uniswap/v3-core/artifacts/contracts/LPPPool.sol/LPPPool.json'
+import { abi as POOL_ABI } from '@lpp/lpp-protocol/artifacts/contracts/LPPPool.sol/LPPPool.json'
 import { Contract, Wallet } from 'ethers'
 import { ILPPPool } from '../../typechain'
 

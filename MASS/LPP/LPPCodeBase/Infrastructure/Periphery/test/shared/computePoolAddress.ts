@@ -1,4 +1,4 @@
-import { bytecode } from '@uniswap/v3-core/artifacts/contracts/LPPPool.sol/LPPPool.json'
+import { bytecode } from '@lpp/lpp-protocol/artifacts/contracts/LPPPool.sol/LPPPool.json'
 import { utils } from 'ethers'
 
 export const POOL_BYTECODE_HASH = utils.keccak256(bytecode)

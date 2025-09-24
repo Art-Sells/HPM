@@ -999,7 +999,14 @@
 "@lpp/lpp-periphery@file:Periphery":
   version "0.1.0"
   dependencies:
-    "@lpp/lpp-periphery" "file:../../../../../../../../../../Caches/Yarn/v6/npm-@lpp-lpp-periphery-0.1.0-6a43819f-4b42-4985-ad73-d8294cb1d185-1758679517090/node_modules/@lpp/Periphery"
+    "@lpp/lpp-protocol" "file:../../../../../../../../../../Caches/Yarn/v6/npm-@lpp-lpp-periphery-0.1.0-31b4ea87-2ba2-447d-a4a4-88ce09b7b17c-1758681123994/node_modules/@lpp/Protocol"
+    "@openzeppelin/contracts" "3.4.2-solc-0.7"
+    base64-sol "1.0.1"
+
+"@lpp/lpp-protocol@file:Protocol":
+  version "0.1.0"
+  dependencies:
+    "@lpp/lpp-periphery" "file:../../../../../../../../../../Caches/Yarn/v6/npm-@lpp-lpp-protocol-0.1.0-ba0ba6d6-29f7-4dd5-8bdd-e79b8fa007c2-1758681123994/node_modules/@lpp/Periphery"
     "@openzeppelin/contracts" "3.4.2-solc-0.7"
     base64-sol "1.0.1"
 

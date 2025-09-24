@@ -3,7 +3,7 @@ pragma solidity >=0.5.0;
 
 /// @title Callback for ILPPPoolActions#swap
 /// @notice Any contract that calls ILPPPoolActions#swap must implement this interface
-interface ILPPSwapCallback {
+interface ILPPSupplicateCallback {
     /// @notice Called to `msg.sender` after executing a swap via ILPPPool#swap.
     /// @dev In the implementation you must pay the pool tokens owed for the swap.
     /// The caller of this method must be checked to be a LPPPool deployed by the canonical LPPFactory.
@@ -13,7 +13,7 @@ interface ILPPSwapCallback {
     /// @param amount1Delta The amount of token1 that was sent (negative) or must be received (positive) by the pool by
     /// the end of the swap. If positive, the callback must send that amount of token1 to the pool.
     /// @param data Any data passed through by the caller via the ILPPPoolActions#swap call
-    function lppSwapCallback(
+    function lppSupplicateCallback(
         int256 amount0Delta,
         int256 amount1Delta,
         bytes calldata data

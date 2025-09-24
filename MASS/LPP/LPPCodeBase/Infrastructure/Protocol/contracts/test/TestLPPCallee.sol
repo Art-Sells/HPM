@@ -7,15 +7,15 @@ import '../libraries/SafeCast.sol';
 import '../libraries/TickMath.sol';
 
 import '../interfaces/callback/ILPPMintCallback.sol';
-import '../interfaces/callback/ILPPSwapCallback.sol';
+import '../interfaces/callback/ILPPSupplicateCallback.sol';
 import '../interfaces/callback/ILPPFlashCallback.sol';
 
 import '../interfaces/ILPPPool.sol';
 
-contract TestLPPCallee is ILPPMintCallback, ILPPSwapCallback, ILPPFlashCallback {
+contract TestLPPCallee is ILPPMintCallback, ILPPSupplicateCallback, ILPPFlashCallback {
     using SafeCast for uint256;
 
-    function swapExact0For1(
+    function supplicateExact0For1(
         address pool,
         uint256 amount0In,
         address recipient,
@@ -24,7 +24,7 @@ contract TestLPPCallee is ILPPMintCallback, ILPPSwapCallback, ILPPFlashCallback 
         ILPPPool(pool).swap(recipient, true, amount0In.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
     }
 
-    function swap0ForExact1(
+    function supplicate0ForExact1(
         address pool,
         uint256 amount1Out,
         address recipient,
@@ -33,7 +33,7 @@ contract TestLPPCallee is ILPPMintCallback, ILPPSwapCallback, ILPPFlashCallback 
         ILPPPool(pool).swap(recipient, true, -amount1Out.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
     }
 
-    function swapExact1For0(
+    function supplicateExact1For0(
         address pool,
         uint256 amount1In,
         address recipient,
@@ -42,7 +42,7 @@ contract TestLPPCallee is ILPPMintCallback, ILPPSwapCallback, ILPPFlashCallback 
         ILPPPool(pool).swap(recipient, false, amount1In.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
     }
 
-    function swap1ForExact0(
+    function supplicate1ForExact0(
         address pool,
         uint256 amount0Out,
         address recipient,
@@ -51,7 +51,7 @@ contract TestLPPCallee is ILPPMintCallback, ILPPSwapCallback, ILPPFlashCallback 
         ILPPPool(pool).swap(recipient, false, -amount0Out.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
     }
 
-    function swapToLowerSqrtPrice(
+    function supplicateToLowerSqrtPrice(
         address pool,
         uint160 sqrtPriceX96,
         address recipient
@@ -59,7 +59,7 @@ contract TestLPPCallee is ILPPMintCallback, ILPPSwapCallback, ILPPFlashCallback 
         ILPPPool(pool).swap(recipient, true, type(int256).max, sqrtPriceX96, abi.encode(msg.sender));
     }
 
-    function swapToHigherSqrtPrice(
+    function supplicateToHigherSqrtPrice(
         address pool,
         uint160 sqrtPriceX96,
         address recipient
@@ -69,14 +69,14 @@ contract TestLPPCallee is ILPPMintCallback, ILPPSwapCallback, ILPPFlashCallback 
 
     event SwapCallback(int256 amount0Delta, int256 amount1Delta);
 
-    function lppSwapCallback(
+    function lppSupplicateCallback(
         int256 amount0Delta,
         int256 amount1Delta,
         bytes calldata data
     ) external override {
         address sender = abi.decode(data, (address));
 
-        emit SwapCallback(amount0Delta, amount1Delta);
+        emit SupplicateCallback(amount0Delta, amount1Delta);
 
         if (amount0Delta > 0) {
             IERC20Minimal(ILPPPool(msg.sender).token0()).transferFrom(sender, msg.sender, uint256(amount0Delta));

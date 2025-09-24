@@ -1,4 +1,4 @@
-import { abi as ILPPPoolABI } from '@uniswap/v3-core/artifacts/contracts/interfaces/ILPPPool.sol/ILPPPool.json'
+import { abi as ILPPPoolABI } from '@lpp/lpp-protocol/artifacts/contracts/interfaces/ILPPPool.sol/ILPPPool.json'
 import { Fixture } from 'ethereum-waffle'
 import { BigNumberish, constants, Wallet } from 'ethers'
 import { ethers, waffle } from 'hardhat'

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.7.6;
 
-import '@uniswap/v3-core/contracts/interfaces/callback/ILPPSwapCallback.sol';
-import '@uniswap/v3-core/contracts/libraries/SafeCast.sol';
-import '@uniswap/v3-core/contracts/interfaces/ILPPPool.sol';
+import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPSwapCallback.sol';
+import '@lpp/lpp-protocol/contracts/libraries/SafeCast.sol';
+import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 
 contract TestLPPCallee is ILPPSwapCallback {

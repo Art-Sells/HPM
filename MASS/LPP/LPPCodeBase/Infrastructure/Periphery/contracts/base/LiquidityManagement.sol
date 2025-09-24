@@ -2,9 +2,9 @@
 pragma solidity =0.7.6;
 pragma abicoder v2;
 
-import '@uniswap/v3-core/contracts/interfaces/ILPPFactory.sol';
-import '@uniswap/v3-core/contracts/interfaces/callback/ILPPMintCallback.sol';
-import '@uniswap/v3-core/contracts/libraries/TickMath.sol';
+import '@lpp/lpp-protocol/contracts/interfaces/ILPPFactory.sol';
+import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPMintCallback.sol';
+import '@lpp/lpp-protocol/contracts/libraries/TickMath.sol';
 
 import '../libraries/PoolAddress.sol';
 import '../libraries/CallbackValidation.sol';

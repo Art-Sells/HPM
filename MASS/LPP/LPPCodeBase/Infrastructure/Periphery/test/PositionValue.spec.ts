@@ -20,7 +20,7 @@ import snapshotGasCost from './shared/snapshotGasCost'
 
 import { expect } from './shared/expect'
 
-import { abi as ILPPPoolABI } from '@uniswap/v3-core/artifacts/contracts/interfaces/ILPPPool.sol/ILPPPool.json'
+import { abi as ILPPPoolABI } from '@lpp/lpp-protocol/artifacts/contracts/interfaces/ILPPPool.sol/ILPPPool.json'
 
 describe('PositionValue', async () => {
   const [...wallets] = waffle.provider.getWallets()
