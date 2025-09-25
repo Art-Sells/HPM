@@ -10,7 +10,7 @@ import '../base/PeripheryImmutableState.sol';
 import '../libraries/PoolAddress.sol';
 import '../libraries/CallbackValidation.sol';
 import '../libraries/TransferHelper.sol';
-import '../interfaces/ISwapRouter.sol';
+import '../interfaces/ISupplicateRouter.sol';
 
 /// @title Flash contract implementation
 /// @notice An example contract using the Uniswap V3 flash function
@@ -18,10 +18,10 @@ contract PairFlash is ILPPFlashCallback, PeripheryPayments {
     using LowGasSafeMath for uint256;
     using LowGasSafeMath for int256;
 
-    ISwapRouter public immutable swapRouter;
+    ISupplicateRouter public immutable swapRouter;
 
     constructor(
-        ISwapRouter _swapRouter,
+        ISupplicateRouter _swapRouter,
         address _factory,
         address _WETH9
     ) PeripheryImmutableState(_factory, _WETH9) {
@@ -63,7 +63,7 @@ contract PairFlash is ILPPFlashCallback, PeripheryPayments {
         TransferHelper.safeApprove(token1, address(swapRouter), decoded.amount1);
         uint256 amountOut0 =
             swapRouter.exactInputSingle(
-                ISwapRouter.ExactInputSingleParams({
+                ISupplicateRouter.ExactInputSingleParams({
                     tokenIn: token1,
                     tokenOut: token0,
                     fee: decoded.poolFee2,
@@ -79,7 +79,7 @@ contract PairFlash is ILPPFlashCallback, PeripheryPayments {
         TransferHelper.safeApprove(token0, address(swapRouter), decoded.amount0);
         uint256 amountOut1 =
             swapRouter.exactInputSingle(
-                ISwapRouter.ExactInputSingleParams({
+                ISupplicateRouter.ExactInputSingleParams({
                     tokenIn: token0,
                     tokenOut: token1,
                     fee: decoded.poolFee3,

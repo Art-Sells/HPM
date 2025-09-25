@@ -3,15 +3,15 @@ import { BigNumber, constants, Contract, ContractTransaction } from 'ethers'
 import {
   IWETH9,
   MockTimeNonfungiblePositionManager,
-  MockTimeSwapRouter,
+  MockTimeSupplicateRouter,
   PairFlash,
   ILPPPool,
   TestERC20,
   TestERC20Metadata,
   ILPPFactory,
   NFTDescriptor,
-  Quoter,
-  SwapRouter,
+  SupplicateQuoter,
+  SupplicateRouter,
 } from '../typechain'
 import completeFixture from './shared/completeFixture'
 import { FeeAmount, MaxUint128, TICK_SPACINGS } from './shared/constants'
@@ -32,7 +32,7 @@ describe('PairFlash test', () => {
   let token0: TestERC20
   let token1: TestERC20
   let factory: ILPPFactory
-  let quoter: Quoter
+  let quoter: SupplicateQuoter
 
   async function createPool(tokenAddressA: string, tokenAddressB: string, fee: FeeAmount, price: BigNumber) {
     if (tokenAddressA.toLowerCase() > tokenAddressB.toLowerCase())
@@ -65,8 +65,8 @@ describe('PairFlash test', () => {
     const flashContractFactory = await ethers.getContractFactory('PairFlash')
     const flash = (await flashContractFactory.deploy(router.address, factory.address, weth9.address)) as PairFlash
 
-    const quoterFactory = await ethers.getContractFactory('Quoter')
-    const quoter = (await quoterFactory.deploy(factory.address, weth9.address)) as Quoter
+    const quoterFactory = await ethers.getContractFactory('SupplicateQuoter')
+    const quoter = (await quoterFactory.deploy(factory.address, weth9.address)) as SupplicateQuoter
 
     return {
       token0,

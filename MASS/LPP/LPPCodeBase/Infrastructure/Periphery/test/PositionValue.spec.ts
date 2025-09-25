@@ -3,7 +3,7 @@ import { constants, BigNumberish, Contract } from 'ethers'
 import { Fixture } from 'ethereum-waffle'
 import {
   PositionValueTest,
-  SwapRouter,
+  SupplicateRouter,
   MockTimeNonfungiblePositionManager,
   ILPPPool,
   TestERC20,
@@ -28,7 +28,7 @@ describe('PositionValue', async () => {
     positionValue: PositionValueTest
     tokens: [TestERC20, TestERC20, TestERC20]
     nft: MockTimeNonfungiblePositionManager
-    router: SwapRouter
+    router: SupplicateRouter
     factory: ILPPFactory
   }> = async (wallets, provider) => {
     const { nft, router, tokens, factory } = await completeFixture(wallets, provider)
@@ -54,7 +54,7 @@ describe('PositionValue', async () => {
   let tokens: [TestERC20, TestERC20, TestERC20]
   let positionValue: PositionValueTest
   let nft: MockTimeNonfungiblePositionManager
-  let router: SwapRouter
+  let router: SupplicateRouter
   let factory: ILPPFactory
 
   let amountDesired: BigNumberish

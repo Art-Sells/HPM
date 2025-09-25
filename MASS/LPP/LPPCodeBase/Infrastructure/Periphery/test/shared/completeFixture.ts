@@ -5,7 +5,7 @@ import { constants } from 'ethers'
 import {
   IWETH9,
   MockTimeNonfungiblePositionManager,
-  MockTimeSwapRouter,
+  MockTimeSupplicateRouter,
   NonfungibleTokenPositionDescriptor,
   TestERC20,
   ILPPFactory,
@@ -14,7 +14,7 @@ import {
 const completeFixture: Fixture<{
   weth9: IWETH9
   factory: ILPPFactory
-  router: MockTimeSwapRouter
+  router: MockTimeSupplicateRouter
   nft: MockTimeNonfungiblePositionManager
   nftDescriptor: NonfungibleTokenPositionDescriptor
   tokens: [TestERC20, TestERC20, TestERC20]

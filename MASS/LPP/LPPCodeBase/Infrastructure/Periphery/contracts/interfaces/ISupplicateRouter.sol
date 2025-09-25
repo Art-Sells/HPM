@@ -2,11 +2,11 @@
 pragma solidity >=0.7.5;
 pragma abicoder v2;
 
-import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPSwapCallback.sol';
+import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPSupplicateCallback.sol';
 
 /// @title Router token swapping functionality
 /// @notice Functions for swapping tokens via Uniswap V3
-interface ISwapRouter is ILPPSwapCallback {
+interface ISupplicateRouter is ILPPSupplicateCallback {
     struct ExactInputSingleParams {
         address tokenIn;
         address tokenOut;

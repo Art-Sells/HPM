@@ -7,7 +7,7 @@ import {
   IWETH9,
   MockTimeNonfungiblePositionManager,
   NonfungiblePositionManagerPositionsGasTest,
-  SwapRouter,
+  SupplicateRouter,
   TestERC20,
   TestPositionNFTOwner,
 } from '../typechain'
@@ -34,7 +34,7 @@ describe('NonfungiblePositionManager', () => {
     factory: ILPPFactory
     tokens: [TestERC20, TestERC20, TestERC20]
     weth9: IWETH9
-    router: SwapRouter
+    router: SupplicateRouter
   }> = async (wallets, provider) => {
     const { weth9, factory, tokens, nft, router } = await completeFixture(wallets, provider)
 
@@ -58,7 +58,7 @@ describe('NonfungiblePositionManager', () => {
   let nft: MockTimeNonfungiblePositionManager
   let tokens: [TestERC20, TestERC20, TestERC20]
   let weth9: IWETH9
-  let router: SwapRouter
+  let router: SupplicateRouter
 
   let loadFixture: ReturnType<typeof waffle.createFixtureLoader>
 

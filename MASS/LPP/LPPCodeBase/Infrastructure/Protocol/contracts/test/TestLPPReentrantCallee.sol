@@ -3,18 +3,18 @@ pragma solidity =0.7.6;
 
 import '../libraries/TickMath.sol';
 
-import '../interfaces/callback/ILPPSwapCallback.sol';
+import '../interfaces/callback/ILPPSupplicateCallback.sol';
 
 import '../interfaces/ILPPPool.sol';
 
-contract TestLPPReentrantCallee is ILPPSwapCallback {
+contract TestLPPReentrantCallee is ILPPSupplicateCallback {
     string private constant expectedReason = 'LOK';
 
     function swapToReenter(address pool) external {
         ILPPPool(pool).swap(address(0), false, 1, TickMath.MAX_SQRT_RATIO - 1, new bytes(0));
     }
 
-    function lppSwapCallback(
+    function lppSupplicateCallback(
         int256,
         int256,
         bytes calldata

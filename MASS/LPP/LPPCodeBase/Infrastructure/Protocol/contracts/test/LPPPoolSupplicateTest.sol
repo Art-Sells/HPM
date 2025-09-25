@@ -3,10 +3,10 @@ pragma solidity =0.7.6;
 
 import '../interfaces/IERC20Minimal.sol';
 
-import '../interfaces/callback/ILPPSwapCallback.sol';
+import '../interfaces/callback/ILPPSupplicateCallback.sol';
 import '../interfaces/ILPPPool.sol';
 
-contract LPPPoolSwapTest is ILPPSwapCallback {
+contract LPPPoolSwapTest is ILPPSupplicateCallback {
     int256 private _amount0Delta;
     int256 private _amount1Delta;
 
@@ -34,7 +34,7 @@ contract LPPPoolSwapTest is ILPPSwapCallback {
         (nextSqrtRatio, , , , , , ) = ILPPPool(pool).slot0();
     }
 
-    function lppSwapCallback(
+    function lppSupplicateCallback(
         int256 amount0Delta,
         int256 amount1Delta,
         bytes calldata data

@@ -1,7 +1,7 @@
 import { Fixture } from 'ethereum-waffle'
 import { constants, Wallet } from 'ethers'
 import { ethers, waffle } from 'hardhat'
-import { MockTimeNonfungiblePositionManager, Quoter, TestERC20 } from '../typechain'
+import { MockTimeNonfungiblePositionManager, SupplicateQuoter, TestERC20 } from '../typechain'
 import completeFixture from './shared/completeFixture'
 import { FeeAmount, MaxUint128, TICK_SPACINGS } from './shared/constants'
 import { encodePriceSqrt } from './shared/encodePriceSqrt'
@@ -10,14 +10,14 @@ import { expect } from './shared/expect'
 import { encodePath } from './shared/path'
 import { createPool } from './shared/quoter'
 
-describe('Quoter', () => {
+describe('SupplicateQuoter', () => {
   let wallet: Wallet
   let trader: Wallet
 
   const swapRouterFixture: Fixture<{
     nft: MockTimeNonfungiblePositionManager
     tokens: [TestERC20, TestERC20, TestERC20]
-    quoter: Quoter
+    quoter: SupplicateQuoter
   }> = async (wallets, provider) => {
     const { weth9, factory, router, tokens, nft } = await completeFixture(wallets, provider)
 
@@ -29,8 +29,8 @@ describe('Quoter', () => {
       await token.transfer(trader.address, expandTo18Decimals(1_000_000))
     }
 
-    const quoterFactory = await ethers.getContractFactory('Quoter')
-    quoter = (await quoterFactory.deploy(factory.address, weth9.address)) as Quoter
+    const quoterFactory = await ethers.getContractFactory('SupplicateQuoter')
+    quoter = (await quoterFactory.deploy(factory.address, weth9.address)) as SupplicateQuoter
 
     return {
       tokens,
@@ -41,7 +41,7 @@ describe('Quoter', () => {
 
   let nft: MockTimeNonfungiblePositionManager
   let tokens: [TestERC20, TestERC20, TestERC20]
-  let quoter: Quoter
+  let quoter: SupplicateQuoter
 
   let loadFixture: ReturnType<typeof waffle.createFixtureLoader>
 

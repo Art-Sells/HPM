@@ -3,10 +3,10 @@ pragma solidity =0.7.6;
 
 import '../interfaces/IERC20Minimal.sol';
 
-import '../interfaces/callback/ILPPSwapCallback.sol';
+import '../interfaces/callback/ILPPSupplicateCallback.sol';
 import '../interfaces/ILPPPool.sol';
 
-contract TestLPPSwapPay is ILPPSwapCallback {
+contract TestLPPSwapPay is ILPPSupplicateCallback {
     function swap(
         address pool,
         address recipient,
@@ -25,7 +25,7 @@ contract TestLPPSwapPay is ILPPSwapCallback {
         );
     }
 
-    function lppSwapCallback(
+    function lppSupplicateCallback(
         int256,
         int256,
         bytes calldata data

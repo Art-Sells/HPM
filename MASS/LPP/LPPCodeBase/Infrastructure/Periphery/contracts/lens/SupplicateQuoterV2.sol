@@ -6,7 +6,7 @@ import '@lpp/lpp-protocol/contracts/libraries/SafeCast.sol';
 import '@lpp/lpp-protocol/contracts/libraries/TickMath.sol';
 import '@lpp/lpp-protocol/contracts/libraries/TickBitmap.sol';
 import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
-import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPSwapCallback.sol';
+import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPSupplicateCallback.sol';
 
 import '../interfaces/IQuoterV2.sol';
 import '../base/PeripheryImmutableState.sol';
@@ -19,7 +19,7 @@ import '../libraries/PoolTicksCounter.sol';
 /// @notice Allows getting the expected amount out or amount in for a given swap without executing the swap
 /// @dev These functions are not gas efficient and should _not_ be called on chain. Instead, optimistically execute
 /// the swap and check the amounts in the callback.
-contract QuoterV2 is IQuoterV2, ILPPSwapCallback, PeripheryImmutableState {
+contract SupplicateSupplicateQuoterV2 is ISupplicateQuoterV2, ILPPSupplicateCallback, PeripheryImmutableState {
     using Path for bytes;
     using SafeCast for uint256;
     using PoolTicksCounter for ILPPPool;
@@ -37,8 +37,8 @@ contract QuoterV2 is IQuoterV2, ILPPSwapCallback, PeripheryImmutableState {
         return ILPPPool(PoolAddress.computeAddress(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee)));
     }
 
-    /// @inheritdoc ILPPSwapCallback
-    function lppSwapCallback(
+    /// @inheritdoc ILPPSupplicateCallback
+    function lppSupplicateCallback(
         int256 amount0Delta,
         int256 amount1Delta,
         bytes memory path

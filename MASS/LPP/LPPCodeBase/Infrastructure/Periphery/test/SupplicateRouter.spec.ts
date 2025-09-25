@@ -1,7 +1,7 @@
 import { Fixture } from 'ethereum-waffle'
 import { BigNumber, constants, Contract, ContractTransaction, Wallet } from 'ethers'
 import { waffle, ethers } from 'hardhat'
-import { IWETH9, MockTimeNonfungiblePositionManager, MockTimeSwapRouter, TestERC20 } from '../typechain'
+import { IWETH9, MockTimeNonfungiblePositionManager, MockTimeSupplicateRouter, TestERC20 } from '../typechain'
 import completeFixture from './shared/completeFixture'
 import { FeeAmount, TICK_SPACINGS } from './shared/constants'
 import { encodePriceSqrt } from './shared/encodePriceSqrt'
@@ -11,7 +11,7 @@ import { encodePath } from './shared/path'
 import { getMaxTick, getMinTick } from './shared/ticks'
 import { computePoolAddress } from './shared/computePoolAddress'
 
-describe('SwapRouter', function () {
+describe('SupplicateRouter', function () {
   this.timeout(40000)
   let wallet: Wallet
   let trader: Wallet
@@ -19,7 +19,7 @@ describe('SwapRouter', function () {
   const swapRouterFixture: Fixture<{
     weth9: IWETH9
     factory: Contract
-    router: MockTimeSwapRouter
+    router: MockTimeSupplicateRouter
     nft: MockTimeNonfungiblePositionManager
     tokens: [TestERC20, TestERC20, TestERC20]
   }> = async (wallets, provider) => {
@@ -44,7 +44,7 @@ describe('SwapRouter', function () {
 
   let factory: Contract
   let weth9: IWETH9
-  let router: MockTimeSwapRouter
+  let router: MockTimeSupplicateRouter
   let nft: MockTimeNonfungiblePositionManager
   let tokens: [TestERC20, TestERC20, TestERC20]
   let getBalances: (

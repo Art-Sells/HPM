@@ -2,7 +2,7 @@ import { abi as ILPPPoolABI } from '@lpp/lpp-protocol/artifacts/contracts/interf
 import { Fixture } from 'ethereum-waffle'
 import { BigNumber, constants, ContractTransaction, Wallet } from 'ethers'
 import { ethers, waffle } from 'hardhat'
-import { ILPPPool, IWETH9, MockTimeSwapRouter, TestERC20 } from '../typechain'
+import { ILPPPool, IWETH9, MockTimeSupplicateRouter, TestERC20 } from '../typechain'
 import completeFixture from './shared/completeFixture'
 import { FeeAmount, TICK_SPACINGS } from './shared/constants'
 import { encodePriceSqrt } from './shared/encodePriceSqrt'
@@ -12,14 +12,14 @@ import { encodePath } from './shared/path'
 import snapshotGasCost from './shared/snapshotGasCost'
 import { getMaxTick, getMinTick } from './shared/ticks'
 
-describe('SwapRouter gas tests', function () {
+describe('SupplicateRouter gas tests', function () {
   this.timeout(40000)
   let wallet: Wallet
   let trader: Wallet
 
   const swapRouterFixture: Fixture<{
     weth9: IWETH9
-    router: MockTimeSwapRouter
+    router: MockTimeSupplicateRouter
     tokens: [TestERC20, TestERC20, TestERC20]
     pools: [ILPPPool, ILPPPool, ILPPPool]
   }> = async (wallets, provider) => {
@@ -94,7 +94,7 @@ describe('SwapRouter gas tests', function () {
   }
 
   let weth9: IWETH9
-  let router: MockTimeSwapRouter
+  let router: MockTimeSupplicateRouter
   let tokens: [TestERC20, TestERC20, TestERC20]
   let pools: [ILPPPool, ILPPPool, ILPPPool]
 

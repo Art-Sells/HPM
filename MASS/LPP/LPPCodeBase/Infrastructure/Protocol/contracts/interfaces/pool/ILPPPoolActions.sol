@@ -63,7 +63,7 @@ interface ILPPPoolActions {
     ) external returns (uint256 amount0, uint256 amount1);
 
     /// @notice Swap token0 for token1, or token1 for token0
-    /// @dev The caller of this method receives a callback in the form of ILPPSwapCallback#lppSwapCallback
+    /// @dev The caller of this method receives a callback in the form of ILPPSupplicateCallback#lppSupplicateCallback
     /// @param recipient The address to receive the output of the swap
     /// @param zeroForOne The direction of the swap, true for token0 to token1, false for token1 to token0
     /// @param amountSpecified The amount of the swap, which implicitly configures the swap as exact input (positive), or exact output (negative)

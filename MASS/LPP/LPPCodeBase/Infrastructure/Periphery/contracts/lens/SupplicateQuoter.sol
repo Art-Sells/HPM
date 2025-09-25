@@ -5,9 +5,9 @@ pragma abicoder v2;
 import '@lpp/lpp-protocol/contracts/libraries/SafeCast.sol';
 import '@lpp/lpp-protocol/contracts/libraries/TickMath.sol';
 import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
-import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPSwapCallback.sol';
+import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPSupplicateCallback.sol';
 
-import '../interfaces/IQuoter.sol';
+import '../interfaces/ISupplicateQuoter.sol';
 import '../base/PeripheryImmutableState.sol';
 import '../libraries/Path.sol';
 import '../libraries/PoolAddress.sol';
@@ -17,7 +17,7 @@ import '../libraries/CallbackValidation.sol';
 /// @notice Allows getting the expected amount out or amount in for a given swap without executing the swap
 /// @dev These functions are not gas efficient and should _not_ be called on chain. Instead, optimistically execute
 /// the swap and check the amounts in the callback.
-contract Quoter is IQuoter, ILPPSwapCallback, PeripheryImmutableState {
+contract SupplicateQuoter is ISupplicateQuoter, ILPPSupplicateCallback, PeripheryImmutableState {
     using Path for bytes;
     using SafeCast for uint256;
 
@@ -34,8 +34,8 @@ contract Quoter is IQuoter, ILPPSwapCallback, PeripheryImmutableState {
         return ILPPPool(PoolAddress.computeAddress(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee)));
     }
 
-    /// @inheritdoc ILPPSwapCallback
-    function lppSwapCallback(
+    /// @inheritdoc ILPPSupplicateCallback
+    function lppSupplicateCallback(
         int256 amount0Delta,
         int256 amount1Delta,
         bytes memory path
@@ -77,7 +77,7 @@ contract Quoter is IQuoter, ILPPSwapCallback, PeripheryImmutableState {
         return abi.decode(reason, (uint256));
     }
 
-    /// @inheritdoc IQuoter
+    /// @inheritdoc ISupplicateQuoter
     function quoteExactInputSingle(
         address tokenIn,
         address tokenOut,
@@ -102,7 +102,7 @@ contract Quoter is IQuoter, ILPPSwapCallback, PeripheryImmutableState {
         }
     }
 
-    /// @inheritdoc IQuoter
+    /// @inheritdoc ISupplicateQuoter
     function quoteExactInput(bytes memory path, uint256 amountIn) external override returns (uint256 amountOut) {
         while (true) {
             bool hasMultiplePools = path.hasMultiplePools();
@@ -121,7 +121,7 @@ contract Quoter is IQuoter, ILPPSwapCallback, PeripheryImmutableState {
         }
     }
 
-    /// @inheritdoc IQuoter
+    /// @inheritdoc ISupplicateQuoter
     function quoteExactOutputSingle(
         address tokenIn,
         address tokenOut,
@@ -149,7 +149,7 @@ contract Quoter is IQuoter, ILPPSwapCallback, PeripheryImmutableState {
         }
     }
 
-    /// @inheritdoc IQuoter
+    /// @inheritdoc ISupplicateQuoter
     function quoteExactOutput(bytes memory path, uint256 amountOut) external override returns (uint256 amountIn) {
         while (true) {
             bool hasMultiplePools = path.hasMultiplePools();

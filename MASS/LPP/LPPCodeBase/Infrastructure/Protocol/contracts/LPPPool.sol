@@ -18,13 +18,13 @@ import './libraries/TransferHelper.sol';
 import './libraries/TickMath.sol';
 import './libraries/LiquidityMath.sol';
 import './libraries/SqrtPriceMath.sol';
-import './libraries/SwapMath.sol';
+import './libraries/SupplicateMath.sol';
 
 import './interfaces/ILPPPoolDeployer.sol';
 import './interfaces/ILPPFactory.sol';
 import './interfaces/IERC20Minimal.sol';
 import './interfaces/callback/ILPPMintCallback.sol';
-import './interfaces/callback/ILPPSwapCallback.sol';
+import './interfaces/callback/ILPPSupplicateCallback.sol';
 import './interfaces/callback/ILPPFlashCallback.sol';
 
 contract LPPPool is ILPPPool, NoDelegateCall {
@@ -773,13 +773,13 @@ contract LPPPool is ILPPPool, NoDelegateCall {
             if (amount1 < 0) TransferHelper.safeTransfer(token1, recipient, uint256(-amount1));
 
             uint256 balance0Before = balance0();
-            ILPPSwapCallback(msg.sender).lppSwapCallback(amount0, amount1, data);
+            ILPPSupplicateCallback(msg.sender).lppSupplicateCallback(amount0, amount1, data);
             require(balance0Before.add(uint256(amount0)) <= balance0(), 'IIA');
         } else {
             if (amount0 < 0) TransferHelper.safeTransfer(token0, recipient, uint256(-amount0));
 
             uint256 balance1Before = balance1();
-            ILPPSwapCallback(msg.sender).lppSwapCallback(amount0, amount1, data);
+            ILPPSupplicateCallback(msg.sender).lppSupplicateCallback(amount0, amount1, data);
             require(balance1Before.add(uint256(amount1)) <= balance1(), 'IIA');
         }
 

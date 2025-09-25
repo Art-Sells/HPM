@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.7.6;
 
-import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPSwapCallback.sol';
+import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPSupplicateCallback.sol';
 import '@lpp/lpp-protocol/contracts/libraries/SafeCast.sol';
 import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 
-contract TestLPPCallee is ILPPSwapCallback {
+contract TestLPPCallee is ILPPSupplicateCallback {
     using SafeCast for uint256;
 
     function swapExact0For1(
@@ -45,7 +45,7 @@ contract TestLPPCallee is ILPPSwapCallback {
         ILPPPool(pool).swap(recipient, false, -amount0Out.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
     }
 
-    function lppSwapCallback(
+    function lppSupplicateCallback(
         int256 amount0Delta,
         int256 amount1Delta,
         bytes calldata data

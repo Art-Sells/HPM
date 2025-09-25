@@ -5,10 +5,10 @@ import '../libraries/SafeCast.sol';
 import '../libraries/TickMath.sol';
 
 import '../interfaces/IERC20Minimal.sol';
-import '../interfaces/callback/ILPPSwapCallback.sol';
+import '../interfaces/callback/ILPPSupplicateCallback.sol';
 import '../interfaces/ILPPPool.sol';
 
-contract TestLPPRouter is ILPPSwapCallback {
+contract TestLPPRouter is ILPPSupplicateCallback {
     using SafeCast for uint256;
 
     // flash swaps for an exact amount of token0 in the output pool
@@ -49,7 +49,7 @@ contract TestLPPRouter is ILPPSwapCallback {
 
     event SwapCallback(int256 amount0Delta, int256 amount1Delta);
 
-    function lppSwapCallback(
+    function lppSupplicateCallback(
         int256 amount0Delta,
         int256 amount1Delta,
         bytes calldata data

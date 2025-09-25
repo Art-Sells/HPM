@@ -6,7 +6,7 @@ import '@lpp/lpp-protocol/contracts/libraries/SafeCast.sol';
 import '@lpp/lpp-protocol/contracts/libraries/TickMath.sol';
 import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
 
-import './interfaces/ISwapRouter.sol';
+import './interfaces/ISupplicateRouter.sol';
 import './base/PeripheryImmutableState.sol';
 import './base/PeripheryValidation.sol';
 import './base/PeripheryPaymentsWithFee.sol';
@@ -19,8 +19,8 @@ import './interfaces/external/IWETH9.sol';
 
 /// @title Uniswap V3 Swap Router
 /// @notice Router for stateless execution of swaps against Uniswap V3
-contract SwapRouter is
-    ISwapRouter,
+contract SupplicateRouter is
+    ISupplicateRouter,
     PeripheryImmutableState,
     PeripheryValidation,
     PeripheryPaymentsWithFee,
@@ -53,8 +53,8 @@ contract SwapRouter is
         address payer;
     }
 
-    /// @inheritdoc ILPPSwapCallback
-    function lppSwapCallback(
+    /// @inheritdoc ILPPSupplicateCallback
+    function lppSupplicateCallback(
         int256 amount0Delta,
         int256 amount1Delta,
         bytes calldata _data
@@ -111,7 +111,7 @@ contract SwapRouter is
         return uint256(-(zeroForOne ? amount1 : amount0));
     }
 
-    /// @inheritdoc ISwapRouter
+    /// @inheritdoc ISupplicateRouter
     function exactInputSingle(ExactInputSingleParams calldata params)
         external
         payable
@@ -128,7 +128,7 @@ contract SwapRouter is
         require(amountOut >= params.amountOutMinimum, 'Too little received');
     }
 
-    /// @inheritdoc ISwapRouter
+    /// @inheritdoc ISupplicateRouter
     function exactInput(ExactInputParams memory params)
         external
         payable
@@ -199,7 +199,7 @@ contract SwapRouter is
         if (sqrtPriceLimitX96 == 0) require(amountOutReceived == amountOut);
     }
 
-    /// @inheritdoc ISwapRouter
+    /// @inheritdoc ISupplicateRouter
     function exactOutputSingle(ExactOutputSingleParams calldata params)
         external
         payable
@@ -220,7 +220,7 @@ contract SwapRouter is
         amountInCached = DEFAULT_AMOUNT_IN_CACHED;
     }
 
-    /// @inheritdoc ISwapRouter
+    /// @inheritdoc ISupplicateRouter
     function exactOutput(ExactOutputParams calldata params)
         external
         payable

@@ -1,7 +1,7 @@
 import { Fixture } from 'ethereum-waffle'
 import { constants, Wallet } from 'ethers'
 import { ethers, waffle } from 'hardhat'
-import { MockTimeNonfungiblePositionManager, QuoterV2, TestERC20 } from '../typechain'
+import { MockTimeNonfungiblePositionManager, SupplicateSupplicateQuoterV2, TestERC20 } from '../typechain'
 import completeFixture from './shared/completeFixture'
 import { FeeAmount, MaxUint128 } from './shared/constants'
 import { encodePriceSqrt } from './shared/encodePriceSqrt'
@@ -11,7 +11,7 @@ import { encodePath } from './shared/path'
 import { createPool, createPoolWithMultiplePositions, createPoolWithZeroTickInitialized } from './shared/quoter'
 import snapshotGasCost from './shared/snapshotGasCost'
 
-describe('QuoterV2', function () {
+describe('SupplicateSupplicateQuoterV2', function () {
   this.timeout(40000)
   let wallet: Wallet
   let trader: Wallet
@@ -19,7 +19,7 @@ describe('QuoterV2', function () {
   const swapRouterFixture: Fixture<{
     nft: MockTimeNonfungiblePositionManager
     tokens: [TestERC20, TestERC20, TestERC20]
-    quoter: QuoterV2
+    quoter: SupplicateSupplicateQuoterV2
   }> = async (wallets, provider) => {
     const { weth9, factory, router, tokens, nft } = await completeFixture(wallets, provider)
 
@@ -31,8 +31,8 @@ describe('QuoterV2', function () {
       await token.transfer(trader.address, expandTo18Decimals(1_000_000))
     }
 
-    const quoterFactory = await ethers.getContractFactory('QuoterV2')
-    quoter = (await quoterFactory.deploy(factory.address, weth9.address)) as QuoterV2
+    const quoterFactory = await ethers.getContractFactory('SupplicateSupplicateQuoterV2')
+    quoter = (await quoterFactory.deploy(factory.address, weth9.address)) as SupplicateSupplicateQuoterV2
 
     return {
       tokens,
@@ -43,7 +43,7 @@ describe('QuoterV2', function () {
 
   let nft: MockTimeNonfungiblePositionManager
   let tokens: [TestERC20, TestERC20, TestERC20]
-  let quoter: QuoterV2
+  let quoter: SupplicateSupplicateQuoterV2
 
   let loadFixture: ReturnType<typeof waffle.createFixtureLoader>
 
