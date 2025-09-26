@@ -3,8 +3,8 @@
 ## Progress Checklist
 
 - [X] Dismantle and rebuild [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Preriphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery): **Complete**
-- [ ] Configure and compile [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Preriphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery): ***In-Progress***
-- [ ] Enable **fee = 0** tier in Factory; add **fee=0 math tests**
+- [X] Configure and compile [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Preriphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery): **Complete**
+- [ ] Enable **fee = 0** tier in Factory; add **fee=0 math tests** ***In-Progress***
 - [ ] Set governance (**Safe multisig**); protocol swap fee **disabled**
 - [ ] Implement **LPPOracleAdapter** (BTC/USD with staleness & deviation guards)
 - [ ] **Create 3 pools** (cbBTC/USDC, fee=0) & **initialize** at oracle price
