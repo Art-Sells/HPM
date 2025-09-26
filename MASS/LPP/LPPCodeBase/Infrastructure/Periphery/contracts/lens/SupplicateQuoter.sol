@@ -7,7 +7,7 @@ import '@lpp/lpp-protocol/contracts/libraries/TickMath.sol';
 import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
 import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPSupplicateCallback.sol';
 
-import '../interfaces/ISupplicateQuoter.sol';
+import '../interfaces/IQuoter.sol';
 import '../base/PeripheryImmutableState.sol';
 import '../libraries/Path.sol';
 import '../libraries/PoolAddress.sol';

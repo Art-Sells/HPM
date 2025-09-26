@@ -13,6 +13,7 @@ import '../interfaces/callback/ILPPFlashCallback.sol';
 import '../interfaces/ILPPPool.sol';
 
 contract TestLPPCallee is ILPPMintCallback, ILPPSupplicateCallback, ILPPFlashCallback {
+    event SupplicateCallback(int256 amount0Delta, int256 amount1Delta);
     using SafeCast for uint256;
 
     function supplicateExact0For1(
