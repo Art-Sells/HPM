@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity >=0.6.0;
-
+pragma solidity ^0.7.6;
 import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
 
 library PoolTicksCounter {
@@ -23,10 +22,10 @@ library PoolTicksCounter {
         {
             // Get the key and offset in the tick bitmap of the active tick before and after the swap.
             int16 wordPos = int16((tickBefore / self.tickSpacing()) >> 8);
-            uint8 bitPos = uint8((tickBefore / self.tickSpacing()) % 256);
+            uint8 bitPos = uint8(uint256(int256(tickBefore / self.tickSpacing())) % 256);
 
             int16 wordPosAfter = int16((tickAfter / self.tickSpacing()) >> 8);
-            uint8 bitPosAfter = uint8((tickAfter / self.tickSpacing()) % 256);
+            uint8 bitPosAfter = uint8(uint256(int256(tickAfter / self.tickSpacing())) % 256);
 
             // In the case where tickAfter is initialized, we only want to count it if we are swapping downwards.
             // If the initializable tick after the swap is initialized, our original tickAfter is a
