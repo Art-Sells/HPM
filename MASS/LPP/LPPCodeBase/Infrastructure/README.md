@@ -4,9 +4,10 @@
 
 - [X] Dismantle and rebuild [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Preriphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery): **Complete**
 - [X] Configure and compile [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Preriphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery): **Complete**
-- [ ] Enable **fee = 0** tier in Factory; add **fee=0 math tests** ***In-Progress***
-- [ ] Set governance (**Safe multisig**); protocol swap fee **disabled**
-- [ ] Implement **LPPOracleAdapter** (BTC/USD with staleness & deviation guards)
+- [ ] Enable & test **fee = 0** tier in Factory; add **fee=0 math tests** ***In-Progress***: [LPPZeroFeeSpec](https://github.com/Art-Sells/HPM/blob/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol/test/LPP.zeroFee.spec.ts) 
+- [ ] Test all other tests inside Protocol & Periphery folders.
+- [ ] Set governance (**Safe multisig**); protocol swap fee **disabled** 
+- [ ] Implement **LPPOracleAdapter** (cbBTC/USDC with staleness & deviation guards)
 - [ ] **Create 3 pools** (cbBTC/USDC, fee=0) & **initialize** at oracle price
 - [ ] **Seed liquidity**: tight **primary** range + tiny **fallback** range for each pool
 - [ ] **LPPRouter.recenterAndMint()** (atomic: price re‑center **and** LP mint in one tx)
@@ -14,7 +15,7 @@
 - [ ] Implement **MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention**
 - [ ] **Wire 1% profit‑share via JS** (off‑chain orchestrator; no on‑chain logic changes)
 - [ ] Frontend/API: router prefers **A/B/C (0‑fee)**, metrics & drift badge
-- [ ] Tests: zero‑fee math, range flips, oracle failure, **atomic recenter & rebate logic**
+- [ ] Test: zero‑fee math, range flips, oracle failure, **atomic recenter & rebate logic**.
 - [ ] Deploy to Base, verify, publish docs, announce to searchers
 
 ---
