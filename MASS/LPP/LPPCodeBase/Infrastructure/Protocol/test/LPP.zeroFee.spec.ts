@@ -1,95 +1,96 @@
 import { expect } from "chai";
-import { ethers } from "ethers"; 
+import { ethers } from "ethers";
+import hre from "hardhat";
 
-// BigInt helpers
+const provider = new ethers.BrowserProvider((hre as any).network.provider);
+const signer = (i: number) => provider.getSigner(i);
+
 const Q96 = 1n << 96n;
 const MIN_SQRT_RATIO = 4295128739n;
-const MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970342n;
 const SQRT_PRICE_1_TO_1 = Q96;
 
 const TICK_LOWER = -887270;
 const TICK_UPPER =  887270;
 
-describe("LPP fee=0 tier", () => {
+// --- helpers ---
+async function deployFromArtifact(name: string, s: ethers.Signer, ...args: any[]) {
+  const art = await hre.artifacts.readArtifact(name);
+  const f = new ethers.ContractFactory(art.abi, art.bytecode, s);
+  const c = await f.deploy(...args);
+  await c.waitForDeployment();
+  return c as ethers.Contract;
+}
+
+async function at(name: string, addr: string, s: ethers.Signer) {
+  const art = await hre.artifacts.readArtifact(name);
+  return new ethers.Contract(addr, art.abi, s) as ethers.Contract;
+}
+// ---------------
+
+describe("LPP fee=0 tier (raw ethers)", () => {
   it("enables fee=0, mints, swaps, and accrues zero fees", async () => {
-    const [deployer, lp, trader] = await ethers.getSigners();
+    const deployer = await signer(0);
+    const lp       = await signer(1);
+    const trader   = await signer(2);
 
-    // Deploy two ERC20 test tokens (assumes decimals=18 in TestERC20)
-    const TestERC20 = await ethers.getContractFactory("TestERC20", deployer);
-    const token0 = await TestERC20.deploy(10n ** 24n);
-    const token1 = await TestERC20.deploy(10n ** 24n);
-    await token0.waitForDeployment();
-    await token1.waitForDeployment();
+    const token0 = await deployFromArtifact("TestERC20", deployer, 10n ** 24n) as any;
+    const token1 = await deployFromArtifact("TestERC20", deployer, 10n ** 24n) as any;
 
-    // Deploy pool infra
-    const PoolDeployer = await ethers.getContractFactory("LPPPoolDeployer", deployer);
-    const poolDeployer = await PoolDeployer.deploy();
-    await poolDeployer.waitForDeployment();
+    const poolDeployer = await deployFromArtifact("LPPPoolDeployer", deployer) as any;
+    const factory      = await deployFromArtifact("LPPFactory", deployer, await poolDeployer.getAddress()) as any;
 
-    const Factory = await ethers.getContractFactory("LPPFactory", deployer);
-    const factory = await Factory.deploy(await poolDeployer.getAddress());
-    await factory.waitForDeployment();
+    await (poolDeployer as any).setFactory(await factory.getAddress());
+    await (factory as any).enableFeeAmount(0, 5);
+    await (factory as any).createPool(await token0.getAddress(), await token1.getAddress(), 0);
 
-    // Wire factory into poolDeployer
-    await (await poolDeployer.setFactory(await factory.getAddress())).wait();
+    const poolAddr: string = await (factory as any).getPool(
+      await token0.getAddress(),
+      await token1.getAddress(),
+      0
+    );
+    const pool = await at("LPPPool", poolAddr, deployer) as any;
 
-    // Enable fee=0 with tickSpacing=5
-    await (await factory.enableFeeAmount(0, 5)).wait();
+    await (pool as any).initialize(SQRT_PRICE_1_TO_1);
 
-    // Create pool (fee=0)
-    await (await factory.createPool(await token0.getAddress(), await token1.getAddress(), 0)).wait();
-    const poolAddr = await factory.getPool(await token0.getAddress(), await token1.getAddress(), 0);
-    const pool = await ethers.getContractAt("LPPPool", poolAddr, deployer);
+    const callee = await deployFromArtifact("TestLPPCallee", deployer) as any;
 
-    // Initialize 1:1
-    await (await pool.initialize(SQRT_PRICE_1_TO_1)).wait();
-
-    // Deploy callee
-    const Callee = await ethers.getContractFactory("TestLPPCallee", deployer);
-    const callee = await Callee.deploy();
-    await callee.waitForDeployment();
-
-    // Fund LP & approve
-    const amount0Desired = 10n ** 21n; // 1,000 * 1e18
+    const amount0Desired = 10n ** 21n;
     const amount1Desired = 10n ** 21n;
-    await (await token0.transfer(lp.address, amount0Desired)).wait();
-    await (await token1.transfer(lp.address, amount1Desired)).wait();
-    await (await token0.connect(lp).approve(await callee.getAddress(), amount0Desired)).wait();
-    await (await token1.connect(lp).approve(await callee.getAddress(), amount1Desired)).wait();
 
-    // Mint wide
-    await (await callee.connect(lp).mint(
+    await (token0 as any).transfer(await lp.getAddress(), amount0Desired);
+    await (token1 as any).transfer(await lp.getAddress(), amount1Desired);
+
+    await (token0 as any).connect(lp).approve(await callee.getAddress(), amount0Desired);
+    await (token1 as any).connect(lp).approve(await callee.getAddress(), amount1Desired);
+
+    await (callee as any).mint(
       await pool.getAddress(),
-      lp.address,
+      await lp.getAddress(),
       TICK_LOWER,
       TICK_UPPER,
       amount0Desired,
       amount1Desired
-    )).wait();
+    );
 
-    // Pre-swap fee growth & protocol fees
-    const fee0Before = await pool.feeGrowthGlobal0X128();
-    const fee1Before = await pool.feeGrowthGlobal1X128();
-    const protoBefore = await pool.protocolFees();
+    const fee0Before = await (pool as any).feeGrowthGlobal0X128();
+    const fee1Before = await (pool as any).feeGrowthGlobal1X128();
+    const protoBefore = await (pool as any).protocolFees();
     const before0 = (protoBefore as any).token0 ?? protoBefore[0];
     const before1 = (protoBefore as any).token1 ?? protoBefore[1];
 
-    // Trader gets token0 and approves
     const amountIn = 10n ** 18n;
-    await (await token0.transfer(trader.address, amountIn)).wait();
-    await (await token0.connect(trader).approve(await callee.getAddress(), amountIn)).wait();
+    await (token0 as any).transfer(await trader.getAddress(), amountIn);
+    await (token0 as any).connect(trader).approve(await callee.getAddress(), amountIn);
 
-    // Swap exact0For1 with fee=0
-    await (await callee.connect(trader).swapExact0For1(
+    await (callee as any).swapExact0For1(
       await pool.getAddress(),
       amountIn,
       MIN_SQRT_RATIO + 1n
-    )).wait();
+    );
 
-    // Post-swap checks
-    const fee0After = await pool.feeGrowthGlobal0X128();
-    const fee1After = await pool.feeGrowthGlobal1X128();
-    const protoAfter = await pool.protocolFees();
+    const fee0After = await (pool as any).feeGrowthGlobal0X128();
+    const fee1After = await (pool as any).feeGrowthGlobal1X128();
+    const protoAfter = await (pool as any).protocolFees();
     const after0 = (protoAfter as any).token0 ?? protoAfter[0];
     const after1 = (protoAfter as any).token1 ?? protoAfter[1];
 
