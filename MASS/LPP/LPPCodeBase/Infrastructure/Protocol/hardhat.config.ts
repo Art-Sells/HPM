@@ -1,4 +1,5 @@
 import { HardhatUserConfig } from "hardhat/config";
+import "@nomicfoundation/hardhat-toolbox";
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -18,3 +19,6 @@ const config: HardhatUserConfig = {
 };
 
 export default config;
+
+
+//to test run: yarn hardhat run test/LPP.zeroFee.spec.ts
