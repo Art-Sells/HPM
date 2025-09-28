@@ -25,7 +25,8 @@
     "base64-sol": "1.0.1"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "@nomicfoundation/hardhat-ethers": "^3.1.0",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@typechain/ethers-v5": "^4.0.0",
     "@types/chai": "^4.2.6",
     "@types/mocha": "^5.2.7",
@@ -33,8 +34,8 @@
     "chai": "^4.2.0",
     "decimal.js": "^10.2.1",
     "ethereum-waffle": "^3.0.2",
-    "ethers": "^5.0.8",
-    "hardhat": "^3",
+    "ethers": "^6",
+    "hardhat": "^2.22.11",
     "hardhat-watcher": "^2.1.1",
     "is-svg": "^4.3.1",
     "mocha": "^6.2.2",
