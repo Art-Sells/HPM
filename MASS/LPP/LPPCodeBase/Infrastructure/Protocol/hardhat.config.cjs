@@ -1,12 +1,8 @@
-import { HardhatUserConfig } from "hardhat/config";
+require("@nomicfoundation/hardhat-toolbox");
+require("@nomicfoundation/hardhat-ethers");
 
-
-import "@nomicfoundation/hardhat-toolbox";
-
-
-import "@nomicfoundation/hardhat-ethers";
-
-const config: HardhatUserConfig = {
+/** @type import("hardhat/config").HardhatUserConfig */
+const config = {
   solidity: {
     compilers: [
       { version: "0.7.6", settings: { optimizer: { enabled: true, runs: 800 } } },
@@ -14,9 +10,7 @@ const config: HardhatUserConfig = {
     ],
   },
   networks: {
-    hardhat: {
-      allowUnlimitedContractSize: false,
-    },
+    hardhat: { allowUnlimitedContractSize: false },
     base: {
       url: process.env.BASE_RPC_URL || "https://mainnet.base.org",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
@@ -24,4 +18,4 @@ const config: HardhatUserConfig = {
   },
 };
 
-export default config;
+module.exports = config;

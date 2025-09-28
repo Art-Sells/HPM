@@ -13,5 +13,5 @@
     "skipLibCheck": true,
     "strict": false
   },
-  "include": ["hardhat.config.mts", "scripts", "test", "typechain-types"]
+  "include": ["hardhat.config.cjs", "scripts", "test", "typechain-types"]
 }
