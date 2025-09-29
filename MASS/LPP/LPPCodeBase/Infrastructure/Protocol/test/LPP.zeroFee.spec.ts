@@ -1,5 +1,7 @@
+// test/LPP.zeroFee.spec.ts
 import { expect } from "chai";
-import { ethers } from "hardhat"; 
+import hre from "hardhat";  
+const { ethers } = hre;               
 
 // provider & signer helpers
 const provider = ethers.provider;
@@ -15,12 +17,12 @@ async function deploy(name: string, s: any, ...args: any[]) {
   const F = await ethers.getContractFactory(name, s);
   const c = await F.deploy(...args);
   await c.waitForDeployment();
-  return c as any;                     // <-- force any here
+  return c as any;
 }
 
 async function attach(name: string, addr: string, s: any) {
   const F = await ethers.getContractFactory(name, s);
-  return F.attach(addr) as any;        // <-- and here
+  return F.attach(addr) as any;
 }
 
 describe("LPP fee=0 tier (hardhat ethers v6)", () => {
