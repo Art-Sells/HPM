@@ -1,19 +1,17 @@
 import { ethers } from "hardhat";
 import type { Contract } from "ethers";
-import { base64Encode } from "./shared/base64";
-import { expect } from "./shared/expect";
+import { base64Encode } from "./shared/base64.js";
+import { expect } from "./shared/expect.js";
 import { randomBytes } from "crypto";
-import snapshotGasCost from "./shared/snapshotGasCost";
+import snapshotGasCost from "./shared/snapshotGasCost.js";
 
-// minimal runtime type (so you can write strongly-typed calls)
-type Base64Test = Contract & {                    // <-- use Contract (type), not ethers.Contract
+// minimal runtime type for the contract
+type Base64Test = Contract & {
   encode(data: string): Promise<string>;
   getGasCostOfEncode(data: string): Promise<bigint>;
 };
 
-function stringToHex(str: string): string {
-  return `0x${Buffer.from(str, "utf8").toString("hex")}`;
-}
+const stringToHex = (s: string) => `0x${Buffer.from(s, "utf8").toString("hex")}`;
 
 describe("Base64", () => {
   let base64: Base64Test;
@@ -21,7 +19,7 @@ describe("Base64", () => {
   before("deploy test contract", async () => {
     const F = await ethers.getContractFactory("Base64Test");
     const c = await F.deploy();
-    await c.waitForDeployment();                  // good practice with ethers v6
+    await c.waitForDeployment();
     base64 = c as unknown as Base64Test;
   });
 
