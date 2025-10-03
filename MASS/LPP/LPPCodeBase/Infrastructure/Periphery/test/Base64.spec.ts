@@ -1,9 +1,9 @@
 import { ethers } from "hardhat";
 import type { Contract } from "ethers";
-import { base64Encode } from "./shared/base64.js";
-import { expect } from "./shared/expect.js";
+import { base64Encode } from "./shared/base64.ts";
+import { expect } from "./shared/expect.ts";
 import { randomBytes } from "crypto";
-import snapshotGasCost from "./shared/snapshotGasCost.js";
+import snapshotGasCost from "./shared/snapshotGasCost.ts";
 
 // minimal runtime type for the contract
 type Base64Test = Contract & {
