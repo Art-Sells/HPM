@@ -43,6 +43,7 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "^20",
     "chai": "^4.2.0",
+    "cross-env": "^10.1.0",
     "decimal.js": "^10.2.1",
     "ethereum-waffle": "^3.0.2",
     "ethers": "^6",
@@ -61,11 +62,12 @@
     "typechain": "^8.3.2",
     "typescript": "^5.4"
   },
-"scripts": {
-  "compile": "hardhat compile",
-  "test": "hardhat test",
-  "typechain": "typechain --target ethers-v6 --outDir typechain-types \"artifacts/contracts/**/*.json\" \"!artifacts/contracts/**/*.dbg.json\""
-},
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "test:update-snapshots": "UPDATE_SNAPSHOTS=1 hardhat test",
+    "typechain": "typechain --target ethers-v6 --outDir typechain-types \"artifacts/contracts/**/*.json\" \"!artifacts/contracts/**/*.dbg.json\""
+  },
   "volta": {
     "node": "22.20.0",
     "yarn": "1.22.22"
