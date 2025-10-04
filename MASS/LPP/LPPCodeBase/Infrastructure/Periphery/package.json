@@ -65,7 +65,7 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "test:update-snapshots": "UPDATE_SNAPSHOTS=1 hardhat test",
-    "typechain": "typechain --target ethers-v6 --out-dir typechain-types 'artifacts/contracts/**/*.json'"
+        "tc": "node scripts/typechain.mjs"
   },
   "volta": {
     "node": "22.20.0",
