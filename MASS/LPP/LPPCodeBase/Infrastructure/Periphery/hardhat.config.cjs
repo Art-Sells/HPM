@@ -1,6 +1,7 @@
+// hardhat.config.cjs
 require("@nomicfoundation/hardhat-toolbox");
 require("@nomicfoundation/hardhat-ethers");
-require("@typechain/hardhat");  
+require("@typechain/hardhat");
 
 /** @type import("hardhat/config").HardhatUserConfig */
 const config = {

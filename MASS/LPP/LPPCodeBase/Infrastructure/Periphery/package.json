@@ -12,9 +12,8 @@
     "contracts/interfaces",
     "contracts/libraries",
     "artifacts/contracts/**/*.json",
-    "!artifacts/contracts/**/*.dbg.json",
-    "!artifacts/contracts/test/**/*",
-    "!artifacts/contracts/base/**/*"
+    "artifacts/contracts/**/*.dbg.json",
+    "artifacts/contracts/base/**/*"
   ],
   "engines": {
     "node": ">=10"
@@ -66,7 +65,7 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "test:update-snapshots": "UPDATE_SNAPSHOTS=1 hardhat test",
-    "typechain": "typechain --target ethers-v6 --outDir typechain-types \"artifacts/contracts/**/*.json\" \"!artifacts/contracts/**/*.dbg.json\""
+        "tc": "node scripts/typechain.mjs"
   },
   "volta": {
     "node": "22.20.0",
