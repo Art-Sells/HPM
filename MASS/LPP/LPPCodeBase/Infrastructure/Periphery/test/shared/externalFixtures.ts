@@ -1,77 +1,55 @@
 // test/shared/externalFixtures.ts
-import { ethers } from 'hardhat'
-import type { Signer } from 'ethers'
+import { ethers } from "hardhat"
+import type { Signer } from "ethers"
 
-// Pull strong types (interfaces) for the return values
-import {
-  ILPPFactory,
-} from '../../typechain-types/protocol'
-import {
-  IWETH9,
-  MockTimeSupplicateRouter,
-  // We import factories ONLY to access `abi` and `bytecode`
-  IWETH9__factory,
-  MockTimeSupplicateRouter__factory,
-} from '../../typechain-types/periphery'
-import {
-  ILPPFactory__factory,
-} from '../../typechain-types/protocol'
+import type { IWETH9 } from "../../typechain-types/periphery"
+import type { LPPFactory } from "../../typechain-types/protocol"
+import type { MockTimeSupplicateRouter } from "../../typechain-types/periphery"
 
-// -------------------- helpers --------------------
-async function deployWithTypechainArtifact<T>(
-  factoryAbi: any[],
-  factoryBytecode: string,
+import WETH9 from "../contracts/WETH9.json"
+import LPP_FACTORY_ARTIFACT from "@lpp/lpp-protocol/artifacts/contracts/LPPFactory.sol/LPPFactory.json"
+import ROUTER_ARTIFACT from "../../artifacts/contracts/test/MockTimeSupplicateRouter.sol/MockTimeSupplicateRouter.json"
+
+// -------------------- helper --------------------
+async function deployFromArtifact<T>(
+  artifact: { abi: any; bytecode: string },
   signer: Signer,
   args: unknown[] = []
 ): Promise<T> {
-  const cf = new ethers.ContractFactory(factoryAbi, factoryBytecode, signer)
-  const c = (await cf.deploy(...args)) as any
-  await c.waitForDeployment()
-  return c as T
+  const factory = new ethers.ContractFactory(artifact.abi, artifact.bytecode, signer)
+  const contract = (await factory.deploy(...args)) as any
+  await contract.waitForDeployment()
+  return contract as T
 }
 
 // -------------------- WETH9 --------------------
-export async function wethFixture(): Promise<{ weth9: IWETH9 }> {
-  const [deployer] = await ethers.getSigners()
-  const weth9 = await deployWithTypechainArtifact<IWETH9>(
-    IWETH9__factory.abi,
-    IWETH9__factory.bytecode,
-    deployer
-  )
+export async function wethFixture([wallet]: Signer[], _provider?: any): Promise<{ weth9: IWETH9 }> {
+  const weth9 = await deployFromArtifact<IWETH9>(WETH9 as any, wallet)
   return { weth9 }
 }
 
-// -------------------- LPP Core Factory (only) --------------------
-export async function lppFactoryFixture(): Promise<ILPPFactory> {
-  const [deployer] = await ethers.getSigners()
-  const lppFactory = await deployWithTypechainArtifact<ILPPFactory>(
-    ILPPFactory__factory.abi,
-    ILPPFactory__factory.bytecode,
-    deployer,
-    /* ctor args if any: [] */
-  )
-  return lppFactory
+// -------------------- LPP Core Factory --------------------
+export async function lppFactoryFixture([wallet]: Signer[], _provider?: any): Promise<LPPFactory> {
+  const factory = await deployFromArtifact<LPPFactory>(LPP_FACTORY_ARTIFACT as any, wallet)
+  return factory
 }
 
 // -------------------- LPP Router Fixture --------------------
-export async function lppRouterFixture(): Promise<{
+export async function lppRouterFixture(
+  [wallet]: Signer[],
+  provider?: any
+): Promise<{
   weth9: IWETH9
-  factory: ILPPFactory
+  factory: LPPFactory
   router: MockTimeSupplicateRouter
 }> {
-  const [deployer] = await ethers.getSigners()
+  const { weth9 } = await wethFixture([wallet], provider)
+  const factory = await lppFactoryFixture([wallet], provider)
 
-  const { weth9 } = await wethFixture()
-  const factory = await lppFactoryFixture()
-
-  const factoryAddr = await factory.getAddress()
-  const wethAddr = await weth9.getAddress()
-
-  const router = await deployWithTypechainArtifact<MockTimeSupplicateRouter>(
-    MockTimeSupplicateRouter__factory.abi,
-    MockTimeSupplicateRouter__factory.bytecode,
-    deployer,
-    [factoryAddr, wethAddr]
+  const router = await deployFromArtifact<MockTimeSupplicateRouter>(
+    ROUTER_ARTIFACT as any,
+    wallet,
+    [await factory.getAddress(), await weth9.getAddress()]
   )
 
   return { factory, weth9, router }

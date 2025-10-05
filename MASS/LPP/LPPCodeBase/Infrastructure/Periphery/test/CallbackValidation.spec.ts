@@ -4,15 +4,13 @@ const { ethers } = hre;
 
 import { loadFixture } from '@nomicfoundation/hardhat-network-helpers';
 import type { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers';
-import { Contract, MaxUint256 } from 'ethers';
+import { MaxUint256 } from 'ethers';
 
 import completeFixture from './shared/completeFixture.ts';
 import { expect } from './shared/expect.ts';
 import { FeeAmount } from './shared/constants.ts';
 
-// If TypeChain is available, use it:
 import type { TestERC20, TestCallbackValidation } from '../typechain-types/periphery';
-
 
 describe('CallbackValidation', () => {
   let nonpairAddr: SignerWithAddress;
@@ -22,7 +20,6 @@ describe('CallbackValidation', () => {
     const signers = (await ethers.getSigners()) as SignerWithAddress[];
     const [nonpair, ...rest] = signers;
 
-    // NOTE: completeFixture must accept SignerWithAddress[] (see section 2 below)
     const { factory } = await completeFixture(signers, ethers.provider);
 
     const half = MaxUint256 / 2n;
@@ -50,10 +47,15 @@ describe('CallbackValidation', () => {
   it('reverts when called from an address other than the associated LPPPool', async () => {
     const { callbackValidation, tokens, factory } = await loadFixture(fixture);
 
+    // ✅ ethers v6: use getAddress() (or .target)
+    const factoryAddr = await factory.getAddress();
+    const token0Addr = await tokens[0].getAddress();
+    const token1Addr = await tokens[1].getAddress();
+
     await expect(
       callbackValidation
         .connect(nonpairAddr)
-        .verifyCallback(factory.address, tokens[0].address, tokens[1].address, FeeAmount.MEDIUM)
+        .verifyCallback(factoryAddr, token0Addr, token1Addr, FeeAmount.MEDIUM)
     ).to.be.reverted;
   });
 });

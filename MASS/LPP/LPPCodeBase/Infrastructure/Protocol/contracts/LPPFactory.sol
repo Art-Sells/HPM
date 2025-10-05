@@ -8,8 +8,8 @@ import './NoDelegateCall.sol';
 
 import './LPPPool.sol';
 
-/// @title Canonical Uniswap V3 factory
-/// @notice Deploys Uniswap V3 pools and manages ownership and control over pool protocol fees
+/// @title 
+/// @notice 
 contract LPPFactory is ILPPFactory, LPPPoolDeployer, NoDelegateCall {
     /// @inheritdoc ILPPFactory
     address public override owner;

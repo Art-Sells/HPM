@@ -13,7 +13,7 @@ import '../libraries/TransferHelper.sol';
 import '../interfaces/ISupplicateRouter.sol';
 
 /// @title Flash contract implementation
-/// @notice An example contract using the Uniswap V3 flash function
+/// @notice An example contract using the flash function
 contract PairFlash is ILPPFlashCallback, PeripheryPayments {
     using LowGasSafeMath for uint256;
     using LowGasSafeMath for int256;

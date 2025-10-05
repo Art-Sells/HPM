@@ -5,7 +5,7 @@ const { ethers } = hre;
 import type { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers';
 import { MaxUint256 } from 'ethers';
 
-import { v3RouterFixture } from './externalFixtures.ts';
+import { lppRouterFixture } from './externalFixtures.ts';
 
 import type {
   IWETH9,
@@ -26,7 +26,7 @@ export default async function completeFixture(
   provider: any
 ): Promise<CompleteFixture> {
   // v3RouterFixture must also accept SignerWithAddress[] (see note below)
-  const { weth9, factory, router } = await v3RouterFixture([wallet], provider);
+  const { weth9, factory, router } = await lppRouterFixture([wallet], provider);
 
   const tokenFactory = await ethers.getContractFactory('TestERC20');
   const half = MaxUint256 / 2n; // ethers v6 constants are bigint

@@ -14,7 +14,7 @@ import './PeripheryPayments.sol';
 import './PeripheryImmutableState.sol';
 
 /// @title Liquidity management functions
-/// @notice Internal functions for safely managing liquidity in Uniswap V3
+/// @notice Internal functions for safely managing liquidity
 abstract contract LiquidityManagement is ILPPMintCallback, PeripheryImmutableState, PeripheryPayments {
     struct MintCallbackData {
         PoolAddress.PoolKey poolKey;
