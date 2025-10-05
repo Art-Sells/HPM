@@ -8,7 +8,7 @@ import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
 /// @title Oracle library
 /// @notice Provides functions to integrate with V3 pool oracle
 library OracleLibrary {
-    /// @notice Calculates time-weighted means of tick and liquidity for a given Uniswap V3 pool
+    /// @notice Calculates time-weighted means of tick and liquidity for a given pool
     /// @param pool Address of the pool that we want to observe
     /// @param secondsAgo Number of seconds in the past from which to calculate the time-weighted means
     /// @return arithmeticMeanTick The arithmetic mean tick from (block.timestamp - secondsAgo) to block.timestamp
@@ -69,7 +69,7 @@ library OracleLibrary {
     }
 
     /// @notice Given a pool, it returns the number of seconds ago of the oldest stored observation
-    /// @param pool Address of Uniswap V3 pool that we want to observe
+    /// @param pool Address of a pool that we want to observe
     /// @return secondsAgo The number of seconds ago of the oldest observation stored for the pool
     function getOldestObservationSecondsAgo(address pool) internal view returns (uint32 secondsAgo) {
         (, , uint16 observationIndex, uint16 observationCardinality, , , ) = ILPPPool(pool).slot0();
@@ -88,7 +88,7 @@ library OracleLibrary {
     }
 
     /// @notice Given a pool, it returns the tick value as of the start of the current block
-    /// @param pool Address of Uniswap V3 pool
+    /// @param pool Address of pool
     /// @return The tick that the pool was in at the start of the current block
     function getBlockStartingTickAndLiquidity(address pool) internal view returns (int24, uint128) {
         (, int24 tick, uint16 observationIndex, uint16 observationCardinality, , , ) = ILPPPool(pool).slot0();

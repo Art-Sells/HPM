@@ -11,7 +11,7 @@ import './IPeripheryPayments.sol';
 import './IPeripheryImmutableState.sol';
 
 /// @title Non-fungible token for positions
-/// @notice Wraps Uniswap V3 positions in a non-fungible token interface which allows for them to be transferred
+/// @notice Wraps positions in a non-fungible token interface which allows for them to be transferred
 /// and authorized.
 interface INonfungiblePositionManager is
     IPoolInitializer,

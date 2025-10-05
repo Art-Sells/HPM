@@ -4,10 +4,10 @@ pragma solidity =0.7.6;
 import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
 import './PoolAddress.sol';
 
-/// @notice Provides validation for callbacks from Uniswap V3 Pools
+/// @notice Provides validation for callbacks from  Pools
 library CallbackValidation {
-    /// @notice Returns the address of a valid Uniswap V3 Pool
-    /// @param factory The contract address of the Uniswap V3 factory
+    /// @notice Returns the address of a valid Pool
+    /// @param factory The contract address of the  factory
     /// @param tokenA The contract address of either token0 or token1
     /// @param tokenB The contract address of the other token
     /// @param fee The fee collected upon every swap in the pool, denominated in hundredths of a bip
@@ -21,9 +21,9 @@ library CallbackValidation {
         return verifyCallback(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee));
     }
 
-    /// @notice Returns the address of a valid Uniswap V3 Pool
-    /// @param factory The contract address of the Uniswap V3 factory
-    /// @param poolKey The identifying key of the V3 pool
+    /// @notice Returns the address of a valid Pool
+    /// @param factory The contract address of the factory
+    /// @param poolKey The identifying key of the pool
     /// @return pool The V3 pool contract address
     function verifyCallback(address factory, PoolAddress.PoolKey memory poolKey)
         internal

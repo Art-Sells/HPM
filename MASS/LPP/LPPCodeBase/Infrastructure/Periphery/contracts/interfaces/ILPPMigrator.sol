@@ -6,8 +6,8 @@ import './IMulticall.sol';
 import './ISelfPermit.sol';
 import './IPoolInitializer.sol';
 
-/// @title V2 Migrator
-/// @notice Enables migration of liqudity from LPP v1-compatible pairs into Uniswap v3 pools
+/// @title Migrator
+/// @notice Enables migration of liqudity from LPP v1-compatible pairs into the pools
 interface IV3Migrator is IMulticall, ISelfPermit, IPoolInitializer {
     struct MigrateParams {
         address pair; // the LPP v1-compatible pair

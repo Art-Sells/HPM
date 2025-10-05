@@ -27,7 +27,7 @@ library PoolAddress {
     }
 
     /// @notice Deterministically computes the pool address given the factory and PoolKey
-    /// @param factory The Uniswap V3 factory contract address
+    /// @param factory The factory contract address
     /// @param key The PoolKey
     /// @return pool The contract address of the V3 pool
         function computeAddress(address factory, PoolKey memory key) internal pure returns (address pool) {

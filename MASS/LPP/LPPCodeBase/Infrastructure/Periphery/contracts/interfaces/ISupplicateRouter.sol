@@ -5,7 +5,7 @@ pragma abicoder v2;
 import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPSupplicateCallback.sol';
 
 /// @title Router token swapping functionality
-/// @notice Functions for swapping tokens via Uniswap V3
+/// @notice Functions for swapping tokens
 interface ISupplicateRouter is ILPPSupplicateCallback {
     struct ExactInputSingleParams {
         address tokenIn;
