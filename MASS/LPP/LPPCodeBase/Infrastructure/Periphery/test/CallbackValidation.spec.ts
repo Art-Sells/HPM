@@ -11,7 +11,7 @@ import { expect } from './shared/expect.ts';
 import { FeeAmount } from './shared/constants.ts';
 
 // If TypeChain is available, use it:
-import type { TestERC20, TestCallbackValidation } from '../typechain-types';
+import type { TestERC20, TestCallbackValidation } from '../typechain-types/periphery';
 
 
 describe('CallbackValidation', () => {

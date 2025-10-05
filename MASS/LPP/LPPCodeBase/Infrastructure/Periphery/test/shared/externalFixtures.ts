@@ -1,57 +1,78 @@
+// test/shared/externalFixtures.ts
+import { ethers } from 'hardhat'
+import type { Signer } from 'ethers'
+
+// Pull strong types (interfaces) for the return values
 import {
-  abi as FACTORY_ABI,
-  bytecode as FACTORY_BYTECODE,
-} from '@lpp/lpp-protocol/artifacts/contracts/LPPFactory.sol/LPPFactory.json'
-import { abi as FACTORY_V2_ABI, bytecode as FACTORY_V2_BYTECODE } from '@uniswap/v2-core/build/UniswapV2Factory.json'
-import { Fixture } from 'ethereum-waffle'
-import { ethers, waffle } from 'hardhat'
-import { ILPPFactory, IWETH9, MockTimeSupplicateRouter } from '../../typechain'
+  ILPPFactory,
+} from '../../typechain-types/protocol'
+import {
+  IWETH9,
+  MockTimeSupplicateRouter,
+  // We import factories ONLY to access `abi` and `bytecode`
+  IWETH9__factory,
+  MockTimeSupplicateRouter__factory,
+} from '../../typechain-types/periphery'
+import {
+  ILPPFactory__factory,
+} from '../../typechain-types/protocol'
 
-import WETH9 from '../contracts/WETH9.json'
-import { Contract } from '@ethersproject/contracts'
-import { constants } from 'ethers'
+// -------------------- helpers --------------------
+async function deployWithTypechainArtifact<T>(
+  factoryAbi: any[],
+  factoryBytecode: string,
+  signer: Signer,
+  args: unknown[] = []
+): Promise<T> {
+  const cf = new ethers.ContractFactory(factoryAbi, factoryBytecode, signer)
+  const c = (await cf.deploy(...args)) as any
+  await c.waitForDeployment()
+  return c as T
+}
 
-const wethFixture: Fixture<{ weth9: IWETH9 }> = async ([wallet]) => {
-  const weth9 = (await waffle.deployContract(wallet, {
-    bytecode: WETH9.bytecode,
-    abi: WETH9.abi,
-  })) as IWETH9
-
+// -------------------- WETH9 --------------------
+export async function wethFixture(): Promise<{ weth9: IWETH9 }> {
+  const [deployer] = await ethers.getSigners()
+  const weth9 = await deployWithTypechainArtifact<IWETH9>(
+    IWETH9__factory.abi,
+    IWETH9__factory.bytecode,
+    deployer
+  )
   return { weth9 }
 }
 
-export const v2FactoryFixture: Fixture<{ factory: Contract }> = async ([wallet]) => {
-  const factory = await waffle.deployContract(
-    wallet,
-    {
-      bytecode: FACTORY_V2_BYTECODE,
-      abi: FACTORY_V2_ABI,
-    },
-    [constants.AddressZero]
+// -------------------- LPP Core Factory (only) --------------------
+export async function lppFactoryFixture(): Promise<ILPPFactory> {
+  const [deployer] = await ethers.getSigners()
+  const lppFactory = await deployWithTypechainArtifact<ILPPFactory>(
+    ILPPFactory__factory.abi,
+    ILPPFactory__factory.bytecode,
+    deployer,
+    /* ctor args if any: [] */
   )
-
-  return { factory }
+  return lppFactory
 }
 
-const v3CoreFactoryFixture: Fixture<ILPPFactory> = async ([wallet]) => {
-  return (await waffle.deployContract(wallet, {
-    bytecode: FACTORY_BYTECODE,
-    abi: FACTORY_ABI,
-  })) as ILPPFactory
-}
-
-export const v3RouterFixture: Fixture<{
+// -------------------- LPP Router Fixture --------------------
+export async function lppRouterFixture(): Promise<{
   weth9: IWETH9
   factory: ILPPFactory
   router: MockTimeSupplicateRouter
-}> = async ([wallet], provider) => {
-  const { weth9 } = await wethFixture([wallet], provider)
-  const factory = await v3CoreFactoryFixture([wallet], provider)
+}> {
+  const [deployer] = await ethers.getSigners()
 
-  const router = (await (await ethers.getContractFactory('MockTimeSupplicateRouter')).deploy(
-    factory.address,
-    weth9.address
-  )) as MockTimeSupplicateRouter
+  const { weth9 } = await wethFixture()
+  const factory = await lppFactoryFixture()
+
+  const factoryAddr = await factory.getAddress()
+  const wethAddr = await weth9.getAddress()
+
+  const router = await deployWithTypechainArtifact<MockTimeSupplicateRouter>(
+    MockTimeSupplicateRouter__factory.abi,
+    MockTimeSupplicateRouter__factory.bytecode,
+    deployer,
+    [factoryAddr, wethAddr]
+  )
 
   return { factory, weth9, router }
 }
