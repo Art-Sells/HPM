@@ -5,7 +5,7 @@ import { runTypeChain } from "typechain";
 
 const ROOT = process.cwd();
 const PERIPHERY_ARTS = path.join(ROOT, "artifacts", "contracts");
-const PROTOCOL_ARTS  = path.resolve(ROOT, "..", "Protocol", "artifacts", "contracts");
+const PROTOCOL_ARTS  = path.resolve(ROOT, "../Protocol", "artifacts", "contracts");
 
 function listAbiArtifacts(dir) {
   const out = [];
@@ -31,6 +31,8 @@ function listAbiArtifacts(dir) {
 
 const peripheryFiles = listAbiArtifacts(PERIPHERY_ARTS);
 const protocolFiles  = listAbiArtifacts(PROTOCOL_ARTS);
+console.log("DEBUG: Searching for protocol artifacts in:", PROTOCOL_ARTS);
+console.log("DEBUG: Found these files:", protocolFiles);
 
 if (!peripheryFiles.length && !protocolFiles.length) {
   console.error("No ABI-bearing artifacts found in Periphery or Protocol.");
