@@ -1,16 +1,24 @@
-import { ethers } from 'hardhat'
-import type { LiquidityAmountsTest } from '../typechain-types/periphery'
+import hre from 'hardhat'
+const { ethers } = hre
+
+// ✅ Typechain types/factory
+import {
+  LiquidityAmountsTest,
+  LiquidityAmountsTest__factory,
+} from '../typechain-types/periphery'
+
+// ✅ Your helpers (unchanged)
 import { encodePriceSqrt } from './shared/encodePriceSqrt'
 import { expect } from './shared/expect'
-
 import snapshotGasCost from './shared/snapshotGasCost'
 
-describe('LiquidityAmounts', async () => {
+describe('LiquidityAmounts', () => {
   let liquidityFromAmounts: LiquidityAmountsTest
 
   before('deploy test library', async () => {
-    const liquidityFromAmountsTestFactory = await ethers.getContractFactory('LiquidityAmountsTest')
-    liquidityFromAmounts = (await liquidityFromAmountsTestFactory.deploy()) as LiquidityAmountsTest
+    const [deployer] = await ethers.getSigners()
+    liquidityFromAmounts = await new LiquidityAmountsTest__factory(deployer).deploy()
+    await liquidityFromAmounts.waitForDeployment()
   })
 
   describe('#getLiquidityForAmount0', () => {
