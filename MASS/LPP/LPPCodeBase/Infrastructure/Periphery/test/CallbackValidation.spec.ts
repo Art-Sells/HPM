@@ -55,7 +55,7 @@ describe('CallbackValidation', () => {
     await expect(
       callbackValidation
         .connect(nonpairAddr)
-        .verifyCallback(factoryAddr, token0Addr, token1Addr, FeeAmount.MEDIUM)
+        .verifyCallback(factoryAddr, token0Addr, token1Addr, 0)
     ).to.be.reverted;
   });
 });
