@@ -1,5 +1,5 @@
 import { ethers } from 'hardhat'
-import { LiquidityAmountsTest } from '../typechain/LiquidityAmountsTest'
+import type { LiquidityAmountsTest } from '../typechain-types/periphery'
 import { encodePriceSqrt } from './shared/encodePriceSqrt'
 import { expect } from './shared/expect'
 
