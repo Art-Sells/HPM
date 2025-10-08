@@ -1,16 +1,21 @@
-import { ethers } from 'hardhat'
-import { LiquidityAmountsTest } from '../typechain/LiquidityAmountsTest'
-import { encodePriceSqrt } from './shared/encodePriceSqrt'
-import { expect } from './shared/expect'
+import hre from 'hardhat'
+const { ethers } = hre
 
-import snapshotGasCost from './shared/snapshotGasCost'
+import type {
+  LiquidityAmountsTest,
+} from '../typechain-types/periphery'
 
-describe('LiquidityAmounts', async () => {
+import { encodePriceSqrt } from './shared/encodePriceSqrt.ts'
+import { expect } from './shared/expect.ts'
+import snapshotGasCost from './shared/snapshotGasCost.ts'
+
+describe('LiquidityAmounts', () => {
   let liquidityFromAmounts: LiquidityAmountsTest
 
   before('deploy test library', async () => {
-    const liquidityFromAmountsTestFactory = await ethers.getContractFactory('LiquidityAmountsTest')
-    liquidityFromAmounts = (await liquidityFromAmountsTestFactory.deploy()) as LiquidityAmountsTest
+    const LiquidityAmountsTestFactory = await ethers.getContractFactory('LiquidityAmountsTest')
+    liquidityFromAmounts = (await LiquidityAmountsTestFactory.deploy()) as unknown as LiquidityAmountsTest
+    await liquidityFromAmounts.waitForDeployment()
   })
 
   describe('#getLiquidityForAmount0', () => {
