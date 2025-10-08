@@ -5,7 +5,7 @@ const { ethers } = hre
 import {
   LiquidityAmountsTest,
   LiquidityAmountsTest__factory,
-} from '../typechain-types/periphery'
+} from '../typechain-types/periphery/index'
 
 // ✅ Your helpers (unchanged)
 import { encodePriceSqrt } from './shared/encodePriceSqrt'
