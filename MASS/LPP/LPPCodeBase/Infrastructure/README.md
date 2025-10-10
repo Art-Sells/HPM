@@ -11,7 +11,7 @@
 - [ ] Implement **LPPOracleAdapter** (cbBTC/USDC with staleness & deviation guards)
 - [ ] **Create 3 pools** (cbBTC/USDC, fee=0) & **initialize** at oracle price
 - [ ] **Seed liquidity**: tight **primary** range + tiny **fallback** range for each pool
-- [ ] **LPPRouter.recenterAndMint()** (atomic: price re‑center **and** LP mint in one tx)
+- [ ] **LPPRouter.recenterAndMint()** (atomic: price re‑center **and** LP mint in one tx) (don't forget nft.mint)
 - [ ] Make arbs find pools: contract **verification**, **Subgraph**, `RebalanceNeeded` event, **Solver Kit**
 - [ ] Implement **MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention**
 - [ ] **Wire 1% profit‑share via JS** (off‑chain orchestrator; no on‑chain logic changes)
