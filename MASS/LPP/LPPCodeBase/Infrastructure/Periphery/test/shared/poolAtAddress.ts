@@ -1,7 +1,7 @@
-import { abi as POOL_ABI } from '@lpp/lpp-protocol/artifacts/contracts/LPPPool.sol/LPPPool.json'
-import { Contract, Wallet } from 'ethers'
-import { ILPPPool } from '../../typechain'
+// shared/poolAtAddress.ts
+import type { Signer } from 'ethers'
+import { ILPPPool, ILPPPool__factory } from '../../typechain-types/protocol'
 
-export default function poolAtAddress(address: string, wallet: Wallet): ILPPPool {
-  return new Contract(address, POOL_ABI, wallet) as ILPPPool
+export default function poolAtAddress(address: string, signer: Signer): ILPPPool {
+  return ILPPPool__factory.connect(address, signer)
 }

@@ -6,7 +6,7 @@
 - [X] Configure and compile [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Preriphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery): **Complete**
 - [X] Enable & test **fee = 0** tier in Factory; add **fee=0 math tests** **Complete**: [LPPZeroFeeSpec](https://github.com/Art-Sells/HPM/blob/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol/test/LPP.zeroFee.spec.ts) 
 - - [ ] Test all other tests inside Protocol & Periphery folders. ***In-Progress***
-- - - [ ] Re-add nft descriptors then compare/contrast Protocol scripts/configs/jsons with Periphery's after Periphery test completion.
+- - [ ] re-test all tests after first tests (remove "your" from all files)
 - [ ] Set governance (**Safe multisig**); protocol swap fee **disabled** 
 - [ ] Implement **LPPOracleAdapter** (cbBTC/USDC with staleness & deviation guards)
 - [ ] **Create 3 pools** (cbBTC/USDC, fee=0) & **initialize** at oracle price
