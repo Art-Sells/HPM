@@ -1,29 +1,31 @@
-import { abi as IUniswapV3PoolABI } from '@uniswap/v3-core/artifacts/contracts/interfaces/IUniswapV3Pool.sol/IUniswapV3Pool.json'
+import { abi as ILPPPoolABI } from '@lpp/lpp-protocol/artifacts/contracts/interfaces/ILPPPool.sol/ILPPPool.json'
 import { Fixture } from 'ethereum-waffle'
 import { BigNumberish, constants, Wallet } from 'ethers'
 import { ethers, waffle } from 'hardhat'
 import {
-  IUniswapV3Factory,
   IWETH9,
   MockTimeNonfungiblePositionManager,
   NonfungiblePositionManagerPositionsGasTest,
-  SwapRouter,
+  SupplicateRouter,
   TestERC20,
   TestPositionNFTOwner,
-} from '../typechain'
-import completeFixture from './shared/completeFixture'
-import { computePoolAddress } from './shared/computePoolAddress'
-import { FeeAmount, MaxUint128, TICK_SPACINGS } from './shared/constants'
-import { encodePriceSqrt } from './shared/encodePriceSqrt'
-import { expandTo18Decimals } from './shared/expandTo18Decimals'
-import { expect } from './shared/expect'
-import { extractJSONFromURI } from './shared/extractJSONFromURI'
-import getPermitNFTSignature from './shared/getPermitNFTSignature'
-import { encodePath } from './shared/path'
-import poolAtAddress from './shared/poolAtAddress'
-import snapshotGasCost from './shared/snapshotGasCost'
-import { getMaxTick, getMinTick } from './shared/ticks'
-import { sortedTokens } from './shared/tokenSort'
+} from '../typechain-types/periphery'
+import {
+  ILPPFactory,
+} from '../typechain-types/protocol'
+import completeFixture from './shared/completeFixture.ts'
+import { computePoolAddress } from './shared/computePoolAddress.ts'
+import { FeeAmount, MaxUint128, TICK_SPACINGS } from './shared/constants.ts'
+import { encodePriceSqrt } from './shared/encodePriceSqrt.ts'
+import { expandTo18Decimals } from './shared/expandTo18Decimals.ts'
+import { expect } from './shared/expect.ts'
+import { extractJSONFromURI } from './shared/extractJSONFromURI.ts'
+import getPermitNFTSignature from './shared/getPermitNFTSignature.ts'
+import { encodePath } from './shared/path.ts'
+import poolAtAddress from './shared/poolAtAddress.ts'
+import snapshotGasCost from './shared/snapshotGasCost.ts'
+import { getMaxTick, getMinTick } from './shared/ticks.ts'
+import { sortedTokens } from './shared/tokenSort.ts'
 
 describe('NonfungiblePositionManager', () => {
   let wallets: Wallet[]
@@ -31,10 +33,10 @@ describe('NonfungiblePositionManager', () => {
 
   const nftFixture: Fixture<{
     nft: MockTimeNonfungiblePositionManager
-    factory: IUniswapV3Factory
+    factory: ILPPFactory
     tokens: [TestERC20, TestERC20, TestERC20]
     weth9: IWETH9
-    router: SwapRouter
+    router: SupplicateRouter
   }> = async (wallets, provider) => {
     const { weth9, factory, tokens, nft, router } = await completeFixture(wallets, provider)
 
@@ -54,11 +56,11 @@ describe('NonfungiblePositionManager', () => {
     }
   }
 
-  let factory: IUniswapV3Factory
+  let factory: ILPPFactory
   let nft: MockTimeNonfungiblePositionManager
   let tokens: [TestERC20, TestERC20, TestERC20]
   let weth9: IWETH9
-  let router: SwapRouter
+  let router: SupplicateRouter
 
   let loadFixture: ReturnType<typeof waffle.createFixtureLoader>
 
@@ -129,8 +131,8 @@ describe('NonfungiblePositionManager', () => {
         [tokens[0].address, tokens[1].address],
         FeeAmount.MEDIUM
       )
-      await factory.createPool(tokens[0].address, tokens[1].address, FeeAmount.MEDIUM)
-      const pool = new ethers.Contract(expectedAddress, IUniswapV3PoolABI, wallet)
+      await factory.createPool(tokens[0].address, tokens[1].address, FeeAmount.ZERO)
+      const pool = new ethers.Contract(expectedAddress, ILPPPoolABI, wallet)
 
       await pool.initialize(encodePriceSqrt(3, 1))
       const code = await wallet.provider.getCode(expectedAddress)
@@ -138,7 +140,7 @@ describe('NonfungiblePositionManager', () => {
       await nft.createAndInitializePoolIfNecessary(
         tokens[0].address,
         tokens[1].address,
-        FeeAmount.MEDIUM,
+        FeeAmount.ZERO,
         encodePriceSqrt(4, 1)
       )
     })
