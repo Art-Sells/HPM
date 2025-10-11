@@ -1,0 +1,5 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`NonfungiblePositionManager #createAndInitializePoolIfNecessary gas 1`] = `4600854`;
+
+exports[`NonfungiblePositionManager bytecode size 1`] = `23551`;

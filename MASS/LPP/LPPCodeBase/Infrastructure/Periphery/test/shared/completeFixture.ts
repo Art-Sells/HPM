@@ -32,10 +32,19 @@ export default async function completeFixture(
   [wallet]: SignerWithAddress[],
   provider: any
 ): Promise<CompleteFixture> {
-
   const { weth9, factory, router } = await lppRouterFixture([wallet], provider)
 
-  // ---- test tokens (use half of MaxUint256 to avoid overflow during transfers in some tests)
+  // Ensure the custom tier used by tests is enabled: fee=0, tick spacing=60
+  const ZERO_FEE = 0
+  const TEST_TICK_SPACING = 60
+
+  // Only enable if not already set (idempotent)
+  const current = await factory.feeAmountTickSpacing(ZERO_FEE)
+  if (current === 0n) {
+    await factory.enableFeeAmount(ZERO_FEE, BigInt(TEST_TICK_SPACING))
+  }
+
+  // ---- test tokens ...
   const tokenFactory = await ethers.getContractFactory('TestERC20')
   const half = MaxUint256 / 2n
 

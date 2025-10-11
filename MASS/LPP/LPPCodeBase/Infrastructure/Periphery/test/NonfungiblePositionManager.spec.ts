@@ -3,7 +3,9 @@ import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 const ILPPPoolJson = require('@lpp/lpp-protocol/artifacts/contracts/interfaces/ILPPPool.sol/ILPPPool.json')
 const ILPPPoolABI = ILPPPoolJson.abi
-import { BigNumberish, MaxUint256, Contract, Signer } from 'ethers'
+
+import type { BigNumberish, Signer } from 'ethers'
+import { MaxUint256, Contract } from 'ethers'
 import hre from 'hardhat'
 const { ethers } = hre
 import { loadFixture } from '@nomicfoundation/hardhat-network-helpers'
@@ -32,13 +34,13 @@ import { getMaxTick, getMinTick } from './shared/ticks.ts'
 import { sortedTokens } from './shared/tokenSort.ts'
 
 // ───────────────────────────────────────────────────────────────────────────────
-// ZERO-FEE + single spacing setup
+// HARD CONSTANTS (no fee tiers auto-detection)
 // ───────────────────────────────────────────────────────────────────────────────
-const FEE = 0 // no tiers, always zero
-const TICK_SPACING = 60 // one canonical spacing for tests
+const FEE = 0
+const TICK_SPACING = 60
 const MaxUint128 = (1n << 128n) - 1n
 
-// Resolve an address from any contract-ish object (ethers v6, interface, plain with address, etc.)
+// Resolve an address from any contract-ish object
 async function addr(x: any): Promise<string> {
   if (typeof x === 'string') return x
   if (x?.getAddress) return x.getAddress()
@@ -53,11 +55,10 @@ describe('NonfungiblePositionManager', () => {
   let other: Signer
 
   async function nftFixture() {
-    // Build periphery/protocol fixture
     const signers = await ethers.getSigners()
     const { weth9, factory, tokens, nft, router } = await completeFixture(signers as any, ethers.provider)
 
-    // Approve & fund wallets (v6-safe addresses)
+    // Approve & fund wallets
     const nftAddr = await nft.getAddress()
     const otherAddr = await signers[1].getAddress()
 
@@ -67,13 +68,7 @@ describe('NonfungiblePositionManager', () => {
       await token.transfer(otherAddr, expandTo18Decimals(1_000_000))
     }
 
-    return {
-      nft,
-      factory,
-      tokens,
-      weth9,
-      router,
-    }
+    return { nft, factory, tokens, weth9, router }
   }
 
   before(async () => {
@@ -270,7 +265,6 @@ describe('NonfungiblePositionManager', () => {
       const token1Addr = await addr(t1)
       const otherAddr = await other.getAddress()
 
-      // remove any approval
       const nftAddr = await nft.getAddress()
       await weth9.approve(nftAddr, 0)
 
