@@ -1,30 +1,34 @@
-import { BigNumber } from 'ethers'
-import Decimal from 'decimal.js'
+import Decimal from "decimal.js";
 
-const TWO = BigNumber.from(2)
-const TEN = BigNumber.from(10)
-const FIVE_SIG_FIGS_POW = new Decimal(10).pow(5)
+const FIVE_SIG_FIGS_POW = new Decimal(10).pow(5);
 
 export function formatSqrtRatioX96(
-  sqrtRatioX96: BigNumber | number,
+  sqrtRatioX96: bigint | number,
   decimalsToken0: number = 18,
   decimalsToken1: number = 18
 ): string {
-  Decimal.set({ toExpPos: 9_999_999, toExpNeg: -9_999_999 })
+  Decimal.set({ toExpPos: 9_999_999, toExpNeg: -9_999_999 });
 
-  let ratioNum = ((parseInt(sqrtRatioX96.toString()) / 2 ** 96) ** 2).toPrecision(5)
-  let ratio = new Decimal(ratioNum.toString())
+  // Convert X96 -> base ratio
+  const x96 =
+    typeof sqrtRatioX96 === "bigint"
+      ? Number(sqrtRatioX96)
+      : sqrtRatioX96;
 
-  // adjust for decimals
-  if (decimalsToken1 < decimalsToken0) {
-    ratio = ratio.mul(TEN.pow(decimalsToken0 - decimalsToken1).toString())
-  } else if (decimalsToken0 < decimalsToken1) {
-    ratio = ratio.div(TEN.pow(decimalsToken1 - decimalsToken0).toString())
+  // === Critical: pre-round to 5 sig figs BEFORE decimal adjustment (matches original test math)
+  const baseRatioNum = ((x96 / 2 ** 96) ** 2);
+  const fiveSigStr   = Number(baseRatioNum).toPrecision(5); // JS rounding
+  let ratio          = new Decimal(fiveSigStr);
+
+  // Adjust for token decimals
+  const diff = decimalsToken0 - decimalsToken1;
+  if (diff > 0) {
+    ratio = ratio.mul(new Decimal(10).pow(diff));
+  } else if (diff < 0) {
+    ratio = ratio.div(new Decimal(10).pow(-diff));
   }
 
-  if (ratio.lessThan(FIVE_SIG_FIGS_POW)) {
-    return ratio.toPrecision(5)
-  }
-
-  return ratio.toString()
+  // Final output rule
+  if (ratio.lessThan(FIVE_SIG_FIGS_POW)) return ratio.toPrecision(5);
+  return ratio.toString();
 }

@@ -6,12 +6,12 @@
 - [X] Configure and compile [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Preriphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery): **Complete**
 - [X] Enable & test **fee = 0** tier in Factory; add **fee=0 math tests** **Complete**: [LPPZeroFeeSpec](https://github.com/Art-Sells/HPM/blob/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol/test/LPP.zeroFee.spec.ts) 
 - - [ ] Test all other tests inside Protocol & Periphery folders. ***In-Progress***
-- - - [ ] Re-add nft descriptors then compare/contrast Protocol scripts/configs/jsons with Periphery's after Periphery test completion.
+- - [ ] re-test all tests after first tests (remove "your" from all files)
 - [ ] Set governance (**Safe multisig**); protocol swap fee **disabled** 
 - [ ] Implement **LPPOracleAdapter** (cbBTC/USDC with staleness & deviation guards)
 - [ ] **Create 3 pools** (cbBTC/USDC, fee=0) & **initialize** at oracle price
 - [ ] **Seed liquidity**: tight **primary** range + tiny **fallback** range for each pool
-- [ ] **LPPRouter.recenterAndMint()** (atomic: price re‑center **and** LP mint in one tx)
+- [ ] **LPPRouter.recenterAndMint()** (atomic: price re‑center **and** LP mint in one tx) (don't forget nft.mint)
 - [ ] Make arbs find pools: contract **verification**, **Subgraph**, `RebalanceNeeded` event, **Solver Kit**
 - [ ] Implement **MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention**
 - [ ] **Wire 1% profit‑share via JS** (off‑chain orchestrator; no on‑chain logic changes)

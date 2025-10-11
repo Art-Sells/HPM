@@ -891,6 +891,14 @@
   resolved "https://registry.yarnpkg.com/@fastify/busboy/-/busboy-2.1.1.tgz#b9da6a878a371829a0502c9b6c1c143ef6663f4d"
   integrity sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA==
 
+"@file-type/xml@^0.4.3":
+  version "0.4.4"
+  resolved "https://registry.yarnpkg.com/@file-type/xml/-/xml-0.4.4.tgz#3b3efda7f12cbcfca26dcf5aebcf37a8ff882ade"
+  integrity sha512-NhCyXoHlVZ8TqM476hyzwGJ24+D5IPSaZhmrPj7qXnEVb3q6jrFzA3mM9TBpknKSI9EuQeGTKRg2DXGUwvBBoQ==
+  dependencies:
+    sax "^1.4.1"
+    strtok3 "^10.3.4"
+
 "@isaacs/balanced-match@^4.0.1":
   version "4.0.1"
   resolved "https://registry.yarnpkg.com/@isaacs/balanced-match/-/balanced-match-4.0.1.tgz#3081dadbc3460661b751e7591d7faea5df39dd29"
@@ -1087,14 +1095,15 @@
 "@lpp/lpp-periphery@file:Periphery":
   version "0.1.0"
   dependencies:
-    "@lpp/lpp-protocol" "file:../../../../../../../../../../Caches/Yarn/v6/npm-@lpp-lpp-periphery-0.1.0-61e609a8-c86f-4b8d-9b47-6db4d5beb7d7-1759716899731/node_modules/@lpp/Protocol"
+    "@lpp/lpp-protocol" "file:../../../../../../../../../../Caches/Yarn/v6/npm-@lpp-lpp-periphery-0.1.0-466a5481-94dd-4821-9355-3f7efbbda1c5-1760145475080/node_modules/@lpp/Protocol"
     "@openzeppelin/contracts" "3.4.2-solc-0.7"
     base64-sol "1.0.1"
+    is-svg "^6.1.0"
 
 "@lpp/lpp-protocol@file:Protocol":
   version "0.1.0"
   dependencies:
-    "@lpp/lpp-periphery" "file:../../../../../../../../../../Caches/Yarn/v6/npm-@lpp-lpp-protocol-0.1.0-200c1e8d-91cf-4be6-b0b0-52f239e941c5-1759716899732/node_modules/@lpp/Periphery"
+    "@lpp/lpp-periphery" "file:../../../../../../../../../../Caches/Yarn/v6/npm-@lpp-lpp-protocol-0.1.0-5a333506-c091-4495-a8b6-f7956350e139-1760145475080/node_modules/@lpp/Periphery"
     "@openzeppelin/contracts" "3.4.2-solc-0.7"
     base64-sol "1.0.1"
 
@@ -1613,6 +1622,11 @@
   dependencies:
     defer-to-connect "^2.0.0"
 
+"@tokenizer/token@^0.3.0":
+  version "0.3.0"
+  resolved "https://registry.yarnpkg.com/@tokenizer/token/-/token-0.3.0.tgz#fe98a93fe789247e998c75e74e9c7c63217aa276"
+  integrity sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A==
+
 "@tsconfig/node10@^1.0.7":
   version "1.0.11"
   resolved "https://registry.yarnpkg.com/@tsconfig/node10/-/node10-1.0.11.tgz#6ee46400685f130e278128c7b38b7e031ff5b2f2"
@@ -1722,6 +1736,13 @@
   version "4.0.4"
   resolved "https://registry.yarnpkg.com/@types/http-cache-semantics/-/http-cache-semantics-4.0.4.tgz#b979ebad3919799c979b17c72621c0bc0a31c6c4"
   integrity sha512-1m0bIFVc7eJWyve9S0RnuRgcQqF/Xd5QsUZAZeQFr1Q3/p9JWoQQEqmVy+DPTNpGXwhgIetAoYF8JSc33q29QA==
+
+"@types/is-svg@^4.0.1":
+  version "4.0.1"
+  resolved "https://registry.yarnpkg.com/@types/is-svg/-/is-svg-4.0.1.tgz#01e38eaaa34519b26063fd8f07819017002f23de"
+  integrity sha512-UL0eitBfBPRA7aLDN/hWcWTEubJSMZaSjUNrTtrjxytb1LmWNfOUAisJ4xcbNrwSBDtOJqa5iTKLQ2ijtFhPXw==
+  dependencies:
+    is-svg "*"
 
 "@types/istanbul-lib-coverage@*", "@types/istanbul-lib-coverage@^2.0.0", "@types/istanbul-lib-coverage@^2.0.6":
   version "2.0.6"
@@ -6496,6 +6517,13 @@ is-string@^1.1.1:
     call-bound "^1.0.3"
     has-tostringtag "^1.0.2"
 
+is-svg@*, is-svg@^6.1.0:
+  version "6.1.0"
+  resolved "https://registry.yarnpkg.com/is-svg/-/is-svg-6.1.0.tgz#b75936327dcbd3fa3af1f1098d5390245fbdd8b1"
+  integrity sha512-i7YPdvYuSCYcaLQrKwt8cvKTlwHcdA6Hp8N9SO3Q5jIzo8x6kH3N47W0BvPP7NdxVBmIHx7X9DK36czYYW7lHg==
+  dependencies:
+    "@file-type/xml" "^0.4.3"
+
 is-symbol@^1.0.4, is-symbol@^1.1.1:
   version "1.1.1"
   resolved "https://registry.yarnpkg.com/is-symbol/-/is-symbol-1.1.1.tgz#f47761279f532e2b05a7024a7506dbbedacd0634"
@@ -9138,6 +9166,11 @@ safe-regex@^1.1.0:
   resolved "https://registry.yarnpkg.com/safer-buffer/-/safer-buffer-2.1.2.tgz#44fa161b0187b9549dd84bb91802f9bd8385cd6a"
   integrity sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==
 
+sax@^1.4.1:
+  version "1.4.1"
+  resolved "https://registry.yarnpkg.com/sax/-/sax-1.4.1.tgz#44cc8988377f126304d3b3fc1010c733b929ef0f"
+  integrity sha512-+aWOz7yVScEGoKNd4PA10LZ8sk0A/z5+nXQG5giUO5rprX9jgYsTdov9qCchZiPIZezbZH+jRut8nPodFAX4Jg==
+
 sc-istanbul@^0.4.5:
   version "0.4.6"
   resolved "https://registry.yarnpkg.com/sc-istanbul/-/sc-istanbul-0.4.6.tgz#cf6784355ff2076f92d70d59047d71c13703e839"
@@ -9923,6 +9956,13 @@ strip-json-comments@^3.1.1:
   version "3.1.1"
   resolved "https://registry.yarnpkg.com/strip-json-comments/-/strip-json-comments-3.1.1.tgz#31f1281b3832630434831c310c01cccda8cbe006"
   integrity sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig==
+
+strtok3@^10.3.4:
+  version "10.3.4"
+  resolved "https://registry.yarnpkg.com/strtok3/-/strtok3-10.3.4.tgz#793ebd0d59df276a085586134b73a406e60be9c1"
+  integrity sha512-KIy5nylvC5le1OdaaoCJ07L+8iQzJHGH6pWDuzS+d07Cu7n1MZ2x26P8ZKIWfbK02+XIL8Mp4RkWeqdUCrDMfg==
+  dependencies:
+    "@tokenizer/token" "^0.3.0"
 
 supports-color@6.0.0:
   version "6.0.0"
