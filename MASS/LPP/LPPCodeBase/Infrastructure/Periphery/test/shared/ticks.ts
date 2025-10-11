@@ -1,9 +1,14 @@
-import { BigNumber } from 'ethers'
+// test/shared/ticks.ts (ethers v6 style)
 
-export const getMinTick = (tickSpacing: number) => Math.ceil(-887272 / tickSpacing) * tickSpacing
-export const getMaxTick = (tickSpacing: number) => Math.floor(887272 / tickSpacing) * tickSpacing
-export const getMaxLiquidityPerTick = (tickSpacing: number) =>
-  BigNumber.from(2)
-    .pow(128)
-    .sub(1)
-    .div((getMaxTick(tickSpacing) - getMinTick(tickSpacing)) / tickSpacing + 1)
+export const getMinTick = (tickSpacing: number): number =>
+  Math.ceil(-887272 / tickSpacing) * tickSpacing
+
+export const getMaxTick = (tickSpacing: number): number =>
+  Math.floor(887272 / tickSpacing) * tickSpacing
+
+export const getMaxLiquidityPerTick = (tickSpacing: number): bigint => {
+  const numTicks =
+    BigInt((getMaxTick(tickSpacing) - getMinTick(tickSpacing)) / tickSpacing + 1)
+  const maxUint128 = (1n << 128n) - 1n
+  return maxUint128 / numTicks
+}

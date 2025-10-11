@@ -2,7 +2,7 @@
   "name": "@lpp/lpp-periphery",
   "version": "0.1.0",
   "license": "GPL-2.0-or-later",
-  "type": "module", 
+  "type": "module",
   "description": "Periphery contracts & helpers for LPP",
   "repository": {
     "type": "git",
@@ -22,7 +22,8 @@
   "dependencies": {
     "@lpp/lpp-protocol": "file:../Protocol",
     "@openzeppelin/contracts": "3.4.2-solc-0.7",
-    "base64-sol": "1.0.1"
+    "base64-sol": "1.0.1",
+    "is-svg": "^6.1.0"
   },
   "devDependencies": {
     "@ethersproject/bignumber": "^5.8.0",
@@ -40,6 +41,7 @@
     "@typechain/ethers-v6": "^0.5.1",
     "@typechain/hardhat": "^9.1.0",
     "@types/chai": "^5.2.2",
+    "@types/is-svg": "^4.0.1",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20",
     "chai": "^4.2.0",
@@ -66,7 +68,7 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "test:update-snapshots": "UPDATE_SNAPSHOTS=1 hardhat test",
-        "tc": "node scripts/typechain.mjs"
+    "tc": "node scripts/typechain.mjs"
   },
   "volta": {
     "node": "22.20.0",
