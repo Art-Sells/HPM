@@ -1,7 +1,5 @@
-// test/shared/formatSqrtRatioX96.ts
 import Decimal from "decimal.js";
 
-const TEN = 10n;
 const FIVE_SIG_FIGS_POW = new Decimal(10).pow(5);
 
 export function formatSqrtRatioX96(
@@ -11,27 +9,26 @@ export function formatSqrtRatioX96(
 ): string {
   Decimal.set({ toExpPos: 9_999_999, toExpNeg: -9_999_999 });
 
-  // normalize bigint → number safely for Decimal math
-  const sqrt =
+  // Convert X96 -> base ratio
+  const x96 =
     typeof sqrtRatioX96 === "bigint"
-      ? Number(sqrtRatioX96) / 2 ** 96
-      : sqrtRatioX96 / 2 ** 96;
+      ? Number(sqrtRatioX96)
+      : sqrtRatioX96;
 
-  // convert sqrt ratio → price ratio
-  const ratio = new Decimal(sqrt).pow(2);
+  // === Critical: pre-round to 5 sig figs BEFORE decimal adjustment (matches original test math)
+  const baseRatioNum = ((x96 / 2 ** 96) ** 2);
+  const fiveSigStr   = Number(baseRatioNum).toPrecision(5); // JS rounding
+  let ratio          = new Decimal(fiveSigStr);
 
-  // adjust for token decimals
-  let adjusted = ratio;
-  if (decimalsToken1 < decimalsToken0) {
-    adjusted = adjusted.mul(new Decimal(10).pow(decimalsToken0 - decimalsToken1));
-  } else if (decimalsToken0 < decimalsToken1) {
-    adjusted = adjusted.div(new Decimal(10).pow(decimalsToken1 - decimalsToken0));
+  // Adjust for token decimals
+  const diff = decimalsToken0 - decimalsToken1;
+  if (diff > 0) {
+    ratio = ratio.mul(new Decimal(10).pow(diff));
+  } else if (diff < 0) {
+    ratio = ratio.div(new Decimal(10).pow(-diff));
   }
 
-  // format to five sig figs if small
-  if (adjusted.lessThan(FIVE_SIG_FIGS_POW)) {
-    return adjusted.toPrecision(5);
-  }
-
-  return adjusted.toString();
+  // Final output rule
+  if (ratio.lessThan(FIVE_SIG_FIGS_POW)) return ratio.toPrecision(5);
+  return ratio.toString();
 }
