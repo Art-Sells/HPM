@@ -1,11 +1,14 @@
 // test/NonfungiblePositionManager.spec.ts
-import { abi as ILPPPoolABI } from '@lpp/lpp-protocol/artifacts/contracts/interfaces/ILPPPool.sol/ILPPPool.json'
+import { createRequire } from 'module'
+const require = createRequire(import.meta.url)
+const ILPPPoolJson = require('@lpp/lpp-protocol/artifacts/contracts/interfaces/ILPPPool.sol/ILPPPool.json')
+const ILPPPoolABI = ILPPPoolJson.abi
 import { BigNumberish, MaxUint256, Contract, Signer } from 'ethers'
 import hre from 'hardhat'
 const { ethers } = hre
 import { loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 
-import {
+import type {
   IWETH9,
   MockTimeNonfungiblePositionManager,
   NonfungiblePositionManagerPositionsGasTest,
@@ -13,7 +16,7 @@ import {
   TestERC20,
   TestPositionNFTOwner,
 } from '../typechain-types/periphery'
-import { ILPPFactory } from '../typechain-types/protocol'
+import type { ILPPFactory } from '../typechain-types/protocol'
 
 import completeFixture from './shared/completeFixture.ts'
 import { computePoolAddress } from './shared/computePoolAddress.ts'
