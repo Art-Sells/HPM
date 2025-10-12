@@ -1,3 +1,4 @@
+// Periphery/scripts/printPoolInitCodeHash.mjs
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -10,7 +11,7 @@ const pkgJsonPath = require.resolve('@lpp/lpp-protocol/package.json')
 const pkgRoot = path.dirname(pkgJsonPath)
 const artifactsDir = path.join(pkgRoot, 'artifacts', 'contracts')
 
-// 2) Walk the artifacts tree to look for the *implementation* Pool artifact
+// 2) Walk the artifacts tree to find a concrete Pool implementation (not an interface)
 function walk(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap(d => {
     const p = path.join(dir, d.name)
@@ -26,7 +27,6 @@ for (const f of files) {
     j = JSON.parse(fs.readFileSync(f, 'utf8'))
   } catch { continue }
 
-  // We want a concrete pool implementation, not an interface
   const name = (j.contractName || path.basename(f, '.json')).toLowerCase()
   const abi = j.abi || []
   const hasBytecode = j.bytecode && j.bytecode !== '0x'
@@ -46,8 +46,8 @@ if (!chosen) {
   process.exit(1)
 }
 
-// 3) Compute the INIT_CODE_HASH from the *creation* bytecode
-const bytecode = chosen.json.bytecode // creation code
+// 3) Compute the INIT_CODE_HASH from the creation bytecode
+const bytecode = chosen.json.bytecode
 const hash = keccak256(getBytes(bytecode))
 
 console.log('Artifact:', path.relative(pkgRoot, chosen.file))
