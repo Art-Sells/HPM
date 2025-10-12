@@ -14,7 +14,6 @@
 - [ ] **LPPRouter.recenterAndMint()** (atomic: price re‑center **and** LP mint in one tx) (don't forget nft.mint)
 - [ ] Make arbs find pools: contract **verification**, **Subgraph**, `RebalanceNeeded` event, **Solver Kit**
 - [ ] Implement **MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention**
-- [ ] **Wire 1% profit‑share via JS** (off‑chain orchestrator; no on‑chain logic changes)
 - [ ] Frontend/API: router prefers **A/B/C (0‑fee)**, metrics & drift badge
 - [ ] Test: zero‑fee math, range flips, oracle failure, **atomic recenter & rebate logic**.
 - [ ] Deploy to Base, verify, publish docs, announce to searchers

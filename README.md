@@ -3,7 +3,7 @@
 ## HPM (Holding Price Mechanism)
 Records the highest price of an asset after its import or purchase limiting the erasure of an investment’s value thus introducing new mechanisms to help it achieve this feat: **[HPM Mechanics](https://github.com/Art-Sells/HPM/blob/main/Mechanics.md)**
 
-**HPM is the worlds first BMOFA or Bear Market Obfuscating Financial Architecture that introduces a new kind of marketplace and market dynamics:**
+**HPM is the world's first BMOFA or Bear Market Obfuscating Financial Architecture that introduces a new kind of marketplace and market dynamics:**
 
 - **Solid Marketplace: a marketplace in which investments either stagnate or increase. This is achieved through a Stablecoin-to-Financial-Asset(or Crypto Asset) Market Automated Supplication System or [MASS](https://github.com/Art-Sells/HPM/tree/main/MASS). In solid marketplaces, bear markets don't exist.**
 - **Sloth Market: a market in which investments stagnate.**
