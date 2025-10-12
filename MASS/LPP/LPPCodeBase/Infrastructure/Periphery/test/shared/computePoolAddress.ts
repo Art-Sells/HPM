@@ -1,28 +1,31 @@
 // test/shared/computePoolAddress.ts
-import { keccak256, getAddress, solidityPacked } from 'ethers';
+import { keccak256, getAddress, AbiCoder, solidityPacked, getBytes } from 'ethers';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 
-// ✅ Directly load the LPPPool artifact (creation bytecode)
-const LPPPoolArtifact = require(
+// Load your pool artifact (creation bytecode)
+const PoolArtifact = require(
   '@lpp/lpp-protocol/artifacts/contracts/LPPPool.sol/LPPPool.json'
 );
 
-// ✅ Hash the creation bytecode (not deployedBytecode)
-export const POOL_INIT_CODE_HASH = keccak256(LPPPoolArtifact.bytecode);
+// INIT_CODE_HASH = keccak256(creation bytecode)
+export const POOL_INIT_CODE_HASH = keccak256(getBytes(PoolArtifact.bytecode));
 
 export function computePoolAddress(
   factoryAddress: string,
   [tokenA, tokenB]: [string, string],
   fee: number
 ): string {
+  // sort addresses (same convention as factory)
   const [token0, token1] =
     tokenA.toLowerCase() < tokenB.toLowerCase() ? [tokenA, tokenB] : [tokenB, tokenA];
 
+  // ❗ ABI-ENCODE, not packed
   const salt = keccak256(
-    solidityPacked(['address', 'address', 'uint24'], [token0, token1, fee])
+    new AbiCoder().encode(['address', 'address', 'uint24'], [token0, token1, fee])
   );
 
+  // CREATE2 hash
   const create2 = keccak256(
     solidityPacked(
       ['bytes1', 'address', 'bytes32', 'bytes32'],
