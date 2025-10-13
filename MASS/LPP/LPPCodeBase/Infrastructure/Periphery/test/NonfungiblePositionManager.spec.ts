@@ -710,16 +710,14 @@ describe('NonfungiblePositionManager', () => {
     })
 
     it('no op if no tokens are owed', async () => {
-      await expect(
-        nft.connect(other).collect({
-          tokenId,
-          recipient: await wallet.getAddress(),
-          amount0Max: MaxUint128,
-          amount1Max: MaxUint128,
-        })
-      )
-        .to.not.emit(tokens[0], 'Transfer')
-        .to.not.emit(tokens[1], 'Transfer')
+      const txNoOp = nft.connect(other).collect({
+        tokenId,
+        recipient: await wallet.getAddress(),
+        amount0Max: MaxUint128,
+        amount1Max: MaxUint128,
+      });
+      await expect(txNoOp).to.not.emit(tokens[0], 'Transfer');
+      await expect(txNoOp).to.not.emit(tokens[1], 'Transfer');
     })
 
     it('transfers tokens owed from burn', async () => {
@@ -729,18 +727,19 @@ describe('NonfungiblePositionManager', () => {
       const token1Addr = await tokens[1].getAddress()
       const poolAddress = computePoolAddress(factoryAddr, [token0Addr, token1Addr], FEE)
 
+      const recipient = await wallet.getAddress();
       await expect(
         nft.connect(other).collect({
           tokenId,
-          recipient: await wallet.getAddress(),
+          recipient,
           amount0Max: MaxUint128,
           amount1Max: MaxUint128,
         })
       )
         .to.emit(tokens[0], 'Transfer')
-        .withArgs(poolAddress, await wallet.getAddress(), 49)
-        .to.emit(tokens[1], 'Transfer')
-        .withArgs(poolAddress, await wallet.getAddress(), 49)
+        .withArgs(poolAddress, recipient, 49)
+        .and.to.emit(tokens[1], 'Transfer')
+        .withArgs(poolAddress, recipient, 49);
     })
 
     it('gas transfers both', async () => {
@@ -1106,7 +1105,7 @@ describe('NonfungiblePositionManager', () => {
         })
       )
         .to.emit(pool, 'Burn')
-        .to.emit(pool, 'Collect')
+        .and.to.emit(pool, 'Collect');
     })
 
     it('gas', async () => {
