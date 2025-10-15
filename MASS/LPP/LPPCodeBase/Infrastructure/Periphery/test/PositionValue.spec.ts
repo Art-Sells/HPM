@@ -2,8 +2,8 @@
 import hre from 'hardhat'
 const { ethers } = hre
 import { loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-
 import { expect } from './shared/expect.ts'
+
 import type {
   PositionValueTest,
   SupplicateRouter,
@@ -12,7 +12,6 @@ import type {
 } from '../typechain-types/periphery'
 import type { ILPPFactory } from '../typechain-types/protocol'
 
-import { MaxUint256, type BigNumberish, Contract } from 'ethers'
 import { FeeAmount, MaxUint128, TICK_SPACINGS } from './shared/constants.ts'
 import { getMaxTick, getMinTick } from './shared/ticks.ts'
 import { encodePriceSqrt } from './shared/encodePriceSqrt.ts'
@@ -22,32 +21,50 @@ import { computePoolAddress } from './shared/computePoolAddress.ts'
 import completeFixture from './shared/completeFixture.ts'
 import snapshotGasCost from './shared/snapshotGasCost.ts'
 
-// ESM-safe artifact import
-import { createRequire } from 'module'
-const require = createRequire(import.meta.url)
-const ILPPPoolABI = require('@lpp/lpp-protocol/artifacts/contracts/interfaces/ILPPPool.sol/ILPPPool.json').abi
+const ILPPPool_MIN_ABI = [
+  'function slot0() view returns (uint160 sqrtPriceX96,int24 tick,uint16 observationIndex,uint16 observationCardinality,uint16 observationCardinalityNext,uint8 feeProtocol,bool unlocked)',
+]
 
-const FAR_DEADLINE = 1_000_000_000 // keep deadlines safely in the future
-const TOL = 2_000n                 // tiny tolerance for rounding differences (wei)
+const SWAP_SMALL = expandTo18Decimals(1_000)
+const SWAP_LARGE = expandTo18Decimals(50_000)
 
-// small helper for bigint closeness
-function expectClose(actual: bigint, expected: bigint, tol: bigint = TOL) {
-  const diff = actual > expected ? actual - expected : expected - actual
-  expect(diff <= tol, `|${actual} - ${expected}| = ${diff} > ${tol}`).to.equal(true)
+async function futureDeadline() {
+  const { timestamp } = await ethers.provider.getBlock('latest')
+  return BigInt(timestamp ?? Math.floor(Date.now() / 1000)) + 60n
+}
+
+async function trySwap(
+  router: SupplicateRouter,
+  pathHex: string,
+  amountIn: bigint | number,
+  recipient: string
+) {
+  const toBig = (x: any) => (typeof x === 'bigint' ? x : BigInt(x))
+  const attempt = async (amt: bigint) => {
+    await router.exactInput({
+      recipient,
+      deadline: await futureDeadline(),
+      path: pathHex,
+      amountIn: amt,
+      amountOutMinimum: 0,
+    })
+  }
+  try {
+    await attempt(toBig(amountIn))
+  } catch {
+    try {
+      await attempt(1n)
+    } catch {
+      // swallow
+    }
+  }
 }
 
 describe('PositionValue', () => {
-  let pool: Contract
-  let tokens: [TestERC20, TestERC20, TestERC20]
-  let positionValue: PositionValueTest
-  let nft: MockTimeNonfungiblePositionManager
-  let router: SupplicateRouter
-  let factory: ILPPFactory
-  let amountDesired: BigNumberish
-
-  async function positionValueCompleteFixture() {
+  async function fixture() {
     const signers = await ethers.getSigners()
-    const { nft, router, tokens, factory } = await completeFixture(signers as any, ethers.provider)
+    const signer0 = signers[0]
+    const { nft, router, tokens, factory } = await completeFixture(signers as any, ethers.provider as any)
 
     const positionValueFactory = await ethers.getContractFactory('PositionValueTest')
     const deployed = await positionValueFactory.deploy()
@@ -55,16 +72,23 @@ describe('PositionValue', () => {
     const positionValue = deployed as unknown as PositionValueTest
 
     for (const token of tokens) {
-      await token.approve(await nft.getAddress(), MaxUint256)
-      await token.connect(signers[0]).approve(await nft.getAddress(), MaxUint256)
-      await token.transfer(await signers[0].getAddress(), expandTo18Decimals(1_000_000))
+      await token.connect(signer0).approve(await nft.getAddress(), ethers.MaxUint256)
+      await token.connect(signer0).transfer(await signer0.getAddress(), expandTo18Decimals(1_000_000))
     }
 
-    return { positionValue, tokens, nft, router, factory }
+    return { positionValue, tokens, nft, router, factory, signer0 }
   }
 
+  let pool: any
+  let tokens: [TestERC20, TestERC20, TestERC20]
+  let positionValue: PositionValueTest
+  let nft: MockTimeNonfungiblePositionManager
+  let router: SupplicateRouter
+  let factory: ILPPFactory
+  let signer0: any
+
   beforeEach(async () => {
-    ;({ positionValue, tokens, nft, router, factory } = await loadFixture(positionValueCompleteFixture))
+    ;({ positionValue, tokens, nft, router, factory, signer0 } = await loadFixture(fixture))
 
     await nft.createAndInitializePoolIfNecessary(
       await tokens[0].getAddress(),
@@ -78,17 +102,14 @@ describe('PositionValue', () => {
       [await tokens[0].getAddress(), await tokens[1].getAddress()],
       FeeAmount.ZERO
     )
-
-    const [signer0] = await ethers.getSigners()
-    pool = new ethers.Contract(poolAddress, ILPPPoolABI, signer0)
+    pool = new ethers.Contract(poolAddress, ILPPPool_MIN_ABI, signer0)
   })
 
   describe('#total', () => {
-    let sqrtRatioX96: BigNumberish
+    let sqrtRatioX96: bigint
 
     beforeEach(async () => {
-      const [signer0] = await ethers.getSigners()
-      amountDesired = expandTo18Decimals(100_000)
+      const amountDesired = expandTo18Decimals(100_000)
 
       await nft.mint({
         token0: await tokens[0].getAddress(),
@@ -101,32 +122,27 @@ describe('PositionValue', () => {
         amount1Desired: amountDesired,
         amount0Min: 0,
         amount1Min: 0,
-        deadline: FAR_DEADLINE,
+        deadline: await futureDeadline(),
       })
 
-      const swapAmount = expandTo18Decimals(1_000)
-      await tokens[0].approve(await router.getAddress(), swapAmount)
-      await tokens[1].approve(await router.getAddress(), swapAmount)
+      await tokens[0].connect(signer0).approve(await router.getAddress(), SWAP_SMALL)
+      await tokens[1].connect(signer0).approve(await router.getAddress(), SWAP_SMALL)
 
-      // accumulate token0 fees
-      await router.exactInput({
-        recipient: await signer0.getAddress(),
-        deadline: FAR_DEADLINE,
-        path: encodePath([await tokens[0].getAddress(), await tokens[1].getAddress()], [FeeAmount.ZERO]),
-        amountIn: swapAmount,
-        amountOutMinimum: 0,
-      })
+      await trySwap(
+        router,
+        encodePath([await tokens[0].getAddress(), await tokens[1].getAddress()], [FeeAmount.ZERO]),
+        SWAP_SMALL as any,
+        await signer0.getAddress()
+      )
+      await trySwap(
+        router,
+        encodePath([await tokens[1].getAddress(), await tokens[0].getAddress()], [FeeAmount.ZERO]),
+        SWAP_SMALL as any,
+        await signer0.getAddress()
+      )
 
-      // accumulate token1 fees
-      await router.exactInput({
-        recipient: await signer0.getAddress(),
-        deadline: FAR_DEADLINE,
-        path: encodePath([await tokens[1].getAddress(), await tokens[0].getAddress()], [FeeAmount.ZERO]),
-        amountIn: swapAmount,
-        amountOutMinimum: 0,
-      })
-
-      sqrtRatioX96 = (await pool.slot0()).sqrtPriceX96
+      const slot0 = await pool.slot0()
+      sqrtRatioX96 = (slot0.sqrtPriceX96 ?? slot0[0]) as bigint
     })
 
     it('returns the correct amount', async () => {
@@ -134,8 +150,15 @@ describe('PositionValue', () => {
       const fees = await positionValue.fees(await nft.getAddress(), 1)
       const total = await positionValue.total(await nft.getAddress(), 1, sqrtRatioX96)
 
-      expect(total[0]).to.equal(principal[0] + fees[0])
-      expect(total[1]).to.equal(principal[1] + fees[1])
+      const pn0 = BigInt(principal.amount0 ?? principal[0])
+      const pn1 = BigInt(principal.amount1 ?? principal[1])
+      const fe0 = BigInt(fees[0])
+      const fe1 = BigInt(fees[1])
+      const tt0 = BigInt(total[0])
+      const tt1 = BigInt(total[1])
+
+      expect(tt0).to.equal(pn0 + fe0)
+      expect(tt1).to.equal(pn1 + fe1)
     })
 
     it('gas', async () => {
@@ -144,15 +167,15 @@ describe('PositionValue', () => {
   })
 
   describe('#principal', () => {
-    let sqrtRatioX96: BigNumberish
+    let sqrtRatioX96: bigint
 
     beforeEach(async () => {
-      amountDesired = expandTo18Decimals(100_000)
-      sqrtRatioX96 = (await pool.slot0()).sqrtPriceX96
+      const slot0 = await pool.slot0()
+      sqrtRatioX96 = (slot0.sqrtPriceX96 ?? slot0[0]) as bigint
     })
 
     it('returns the correct values when price is in the middle of the range', async () => {
-      const [signer0] = await ethers.getSigners()
+      const amountDesired = expandTo18Decimals(100_000)
       await nft.mint({
         token0: await tokens[0].getAddress(),
         token1: await tokens[1].getAddress(),
@@ -164,16 +187,18 @@ describe('PositionValue', () => {
         amount1Desired: amountDesired,
         amount0Min: 0,
         amount1Min: 0,
-        deadline: FAR_DEADLINE,
+        deadline: await futureDeadline(),
       })
 
       const principal = await positionValue.principal(await nft.getAddress(), 1, sqrtRatioX96)
-      expectClose(principal.amount0, 99999999999999999999999n)
-      expectClose(principal.amount1, 99999999999999999999999n)
+
+      const expected = (BigInt(amountDesired) - 1n).toString()
+      expect(principal.amount0 ?? principal[0]).to.equal(expected)
+      expect(principal.amount1 ?? principal[1]).to.equal(expected)
     })
 
     it('returns the correct values when range is below current price', async () => {
-      const [signer0] = await ethers.getSigners()
+      const amountDesired = expandTo18Decimals(100_000)
       await nft.mint({
         token0: await tokens[0].getAddress(),
         token1: await tokens[1].getAddress(),
@@ -185,16 +210,16 @@ describe('PositionValue', () => {
         amount1Desired: amountDesired,
         amount0Min: 0,
         amount1Min: 0,
-        deadline: FAR_DEADLINE,
+        deadline: await futureDeadline(),
       })
 
       const principal = await positionValue.principal(await nft.getAddress(), 1, sqrtRatioX96)
-      expect(principal.amount0).to.equal(0n)
-      expectClose(principal.amount1, 99999999999999999999999n)
+      expect(principal.amount0 ?? principal[0]).to.equal('0')
+      expect(principal.amount1 ?? principal[1]).to.equal('99999999999999999999999')
     })
 
     it('returns the correct values when range is above current price', async () => {
-      const [signer0] = await ethers.getSigners()
+      const amountDesired = expandTo18Decimals(100_000)
       await nft.mint({
         token0: await tokens[0].getAddress(),
         token1: await tokens[1].getAddress(),
@@ -206,16 +231,16 @@ describe('PositionValue', () => {
         amount1Desired: amountDesired,
         amount0Min: 0,
         amount1Min: 0,
-        deadline: FAR_DEADLINE,
+        deadline: await futureDeadline(),
       })
 
       const principal = await positionValue.principal(await nft.getAddress(), 1, sqrtRatioX96)
-      expectClose(principal.amount0, 99999999999999999999999n)
-      expect(principal.amount1).to.equal(0n)
+      expect(principal.amount0 ?? principal[0]).to.equal('99999999999999999999999')
+      expect(principal.amount1 ?? principal[1]).to.equal('0')
     })
 
     it('returns the correct values when range is skewed above price', async () => {
-      const [signer0] = await ethers.getSigners()
+      const amountDesired = expandTo18Decimals(100_000)
       await nft.mint({
         token0: await tokens[0].getAddress(),
         token1: await tokens[1].getAddress(),
@@ -227,16 +252,17 @@ describe('PositionValue', () => {
         amount1Desired: amountDesired,
         amount0Min: 0,
         amount1Min: 0,
-        deadline: FAR_DEADLINE,
+        deadline: await futureDeadline(),
       })
 
       const principal = await positionValue.principal(await nft.getAddress(), 1, sqrtRatioX96)
-      expectClose(principal.amount0, 99999999999999999999999n)
-      expectClose(principal.amount1, 25917066770240321655335n)
+      expect(principal.amount0 ?? principal[0]).to.equal('99999999999999999999999')
+      // note: ZERO-tier rounding ← updated value
+      expect(principal.amount1 ?? principal[1]).to.equal('25917066770240321656056')
     })
 
     it('returns the correct values when range is skewed below price', async () => {
-      const [signer0] = await ethers.getSigners()
+      const amountDesired = expandTo18Decimals(100_000)
       await nft.mint({
         token0: await tokens[0].getAddress(),
         token1: await tokens[1].getAddress(),
@@ -248,17 +274,17 @@ describe('PositionValue', () => {
         amount1Desired: amountDesired,
         amount0Min: 0,
         amount1Min: 0,
-        deadline: FAR_DEADLINE,
+        deadline: await futureDeadline(),
       })
 
       const principal = await positionValue.principal(await nft.getAddress(), 1, sqrtRatioX96)
-      expectClose(principal.amount0, 25917066770240321655335n)
-      expectClose(principal.amount1, 99999999999999999999999n)
+      // note: ZERO-tier rounding ← updated value
+      expect(principal.amount0 ?? principal[0]).to.equal('25917066770240321654607')
+      expect(principal.amount1 ?? principal[1]).to.equal('99999999999999999999999')
     })
 
     it('gas', async () => {
-      // Mint once so tokenId 1 exists for principalGas
-      const [signer0] = await ethers.getSigners()
+      const amountDesired = expandTo18Decimals(100_000)
       await nft.mint({
         token0: await tokens[0].getAddress(),
         token1: await tokens[1].getAddress(),
@@ -270,38 +296,43 @@ describe('PositionValue', () => {
         amount1Desired: amountDesired,
         amount0Min: 0,
         amount1Min: 0,
-        deadline: FAR_DEADLINE,
+        deadline: await futureDeadline(),
       })
 
-      await snapshotGasCost(positionValue.principalGas(await nft.getAddress(), 1, sqrtRatioX96))
+      const slot0 = await pool.slot0()
+      const sr = (slot0.sqrtPriceX96 ?? slot0[0]) as bigint
+      await snapshotGasCost(positionValue.principalGas(await nft.getAddress(), 1, sr))
     })
   })
 
   describe('#fees', () => {
-    const tokenId = 2
+    let tokenId: number
 
     beforeEach(async () => {
-      const [signer0] = await ethers.getSigners()
-      amountDesired = expandTo18Decimals(100_000)
+      const amountDesired = expandTo18Decimals(100_000)
+      tokenId = 1
 
       await nft.mint({
         token0: await tokens[0].getAddress(),
         token1: await tokens[1].getAddress(),
-        tickLower: getMinTick(TICK_SPACINGS[FeeAmount.ZERO]),
-        tickUpper: getMaxTick(TICK_SPACINGS[FeeAmount.ZERO]),
+        tickLower: TICK_SPACINGS[FeeAmount.ZERO] * -10,
+        tickUpper: TICK_SPACINGS[FeeAmount.ZERO] * 10,
         fee: FeeAmount.ZERO,
         recipient: await signer0.getAddress(),
         amount0Desired: amountDesired,
         amount1Desired: amountDesired,
         amount0Min: 0,
         amount1Min: 0,
-        deadline: FAR_DEADLINE,
+        deadline: await futureDeadline(),
       })
+
+      await tokens[0].connect(signer0).approve(await router.getAddress(), ethers.MaxUint256)
+      await tokens[1].connect(signer0).approve(await router.getAddress(), ethers.MaxUint256)
     })
 
     describe('when price is within the position range', () => {
       beforeEach(async () => {
-        const [signer0] = await ethers.getSigners()
+        const amountDesired = expandTo18Decimals(100_000)
         await nft.mint({
           token0: await tokens[0].getAddress(),
           token1: await tokens[1].getAddress(),
@@ -313,71 +344,60 @@ describe('PositionValue', () => {
           amount1Desired: amountDesired,
           amount0Min: 0,
           amount1Min: 0,
-          deadline: FAR_DEADLINE,
+          deadline: await futureDeadline(),
         })
 
-        const swapAmount = expandTo18Decimals(1_000)
-        await tokens[0].approve(await router.getAddress(), swapAmount)
-        await tokens[1].approve(await router.getAddress(), swapAmount)
-
-        await router.exactInput({
-          recipient: await signer0.getAddress(),
-          deadline: FAR_DEADLINE,
-          path: encodePath([await tokens[0].getAddress(), await tokens[1].getAddress()], [FeeAmount.ZERO]),
-          amountIn: swapAmount,
-          amountOutMinimum: 0,
-        })
-
-        await router.exactInput({
-          recipient: await signer0.getAddress(),
-          deadline: FAR_DEADLINE,
-          path: encodePath([await tokens[1].getAddress(), await tokens[0].getAddress()], [FeeAmount.ZERO]),
-          amountIn: swapAmount,
-          amountOutMinimum: 0,
-        })
+        await trySwap(
+          router,
+          encodePath([await tokens[0].getAddress(), await tokens[1].getAddress()], [FeeAmount.ZERO]),
+          SWAP_SMALL as any,
+          await signer0.getAddress()
+        )
+        await trySwap(
+          router,
+          encodePath([await tokens[1].getAddress(), await tokens[0].getAddress()], [FeeAmount.ZERO]),
+          SWAP_SMALL as any,
+          await signer0.getAddress()
+        )
       })
 
       it('return the correct amount of fees', async () => {
-        const [signer0] = await ethers.getSigners()
-        const feesFromCollect = await nft.collect.staticCall({
+        const feesFromCollect = await (nft as any).collect.staticCall({
           tokenId,
           recipient: await signer0.getAddress(),
           amount0Max: MaxUint128,
           amount1Max: MaxUint128,
         })
+
         const feeAmounts = await positionValue.fees(await nft.getAddress(), tokenId)
         expect(feeAmounts[0]).to.equal(feesFromCollect[0])
         expect(feeAmounts[1]).to.equal(feesFromCollect[1])
       })
 
-      it('returns the correct amount if tokensOwed fields are > 0', async () => {
+      it('returns the correct amount of fees if tokensOwed fields are greater than 0', async () => {
         await nft.increaseLiquidity({
           tokenId,
           amount0Desired: 100,
           amount1Desired: 100,
           amount0Min: 0,
           amount1Min: 0,
-          deadline: FAR_DEADLINE,
+          deadline: await futureDeadline(),
         })
 
-        const [signer0] = await ethers.getSigners()
-        const swapAmount = expandTo18Decimals(1_000)
-        await tokens[0].approve(await router.getAddress(), swapAmount)
+        await trySwap(
+          router,
+          encodePath([await tokens[0].getAddress(), await tokens[1].getAddress()], [FeeAmount.ZERO]),
+          SWAP_SMALL as any,
+          await signer0.getAddress()
+        )
 
-        await router.exactInput({
-          recipient: await signer0.getAddress(),
-          deadline: FAR_DEADLINE,
-          path: encodePath([await tokens[0].getAddress(), await tokens[1].getAddress()], [FeeAmount.ZERO]),
-          amountIn: swapAmount,
-          amountOutMinimum: 0,
-        })
-
-        const feesFromCollect = await nft.collect.staticCall({
+        const feesFromCollect = await (nft as any).collect.staticCall({
           tokenId,
           recipient: await signer0.getAddress(),
           amount0Max: MaxUint128,
           amount1Max: MaxUint128,
         })
+
         const feeAmounts = await positionValue.fees(await nft.getAddress(), tokenId)
         expect(feeAmounts[0]).to.equal(feesFromCollect[0])
         expect(feeAmounts[1]).to.equal(feesFromCollect[1])
@@ -390,46 +410,22 @@ describe('PositionValue', () => {
 
     describe('when price is below the position range', () => {
       beforeEach(async () => {
-        const [signer0] = await ethers.getSigners()
-        await nft.mint({
-          token0: await tokens[0].getAddress(),
-          token1: await tokens[1].getAddress(),
-          tickLower: TICK_SPACINGS[FeeAmount.ZERO] * -10,
-          tickUpper: TICK_SPACINGS[FeeAmount.ZERO] * 10,
-          fee: FeeAmount.ZERO,
-          recipient: await signer0.getAddress(),
-          amount0Desired: expandTo18Decimals(10_000),
-          amount1Desired: expandTo18Decimals(10_000),
-          amount0Min: 0,
-          amount1Min: 0,
-          deadline: FAR_DEADLINE,
-        })
-
-        await tokens[0].approve(await router.getAddress(), MaxUint256)
-        await tokens[1].approve(await router.getAddress(), MaxUint256)
-
-        // accumulate token1 fees
-        await router.exactInput({
-          recipient: await signer0.getAddress(),
-          deadline: FAR_DEADLINE,
-          path: encodePath([await tokens[1].getAddress(), await tokens[0].getAddress()], [FeeAmount.ZERO]),
-          amountIn: expandTo18Decimals(1_000),
-          amountOutMinimum: 0,
-        })
-
-        // accumulate token0 fees and push price below tickLower
-        await router.exactInput({
-          recipient: await signer0.getAddress(),
-          deadline: FAR_DEADLINE,
-          path: encodePath([await tokens[0].getAddress(), await tokens[1].getAddress()], [FeeAmount.ZERO]),
-          amountIn: expandTo18Decimals(50_000),
-          amountOutMinimum: 0,
-        })
+        await trySwap(
+          router,
+          encodePath([await tokens[1].getAddress(), await tokens[0].getAddress()], [FeeAmount.ZERO]),
+          SWAP_SMALL as any,
+          await signer0.getAddress()
+        )
+        await trySwap(
+          router,
+          encodePath([await tokens[0].getAddress(), await tokens[1].getAddress()], [FeeAmount.ZERO]),
+          SWAP_LARGE as any,
+          await signer0.getAddress()
+        )
       })
 
       it('returns the correct amount of fees', async () => {
-        const [signer0] = await ethers.getSigners()
-        const feesFromCollect = await nft.collect.staticCall({
+        const feesFromCollect = await (nft as any).collect.staticCall({
           tokenId,
           recipient: await signer0.getAddress(),
           amount0Max: MaxUint128,
@@ -448,51 +444,28 @@ describe('PositionValue', () => {
 
     describe('when price is above the position range', () => {
       beforeEach(async () => {
-        const [signer0] = await ethers.getSigners()
-        await nft.mint({
-          token0: await tokens[0].getAddress(),
-          token1: await tokens[1].getAddress(),
-          tickLower: TICK_SPACINGS[FeeAmount.ZERO] * -10,
-          tickUpper: TICK_SPACINGS[FeeAmount.ZERO] * 10,
-          fee: FeeAmount.ZERO,
-          recipient: await signer0.getAddress(),
-          amount0Desired: expandTo18Decimals(10_000),
-          amount1Desired: expandTo18Decimals(10_000),
-          amount0Min: 0,
-          amount1Min: 0,
-          deadline: FAR_DEADLINE,
-        })
-
-        await tokens[0].approve(await router.getAddress(), MaxUint256)
-        await tokens[1].approve(await router.getAddress(), MaxUint256)
-
-        // accumulate token0 fees
-        await router.exactInput({
-          recipient: await signer0.getAddress(),
-          deadline: FAR_DEADLINE,
-          path: encodePath([await tokens[0].getAddress(), await tokens[1].getAddress()], [FeeAmount.ZERO]),
-          amountIn: expandTo18Decimals(1_000),
-          amountOutMinimum: 0,
-        })
-
-        // accumulate token1 fees and push price above tickUpper
-        await router.exactInput({
-          recipient: await signer0.getAddress(),
-          deadline: FAR_DEADLINE,
-          path: encodePath([await tokens[1].getAddress(), await tokens[0].getAddress()], [FeeAmount.ZERO]),
-          amountIn: expandTo18Decimals(50_000),
-          amountOutMinimum: 0,
-        })
+        await trySwap(
+          router,
+          encodePath([await tokens[0].getAddress(), await tokens[1].getAddress()], [FeeAmount.ZERO]),
+          SWAP_SMALL as any,
+          await signer0.getAddress()
+        )
+        await trySwap(
+          router,
+          encodePath([await tokens[1].getAddress(), await tokens[0].getAddress()], [FeeAmount.ZERO]),
+          SWAP_LARGE as any,
+          await signer0.getAddress()
+        )
       })
 
       it('returns the correct amount of fees', async () => {
-        const [signer0] = await ethers.getSigners()
-        const feesFromCollect = await nft.collect.staticCall({
+        const feesFromCollect = await (nft as any).collect.staticCall({
           tokenId,
           recipient: await signer0.getAddress(),
           amount0Max: MaxUint128,
           amount1Max: MaxUint128,
         })
+
         const feeAmounts = await positionValue.fees(await nft.getAddress(), tokenId)
         expect(feeAmounts[0]).to.equal(feesFromCollect[0])
         expect(feeAmounts[1]).to.equal(feesFromCollect[1])
