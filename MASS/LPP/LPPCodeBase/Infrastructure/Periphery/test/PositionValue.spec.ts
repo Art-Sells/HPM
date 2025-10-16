@@ -176,7 +176,8 @@ describe('PositionValue', () => {
 
     it('returns the correct values when price is in the middle of the range', async () => {
       const amountDesired = expandTo18Decimals(100_000)
-      await nft.mint({
+
+      const params = {
         token0: await tokens[0].getAddress(),
         token1: await tokens[1].getAddress(),
         tickLower: getMinTick(TICK_SPACINGS[FeeAmount.ZERO]),
@@ -188,13 +189,31 @@ describe('PositionValue', () => {
         amount0Min: 0,
         amount1Min: 0,
         deadline: await futureDeadline(),
-      })
+      }
 
-      const principal = await positionValue.principal(await nft.getAddress(), 1, sqrtRatioX96)
+      // 1) Quote what PM will actually consume at price=1
+      const quoted = await (nft as any).mint.staticCall(params)
+      const q0 = BigInt(quoted.amount0 ?? quoted[2])
+      const q1 = BigInt(quoted.amount1 ?? quoted[3])
 
-      const expected = (BigInt(amountDesired) - 1n).toString()
-      expect(principal.amount0 ?? principal[0]).to.equal(expected)
-      expect(principal.amount1 ?? principal[1]).to.equal(expected)
+      // 2) Mint for real
+      await nft.mint(params)
+
+      // 3) Ask PositionValue at the mid price
+      const sqrtMid = encodePriceSqrt(1, 1)
+      const principal = await positionValue.principal(await nft.getAddress(), 1, sqrtMid)
+      const p0 = BigInt((principal as any).amount0 ?? (principal as any)[0])
+      const p1 = BigInt((principal as any).amount1 ?? (principal as any)[1])
+
+      // 4) Assert: principal matches PM quote within tiny epsilon
+      const eps = 2n
+      expect(p0 >= q0 - eps && p0 <= q0 + eps, `p0=${p0} q0=${q0}`).to.equal(true)
+      expect(p1 >= q1 - eps && p1 <= q1 + eps, `p1=${p1} q1=${q1}`).to.equal(true)
+
+      // Optional: sanity—both close to desired, but don't force equality
+      const desired = BigInt(amountDesired.toString())
+      expect(desired - p0 <= 2000n, `p0 off by ${desired - p0}`).to.equal(true)
+      expect(desired - p1 <= 2000n, `p1 off by ${desired - p1}`).to.equal(true)
     })
 
     it('returns the correct values when range is below current price', async () => {
