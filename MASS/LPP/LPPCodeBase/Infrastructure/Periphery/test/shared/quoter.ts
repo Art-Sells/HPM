@@ -1,8 +1,9 @@
-import { Wallet } from 'ethers'
-import { MockTimeNonfungiblePositionManager } from '../../typechain-types/periphery'
-import { FeeAmount, TICK_SPACINGS } from './constants'
-import { encodePriceSqrt } from './encodePriceSqrt'
-import { getMaxTick, getMinTick } from './ticks'
+import type { Wallet } from 'ethers'
+import type { MockTimeNonfungiblePositionManager } from '../../typechain-types/periphery'
+import { FeeAmount, TICK_SPACINGS } from './constants.ts'
+import { encodePriceSqrt } from './encodePriceSqrt.ts'
+import { getMaxTick, getMinTick } from './ticks.ts'
+import { expandTo18Decimals } from './expandTo18Decimals.ts'
 
 export async function createPool(
   nft: MockTimeNonfungiblePositionManager,
@@ -50,8 +51,8 @@ export async function createPoolWithMultiplePositions(
     tickLower: getMinTick(TICK_SPACINGS[FeeAmount.ZERO]),
     tickUpper: getMaxTick(TICK_SPACINGS[FeeAmount.ZERO]),
     recipient: wallet.address,
-    amount0Desired: 1000000,
-    amount1Desired: 1000000,
+    amount0Desired: expandTo18Decimals(1_000_000),
+    amount1Desired: expandTo18Decimals(1_000_000),
     amount0Min: 0,
     amount1Min: 0,
     deadline: 1,
@@ -66,8 +67,8 @@ export async function createPoolWithMultiplePositions(
     tickLower: -60,
     tickUpper: 60,
     recipient: wallet.address,
-    amount0Desired: 100,
-    amount1Desired: 100,
+    amount0Desired: expandTo18Decimals(1_000_000),
+    amount1Desired: expandTo18Decimals(1_000_000),
     amount0Min: 0,
     amount1Min: 0,
     deadline: 1,
@@ -82,8 +83,8 @@ export async function createPoolWithMultiplePositions(
     tickLower: -120,
     tickUpper: 120,
     recipient: wallet.address,
-    amount0Desired: 100,
-    amount1Desired: 100,
+    amount0Desired: expandTo18Decimals(1_000_000),
+    amount1Desired: expandTo18Decimals(1_000_000),
     amount0Min: 0,
     amount1Min: 0,
     deadline: 1,
@@ -110,8 +111,8 @@ export async function createPoolWithZeroTickInitialized(
     tickLower: getMinTick(TICK_SPACINGS[FeeAmount.ZERO]),
     tickUpper: getMaxTick(TICK_SPACINGS[FeeAmount.ZERO]),
     recipient: wallet.address,
-    amount0Desired: 1000000,
-    amount1Desired: 1000000,
+    amount0Desired: expandTo18Decimals(1_000_000),
+    amount1Desired: expandTo18Decimals(1_000_000),
     amount0Min: 0,
     amount1Min: 0,
     deadline: 1,
@@ -126,8 +127,8 @@ export async function createPoolWithZeroTickInitialized(
     tickLower: 0,
     tickUpper: 60,
     recipient: wallet.address,
-    amount0Desired: 100,
-    amount1Desired: 100,
+    amount0Desired: expandTo18Decimals(1_000_000),
+    amount1Desired: expandTo18Decimals(1_000_000),
     amount0Min: 0,
     amount1Min: 0,
     deadline: 1,
@@ -142,8 +143,8 @@ export async function createPoolWithZeroTickInitialized(
     tickLower: -120,
     tickUpper: 0,
     recipient: wallet.address,
-    amount0Desired: 100,
-    amount1Desired: 100,
+    amount0Desired: expandTo18Decimals(1_000_000),
+    amount1Desired: expandTo18Decimals(1_000_000),
     amount0Min: 0,
     amount1Min: 0,
     deadline: 1,
