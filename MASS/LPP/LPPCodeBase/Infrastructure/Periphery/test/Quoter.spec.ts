@@ -13,16 +13,34 @@ import type {
 import completeFixture from './shared/completeFixture.ts'
 import { FeeAmount } from './shared/constants.ts'
 import { expandTo18Decimals } from './shared/expandTo18Decimals.ts'
-import { createPool } from './shared/quoter.ts'
+import { encodePath } from './shared/path.ts'
+import {
+  createPoolWithMultiplePositions, // <-- use the beefy-liquidity helper
+} from './shared/quoter.ts'
 
-// -----------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------
 // ZERO fee only
-// -----------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------
 const FEE = FeeAmount.ZERO as 0
 
-// Small quotes to keep things simple
+// Use tiny amounts for quoting (liquidity is big, so this won't round to 0)
 const IN_SMALL = 10n
 const OUT_ONE = 1n
+
+async function getFactoryAddressFromNft(
+  nft: MockTimeNonfungiblePositionManager,
+  signer: any
+): Promise<string> {
+  // Some builds expose factory() directly; otherwise read via a tiny ABI
+  try {
+    // @ts-ignore
+    return await (nft as any).factory()
+  } catch {
+    const MIN_ABI = ['function factory() view returns (address)'] as const
+    const c = new ethers.Contract(await nft.getAddress(), MIN_ABI, signer)
+    return await c.factory()
+  }
+}
 
 describe('SupplicateQuoter', () => {
   let signer0: any
@@ -45,11 +63,11 @@ describe('SupplicateQuoter', () => {
       await token.connect(signer0).transfer(await trader.getAddress(), expandTo18Decimals(1_000_000))
     }
 
+    // IMPORTANT: deploy quoter with the exact same factory the NFT manager uses
+    const factoryAddr = await getFactoryAddressFromNft(nft, signer0)
+
     const QuoterFactory = await ethers.getContractFactory('SupplicateQuoter')
-    const quoterImpl = await QuoterFactory.deploy(
-      await factory.getAddress(),
-      await weth9.getAddress()
-    )
+    const quoterImpl = await QuoterFactory.deploy(factoryAddr, await weth9.getAddress())
     await quoterImpl.waitForDeployment()
 
     const quoter = quoterImpl as unknown as SupplicateQuoter
@@ -58,117 +76,167 @@ describe('SupplicateQuoter', () => {
 
   let nft: MockTimeNonfungiblePositionManager
   let tokens: [TestERC20, TestERC20, TestERC20]
-  let quoter: any
+  let quoter: SupplicateQuoter
 
   beforeEach(async () => {
     ;({ tokens, nft, quoter } = await loadFixture(fixture))
 
-    // Create ZERO-fee pools 0-1 and 1-2
+    // Seed TWO pools with **large, multi-band** liquidity (all ZERO fee)
     const s0 = (await ethers.getSigners())[0] as any
-    await createPool(nft, s0, await tokens[0].getAddress(), await tokens[1].getAddress())
-    await createPool(nft, s0, await tokens[1].getAddress(), await tokens[2].getAddress())
+    await createPoolWithMultiplePositions(
+      nft,
+      s0,
+      await tokens[0].getAddress(),
+      await tokens[1].getAddress()
+    )
+    await createPoolWithMultiplePositions(
+      nft,
+      s0,
+      await tokens[1].getAddress(),
+      await tokens[2].getAddress()
+    )
   })
 
-  // -----------------------------------------------------------------------------
-  // EXACT INPUT via chaining single-hop quotes; pass sqrtPriceLimitX96 = 0n so
-  // the Quoter picks the correct extreme internally.
-  // -----------------------------------------------------------------------------
+  // ------------------------------------------------------------------------------------
+  // PATH-BASED (contract aggregates the hops)
+  // ------------------------------------------------------------------------------------
   describe('#quoteExactInput', () => {
     it('0 -> 1 (> 0)', async () => {
-      const t0 = await tokens[0].getAddress()
-      const t1 = await tokens[1].getAddress()
-
-      const out01 = await quoter.quoteExactInputSingle.staticCall(t0, t1, FEE, IN_SMALL, 0n)
+      const out01 = await quoter.quoteExactInput.staticCall(
+        encodePath(
+          [await tokens[0].getAddress(), await tokens[1].getAddress()],
+          [FEE]
+        ),
+        IN_SMALL
+      )
       expect(out01 > 0n).to.equal(true)
     })
 
     it('1 -> 0 is ~symmetric to 0 -> 1', async () => {
-      const t0 = await tokens[0].getAddress()
-      const t1 = await tokens[1].getAddress()
-
-      const out10 = await quoter.quoteExactInputSingle.staticCall(t1, t0, FEE, IN_SMALL, 0n)
+      const out10 = await quoter.quoteExactInput.staticCall(
+        encodePath(
+          [await tokens[1].getAddress(), await tokens[0].getAddress()],
+          [FEE]
+        ),
+        IN_SMALL
+      )
       expect(out10 > 0n).to.equal(true)
     })
 
     it('0 -> 1 -> 2 (> 0)', async () => {
-      const t0 = await tokens[0].getAddress()
-      const t1 = await tokens[1].getAddress()
-      const t2 = await tokens[2].getAddress()
-
-      const mid = await quoter.quoteExactInputSingle.staticCall(t0, t1, FEE, IN_SMALL, 0n)
-      const out  = await quoter.quoteExactInputSingle.staticCall(t1, t2, FEE, mid,      0n)
-      expect(out > 0n).to.equal(true)
+      const out012 = await quoter.quoteExactInput.staticCall(
+        encodePath(
+          [
+            await tokens[0].getAddress(),
+            await tokens[1].getAddress(),
+            await tokens[2].getAddress(),
+          ],
+          [FEE, FEE]
+        ),
+        IN_SMALL
+      )
+      expect(out012 > 0n).to.equal(true)
     })
 
     it('2 -> 1 -> 0 is ~symmetric to 0 -> 1 -> 2', async () => {
-      const t0 = await tokens[0].getAddress()
-      const t1 = await tokens[1].getAddress()
-      const t2 = await tokens[2].getAddress()
-
-      const mid = await quoter.quoteExactInputSingle.staticCall(t2, t1, FEE, IN_SMALL, 0n)
-      const out  = await quoter.quoteExactInputSingle.staticCall(t1, t0, FEE, mid,      0n)
-      expect(out > 0n).to.equal(true)
+      const out210 = await quoter.quoteExactInput.staticCall(
+        encodePath(
+          [
+            await tokens[2].getAddress(),
+            await tokens[1].getAddress(),
+            await tokens[0].getAddress(),
+          ],
+          [FEE, FEE]
+        ),
+        IN_SMALL
+      )
+      expect(out210 > 0n).to.equal(true)
     })
   })
 
-  // -----------------------------------------------------------------------------
-  // EXACT OUTPUT via chaining single-hop quotes; pass sqrtPriceLimitX96 = 0n so
-  // the Quoter picks the correct extreme internally.
-  // -----------------------------------------------------------------------------
   describe('#quoteExactOutput', () => {
     it('0 -> 1 (finite input for 1 out)', async () => {
-      const t0 = await tokens[0].getAddress()
-      const t1 = await tokens[1].getAddress()
-
-      const need = await quoter.quoteExactOutputSingle.staticCall(t0, t1, FEE, OUT_ONE, 0n)
-      expect(need > 0n).to.equal(true)
+      // exactOutput path is OUT->IN
+      const in01 = await quoter.quoteExactOutput.staticCall(
+        encodePath(
+          [await tokens[1].getAddress(), await tokens[0].getAddress()],
+          [FEE]
+        ),
+        OUT_ONE
+      )
+      expect(in01 > 0n).to.equal(true)
     })
 
     it('1 -> 0 input is ~symmetric to 0 -> 1', async () => {
-      const t0 = await tokens[0].getAddress()
-      const t1 = await tokens[1].getAddress()
-
-      const need = await quoter.quoteExactOutputSingle.staticCall(t1, t0, FEE, OUT_ONE, 0n)
-      expect(need > 0n).to.equal(true)
+      const in10 = await quoter.quoteExactOutput.staticCall(
+        encodePath(
+          [await tokens[0].getAddress(), await tokens[1].getAddress()],
+          [FEE]
+        ),
+        OUT_ONE
+      )
+      expect(in10 > 0n).to.equal(true)
     })
 
     it('0 -> 1 -> 2 (finite input for 1 out)', async () => {
-      const t0 = await tokens[0].getAddress()
-      const t1 = await tokens[1].getAddress()
-      const t2 = await tokens[2].getAddress()
-
-      const needT1 = await quoter.quoteExactOutputSingle.staticCall(t1, t2, FEE, OUT_ONE, 0n)
-      const needT0 = await quoter.quoteExactOutputSingle.staticCall(t0, t1, FEE, needT1, 0n)
-      expect(needT0 > 0n).to.equal(true)
+      const in012 = await quoter.quoteExactOutput.staticCall(
+        encodePath(
+          [
+            await tokens[2].getAddress(),
+            await tokens[1].getAddress(),
+            await tokens[0].getAddress(),
+          ],
+          [FEE, FEE]
+        ),
+        OUT_ONE
+      )
+      expect(in012 > 0n).to.equal(true)
     })
 
     it('2 -> 1 -> 0 input is ~symmetric to 0 -> 1 -> 2', async () => {
-      const t0 = await tokens[0].getAddress()
-      const t1 = await tokens[1].getAddress()
-      const t2 = await tokens[2].getAddress()
-
-      const needT1 = await quoter.quoteExactOutputSingle.staticCall(t1, t0, FEE, OUT_ONE, 0n)
-      const needT2 = await quoter.quoteExactOutputSingle.staticCall(t2, t1, FEE, needT1, 0n)
-      expect(needT2 > 0n).to.equal(true)
+      const in210 = await quoter.quoteExactOutput.staticCall(
+        encodePath(
+          [
+            await tokens[0].getAddress(),
+            await tokens[1].getAddress(),
+            await tokens[2].getAddress(),
+          ],
+          [FEE, FEE]
+        ),
+        OUT_ONE
+      )
+      expect(in210 > 0n).to.equal(true)
     })
   })
 
-  // -----------------------------------------------------------------------------
+  // ------------------------------------------------------------------------------------
   // SINGLE-HOP sanity
-  // -----------------------------------------------------------------------------
+  // ------------------------------------------------------------------------------------
   describe('#single-hop sanity', () => {
     it('quoteExactInputSingle 0 -> 1 (> 0)', async () => {
       const t0 = await tokens[0].getAddress()
       const t1 = await tokens[1].getAddress()
-      const out = await quoter.quoteExactInputSingle.staticCall(t0, t1, FEE, IN_SMALL, 0n)
+      const out = await quoter.quoteExactInputSingle.staticCall(
+        t0,
+        t1,
+        FEE,
+        IN_SMALL,
+        0n // Quoter maps 0 to MIN+1 / MAX-1 internally
+      )
       expect(out > 0n).to.equal(true)
     })
 
     it('quoteExactOutputSingle 1 -> 0 (> 0)', async () => {
       const t0 = await tokens[0].getAddress()
       const t1 = await tokens[1].getAddress()
-      const need = await quoter.quoteExactOutputSingle.staticCall(t1, t0, FEE, OUT_ONE, 0n)
-      expect(need > 0n).to.equal(true)
+      const _in = await quoter.quoteExactOutputSingle.staticCall(
+        t1,
+        t0,
+        FEE,
+        OUT_ONE,
+        0n // likewise uses internal bound
+      )
+      expect(_in > 0n).to.equal(true)
     })
   })
 })
