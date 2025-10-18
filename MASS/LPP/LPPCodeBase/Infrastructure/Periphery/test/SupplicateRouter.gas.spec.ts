@@ -15,7 +15,6 @@ import type {
   MockTimeSupplicateRouter,
   TestERC20,
   TestLPPCallee,
-  TestLPPCallee__factory
 } from '../typechain-types/periphery'
 import type { ILPPPool } from '../typechain-types/protocol'
 
