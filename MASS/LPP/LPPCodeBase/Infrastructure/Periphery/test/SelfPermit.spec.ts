@@ -1,198 +1,268 @@
-import { constants, Wallet } from 'ethers'
-import { waffle, ethers } from 'hardhat'
+// test/SelfPermit.spec.ts
+import hre from 'hardhat'
+const { ethers } = hre
 
-import { Fixture } from 'ethereum-waffle'
-import { SelfPermitTest, TestERC20PermitAllowed } from '../typechain'
+import { loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { expect } from 'chai'
-import { getPermitSignature } from './shared/permit'
+import { MaxUint256 } from 'ethers'
+import type { Signer } from 'ethers'
+
+import type { SelfPermitTest, TestERC20PermitAllowed } from '../typechain-types/periphery'
+import { getPermitSignature, getPermitAllowedSignature } from './shared/permit.ts'
 
 describe('SelfPermit', () => {
-  let wallet: Wallet
-  let other: Wallet
+  let wallet: Signer
+  let other: Signer
 
-  const fixture: Fixture<{
-    token: TestERC20PermitAllowed
-    selfPermitTest: SelfPermitTest
-  }> = async (wallets, provider) => {
+  async function fixture() {
+    const signers = await ethers.getSigners()
+    ;[wallet, other] = signers
+
     const tokenFactory = await ethers.getContractFactory('TestERC20PermitAllowed')
-    const token = (await tokenFactory.deploy(0)) as TestERC20PermitAllowed
+    const tokenImpl = await tokenFactory.deploy(0)
+    await tokenImpl.waitForDeployment()
+    const token = tokenImpl as unknown as TestERC20PermitAllowed
 
     const selfPermitTestFactory = await ethers.getContractFactory('SelfPermitTest')
-    const selfPermitTest = (await selfPermitTestFactory.deploy()) as SelfPermitTest
+    const selfPermitTestImpl = await selfPermitTestFactory.deploy()
+    await selfPermitTestImpl.waitForDeployment()
+    const selfPermitTest = selfPermitTestImpl as unknown as SelfPermitTest
 
-    return {
-      token,
-      selfPermitTest,
-    }
+    return { token, selfPermitTest }
   }
 
   let token: TestERC20PermitAllowed
   let selfPermitTest: SelfPermitTest
 
-  let loadFixture: ReturnType<typeof waffle.createFixtureLoader>
-
-  before('create fixture loader', async () => {
-    const wallets = await (ethers as any).getSigners()
-    ;[wallet, other] = wallets
-    loadFixture = waffle.createFixtureLoader(wallets)
-  })
-
-  beforeEach('load fixture', async () => {
+  beforeEach(async () => {
     ;({ token, selfPermitTest } = await loadFixture(fixture))
   })
 
-  it('#permit', async () => {
-    const value = 123
+  it('#permit (EIP-2612)', async () => {
+    const value = 123n
+    const owner = await wallet.getAddress()
+    const spender = await other.getAddress()
 
-    const { v, r, s } = await getPermitSignature(wallet, token, other.address, value)
+    const sig = await getPermitSignature(wallet as any, token as any, spender, value)
 
-    expect(await token.allowance(wallet.address, other.address)).to.be.eq(0)
-    await token['permit(address,address,uint256,uint256,uint8,bytes32,bytes32)'](
-      wallet.address,
-      other.address,
+    expect(await token.allowance(owner, spender)).to.eq(0n)
+
+    const tokenAny = token as any
+    await tokenAny['permit(address,address,uint256,uint256,uint8,bytes32,bytes32)'](
+      owner,
+      spender,
       value,
-      constants.MaxUint256,
-      v,
-      r,
-      s
+      MaxUint256,
+      sig.v,
+      sig.r,
+      sig.s
     )
-    expect(await token.allowance(wallet.address, other.address)).to.be.eq(value)
+
+    expect(await token.allowance(owner, spender)).to.eq(value)
   })
 
-  describe('#selfPermit', () => {
-    const value = 456
+  describe('#selfPermit (EIP-2612)', () => {
+    const value = 456n
 
     it('works', async () => {
-      const { v, r, s } = await getPermitSignature(wallet, token, selfPermitTest.address, value)
+      const owner = await wallet.getAddress()
+      const testAddr = await selfPermitTest.getAddress()
+      const tokenAddr = await token.getAddress()
 
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(0)
-      await selfPermitTest.selfPermit(token.address, value, constants.MaxUint256, v, r, s)
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(value)
+      const sig = await getPermitSignature(wallet as any, token as any, testAddr, value)
+
+      expect(await token.allowance(owner, testAddr)).to.eq(0n)
+      await selfPermitTest.selfPermit(tokenAddr, value, MaxUint256, sig.v, sig.r, sig.s)
+      expect(await token.allowance(owner, testAddr)).to.eq(value)
     })
 
     it('fails if permit is submitted externally', async () => {
-      const { v, r, s } = await getPermitSignature(wallet, token, selfPermitTest.address, value)
+      const owner = await wallet.getAddress()
+      const testAddr = await selfPermitTest.getAddress()
+      const tokenAddr = await token.getAddress()
 
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(0)
-      await token['permit(address,address,uint256,uint256,uint8,bytes32,bytes32)'](
-        wallet.address,
-        selfPermitTest.address,
+      const sig = await getPermitSignature(wallet as any, token as any, testAddr, value)
+
+      const tokenAny = token as any
+      await tokenAny['permit(address,address,uint256,uint256,uint8,bytes32,bytes32)'](
+        owner,
+        testAddr,
         value,
-        constants.MaxUint256,
-        v,
-        r,
-        s
+        MaxUint256,
+        sig.v,
+        sig.r,
+        sig.s
       )
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(value)
+      expect(await token.allowance(owner, testAddr)).to.eq(value)
 
-      await expect(selfPermitTest.selfPermit(token.address, value, constants.MaxUint256, v, r, s)).to.be.revertedWith(
-        'ERC20Permit: invalid signature'
-      )
+      await expect(
+        selfPermitTest.selfPermit(tokenAddr, value, MaxUint256, sig.v, sig.r, sig.s)
+      ).to.be.revertedWith('ERC20Permit: invalid signature')
     })
   })
 
-  describe('#selfPermitIfNecessary', () => {
-    const value = 789
+  describe('#selfPermitIfNecessary (EIP-2612)', () => {
+    const value = 789n
 
     it('works', async () => {
-      const { v, r, s } = await getPermitSignature(wallet, token, selfPermitTest.address, value)
+      const owner = await wallet.getAddress()
+      const testAddr = await selfPermitTest.getAddress()
+      const tokenAddr = await token.getAddress()
 
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(0)
-      await selfPermitTest.selfPermitIfNecessary(token.address, value, constants.MaxUint256, v, r, s)
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(value)
+      const sig = await getPermitSignature(wallet as any, token as any, testAddr, value)
+
+      expect(await token.allowance(owner, testAddr)).to.eq(0n)
+      await selfPermitTest.selfPermitIfNecessary(tokenAddr, value, MaxUint256, sig.v, sig.r, sig.s)
+      expect(await token.allowance(owner, testAddr)).to.eq(value)
     })
 
     it('does not fail if permit is submitted externally', async () => {
-      const { v, r, s } = await getPermitSignature(wallet, token, selfPermitTest.address, value)
+      const owner = await wallet.getAddress()
+      const testAddr = await selfPermitTest.getAddress()
+      const tokenAddr = await token.getAddress()
 
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(0)
-      await token['permit(address,address,uint256,uint256,uint8,bytes32,bytes32)'](
-        wallet.address,
-        selfPermitTest.address,
+      const sig = await getPermitSignature(wallet as any, token as any, testAddr, value)
+
+      const tokenAny = token as any
+      await tokenAny['permit(address,address,uint256,uint256,uint8,bytes32,bytes32)'](
+        owner,
+        testAddr,
         value,
-        constants.MaxUint256,
-        v,
-        r,
-        s
+        MaxUint256,
+        sig.v,
+        sig.r,
+        sig.s
       )
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(value)
+      expect(await token.allowance(owner, testAddr)).to.eq(value)
 
-      await selfPermitTest.selfPermitIfNecessary(token.address, value, constants.MaxUint256, v, r, s)
+      await selfPermitTest.selfPermitIfNecessary(tokenAddr, value, MaxUint256, sig.v, sig.r, sig.s)
     })
   })
 
-  describe('#selfPermitAllowed', () => {
+  // ───────────────────────────────────────────────────────────────────────────────
+  // DAI-style (allowed) permit
+  // ───────────────────────────────────────────────────────────────────────────────
+  describe('#selfPermitAllowed (DAI-style)', () => {
     it('works', async () => {
-      const { v, r, s } = await getPermitSignature(wallet, token, selfPermitTest.address, constants.MaxUint256)
+      const owner = await wallet.getAddress()
+      const testAddr = await selfPermitTest.getAddress()
+      const tokenAddr = await token.getAddress()
+      const currentNonce = await (token as any).nonces(owner)
 
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(0)
-      await expect(selfPermitTest.selfPermitAllowed(token.address, 0, constants.MaxUint256, v, r, s))
-        .to.emit(token, 'Approval')
-        .withArgs(wallet.address, selfPermitTest.address, constants.MaxUint256)
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(constants.MaxUint256)
+      const sig = await getPermitAllowedSignature(wallet as any, token, testAddr, {
+        nonce: BigInt(currentNonce),
+        expiry: MaxUint256,
+        allowed: true,
+      })
+
+      expect(await token.allowance(owner, testAddr)).to.eq(0n)
+      await expect(
+        selfPermitTest.selfPermitAllowed(tokenAddr, currentNonce, MaxUint256, sig.v, sig.r, sig.s)
+      )
+        .to.emit(token as any, 'Approval')
+        .withArgs(owner, testAddr, MaxUint256)
+
+      expect(await token.allowance(owner, testAddr)).to.eq(MaxUint256)
     })
 
     it('fails if permit is submitted externally', async () => {
-      const { v, r, s } = await getPermitSignature(wallet, token, selfPermitTest.address, constants.MaxUint256)
+      const owner = await wallet.getAddress()
+      const testAddr = await selfPermitTest.getAddress()
+      const currentNonce = await (token as any).nonces(owner)
 
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(0)
-      await token['permit(address,address,uint256,uint256,bool,uint8,bytes32,bytes32)'](
-        wallet.address,
-        selfPermitTest.address,
-        0,
-        constants.MaxUint256,
+      const sig = await getPermitAllowedSignature(wallet as any, token, testAddr, {
+        nonce: BigInt(currentNonce),
+        expiry: MaxUint256,
+        allowed: true,
+      })
+
+      const tokenAny = token as any
+      await tokenAny['permit(address,address,uint256,uint256,bool,uint8,bytes32,bytes32)'](
+        owner,
+        testAddr,
+        currentNonce,
+        MaxUint256,
         true,
-        v,
-        r,
-        s
+        sig.v,
+        sig.r,
+        sig.s
       )
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(constants.MaxUint256)
+      expect(await token.allowance(owner, testAddr)).to.eq(MaxUint256)
 
       await expect(
-        selfPermitTest.selfPermitAllowed(token.address, 0, constants.MaxUint256, v, r, s)
+        selfPermitTest.selfPermitAllowed(await token.getAddress(), currentNonce, MaxUint256, sig.v, sig.r, sig.s)
       ).to.be.revertedWith('TestERC20PermitAllowed::permit: wrong nonce')
     })
   })
 
-  describe('#selfPermitAllowedIfNecessary', () => {
+  describe('#selfPermitAllowedIfNecessary (DAI-style)', () => {
     it('works', async () => {
-      const { v, r, s } = await getPermitSignature(wallet, token, selfPermitTest.address, constants.MaxUint256)
+      const owner = await wallet.getAddress()
+      const testAddr = await selfPermitTest.getAddress()
+      const tokenAddr = await token.getAddress()
+      const currentNonce = await (token as any).nonces(owner)
 
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.eq(0)
-      await expect(selfPermitTest.selfPermitAllowedIfNecessary(token.address, 0, constants.MaxUint256, v, r, s))
-        .to.emit(token, 'Approval')
-        .withArgs(wallet.address, selfPermitTest.address, constants.MaxUint256)
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.eq(constants.MaxUint256)
+      const sig = await getPermitAllowedSignature(wallet as any, token, testAddr, {
+        nonce: BigInt(currentNonce),
+        expiry: MaxUint256,
+        allowed: true,
+      })
+
+      expect(await token.allowance(owner, testAddr)).to.eq(0n)
+      await expect(
+        selfPermitTest.selfPermitAllowedIfNecessary(tokenAddr, currentNonce, MaxUint256, sig.v, sig.r, sig.s)
+      )
+        .to.emit(token as any, 'Approval')
+        .withArgs(owner, testAddr, MaxUint256)
+
+      expect(await token.allowance(owner, testAddr)).to.eq(MaxUint256)
     })
 
     it('skips if already max approved', async () => {
-      const { v, r, s } = await getPermitSignature(wallet, token, selfPermitTest.address, constants.MaxUint256)
+      const owner = await wallet.getAddress()
+      const testAddr = await selfPermitTest.getAddress()
+      const tokenAddr = await token.getAddress()
 
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(0)
-      await token.approve(selfPermitTest.address, constants.MaxUint256)
+      await (token as any).approve(testAddr, MaxUint256)
+
+      const currentNonce = await (token as any).nonces(owner)
+      const sig = await getPermitAllowedSignature(wallet as any, token, testAddr, {
+        nonce: BigInt(currentNonce),
+        expiry: MaxUint256,
+        allowed: true,
+      })
+
       await expect(
-        selfPermitTest.selfPermitAllowedIfNecessary(token.address, 0, constants.MaxUint256, v, r, s)
-      ).to.not.emit(token, 'Approval')
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.eq(constants.MaxUint256)
+        selfPermitTest.selfPermitAllowedIfNecessary(tokenAddr, currentNonce, MaxUint256, sig.v, sig.r, sig.s)
+      ).to.not.emit(token as any, 'Approval')
+
+      expect(await token.allowance(owner, testAddr)).to.eq(MaxUint256)
     })
 
     it('does not fail if permit is submitted externally', async () => {
-      const { v, r, s } = await getPermitSignature(wallet, token, selfPermitTest.address, constants.MaxUint256)
+      const owner = await wallet.getAddress()
+      const testAddr = await selfPermitTest.getAddress()
+      const currentNonce = await (token as any).nonces(owner)
 
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(0)
-      await token['permit(address,address,uint256,uint256,bool,uint8,bytes32,bytes32)'](
-        wallet.address,
-        selfPermitTest.address,
-        0,
-        constants.MaxUint256,
+      const sig = await getPermitAllowedSignature(wallet as any, token, testAddr, {
+        nonce: BigInt(currentNonce),
+        expiry: MaxUint256,
+        allowed: true,
+      })
+
+      const tokenAny = token as any
+      await tokenAny['permit(address,address,uint256,uint256,bool,uint8,bytes32,bytes32)'](
+        owner,
+        testAddr,
+        currentNonce,
+        MaxUint256,
         true,
-        v,
-        r,
-        s
+        sig.v,
+        sig.r,
+        sig.s
       )
-      expect(await token.allowance(wallet.address, selfPermitTest.address)).to.be.eq(constants.MaxUint256)
 
-      await selfPermitTest.selfPermitAllowedIfNecessary(token.address, 0, constants.MaxUint256, v, r, s)
+      await selfPermitTest.selfPermitAllowedIfNecessary(await token.getAddress(), currentNonce, MaxUint256, sig.v, sig.r, sig.s)
     })
   })
 })
