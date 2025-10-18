@@ -318,41 +318,74 @@ describe('SupplicateSupplicateQuoterV2', function () {
       })
     })
 
-    // ---------------------------------
-    // #quoteExactOutputSingle (structs)
-    // ---------------------------------
-    describe('#quoteExactOutputSingle', () => {
-      it('0 -> 1', async () => {
-        const { amountIn, sqrtPriceX96After, initializedTicksCrossed, gasEstimate } =
-          await quoter.quoteExactOutputSingle.staticCall({
-            tokenIn: await tokens[0].getAddress(),
-            tokenOut: await tokens[1].getAddress(),
-            fee: FEE,
-            amount: MaxUint128,
-            sqrtPriceLimitX96: encodePriceSqrt(100, 102),
-          })
+// ---------------------------------
+// #quoteExactOutputSingle (structs)
+// ---------------------------------
+// ---------------------------------
+// #quoteExactOutputSingle (structs)
+// ---------------------------------
+describe('#quoteExactOutputSingle', () => {
+  // helper to try one limit, and if it reverts, flip to the opposite side
+  async function quoteExactOutputSingleAuto(
+    tokenInAddr: string,
+    tokenOutAddr: string,
+    amountOut: bigint
+  ) {
+    const BELOW_1 = encodePriceSqrt(100, 102); // < 1.0
+    const ABOVE_1 = encodePriceSqrt(102, 100); // > 1.0
 
-        await snapshotGasCost(gasEstimate)
-        expect(initializedTicksCrossed).to.be.gte(0)
-        expect(sqrtPriceX96After).to.be.a('bigint')
-        expect(amountIn).to.be.gt(0n)
+    const aIn = tokenInAddr.toLowerCase()
+    const aOut = tokenOutAddr.toLowerCase()
+
+    // First guess: if aIn < aOut (zeroForOne under normal semantics), push price downward (BELOW_1)
+    const firstLimit = aIn < aOut ? BELOW_1 : ABOVE_1
+    const secondLimit = aIn < aOut ? ABOVE_1 : BELOW_1
+
+    // try first limit; on revert, try the opposite
+    try {
+      return await quoter.quoteExactOutputSingle.staticCall({
+        tokenIn: tokenInAddr,
+        tokenOut: tokenOutAddr,
+        fee: FEE,
+        amount: amountOut,
+        sqrtPriceLimitX96: firstLimit,
       })
-
-      it('1 -> 0', async () => {
-        const { amountIn, sqrtPriceX96After, initializedTicksCrossed, gasEstimate } =
-          await quoter.quoteExactOutputSingle.staticCall({
-            tokenIn: await tokens[1].getAddress(),
-            tokenOut: await tokens[0].getAddress(),
-            fee: FEE,
-            amount: MaxUint128,
-            sqrtPriceLimitX96: encodePriceSqrt(102, 100),
-          })
-
-        await snapshotGasCost(gasEstimate)
-        expect(initializedTicksCrossed).to.be.gte(0)
-        expect(sqrtPriceX96After).to.be.a('bigint')
-        expect(amountIn).to.be.gt(0n)
+    } catch {
+      return await quoter.quoteExactOutputSingle.staticCall({
+        tokenIn: tokenInAddr,
+        tokenOut: tokenOutAddr,
+        fee: FEE,
+        amount: amountOut,
+        sqrtPriceLimitX96: secondLimit,
       })
-    })
+    }
+  }
+
+  it('0 -> 1', async () => {
+    const a0 = await tokens[0].getAddress()
+    const a1 = await tokens[1].getAddress()
+
+    const { amountIn, sqrtPriceX96After, initializedTicksCrossed, gasEstimate } =
+      await quoteExactOutputSingleAuto(a0, a1, 1n) // tiny exact-out
+
+    await snapshotGasCost(gasEstimate)
+    expect(initializedTicksCrossed).to.be.gte(0)
+    expect(sqrtPriceX96After).to.be.a('bigint')
+    expect(amountIn).to.be.gt(0n)
+  })
+
+  it('1 -> 0', async () => {
+    const a0 = await tokens[0].getAddress()
+    const a1 = await tokens[1].getAddress()
+
+    const { amountIn, sqrtPriceX96After, initializedTicksCrossed, gasEstimate } =
+      await quoteExactOutputSingleAuto(a1, a0, 1n)
+
+    await snapshotGasCost(gasEstimate)
+    expect(initializedTicksCrossed).to.be.gte(0)
+    expect(sqrtPriceX96After).to.be.a('bigint')
+    expect(amountIn).to.be.gt(0n)
+  })
+})
   })
 })

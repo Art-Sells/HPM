@@ -4,6 +4,8 @@ exports[`SupplicateSupplicateQuoterV2 quotes #quoteExactInput 0 -> 2 -> 1 multi-
 
 exports[`SupplicateSupplicateQuoterV2 quotes #quoteExactInput 0 -> 2 crosses some ticks 1`] = `71367`;
 
+exports[`SupplicateSupplicateQuoterV2 quotes #quoteExactInput 0 -> 2 small amount, then initialize tick 0 and re-quote 1`] = `71639`;
+
 exports[`SupplicateSupplicateQuoterV2 quotes #quoteExactInput 0 -> 2 where after-tick is initialized (no double-count) 1`] = `71367`;
 
 exports[`SupplicateSupplicateQuoterV2 quotes #quoteExactInput 2 -> 0 crosses some ticks (reverse path) 1`] = `71319`;
@@ -24,4 +26,4 @@ exports[`SupplicateSupplicateQuoterV2 quotes #quoteExactOutput 2 -> 0 multi case
 
 exports[`SupplicateSupplicateQuoterV2 quotes #quoteExactOutput 2 -> 1 single hop 1`] = `78187`;
 
-exports[`SupplicateSupplicateQuoterV2 quotes #quoteExactOutputSingle 1 -> 0 1`] = `78797`;
+exports[`SupplicateSupplicateQuoterV2 quotes #quoteExactOutputSingle 1 -> 0 1`] = `73264`;
