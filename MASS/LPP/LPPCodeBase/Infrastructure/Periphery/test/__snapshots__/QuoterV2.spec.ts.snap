@@ -26,4 +26,6 @@ exports[`SupplicateSupplicateQuoterV2 quotes #quoteExactOutput 2 -> 0 multi case
 
 exports[`SupplicateSupplicateQuoterV2 quotes #quoteExactOutput 2 -> 1 single hop 1`] = `78187`;
 
-exports[`SupplicateSupplicateQuoterV2 quotes #quoteExactOutputSingle 1 -> 0 1`] = `73264`;
+exports[`SupplicateSupplicateQuoterV2 quotes #quoteExactOutputSingle 0 -> 1 1`] = `38419`;
+
+exports[`SupplicateSupplicateQuoterV2 quotes #quoteExactOutputSingle 1 -> 0 1`] = `38507`;
