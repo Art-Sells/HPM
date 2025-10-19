@@ -1,221 +1,251 @@
-import { Fixture } from 'ethereum-waffle'
-import { BigNumber, BigNumberish, constants, Contract, ContractTransaction, Wallet } from 'ethers'
-import { ethers, waffle } from 'hardhat'
-import { MockTimeNonfungiblePositionManager, TestERC20, TickLensTest } from '../typechain'
-import completeFixture from './shared/completeFixture'
-import { FeeAmount, TICK_SPACINGS } from './shared/constants'
-import { encodePriceSqrt } from './shared/encodePriceSqrt'
-import { expect } from './shared/expect'
-import { getMaxTick, getMinTick } from './shared/ticks'
-import { computePoolAddress } from './shared/computePoolAddress'
-import snapshotGasCost from './shared/snapshotGasCost'
+// test/TickLens.spec.ts
+import hre from 'hardhat'
+const { ethers } = hre
+
+import { loadFixture } from '@nomicfoundation/hardhat-network-helpers'
+import type { HardhatEthersSigner } from '@nomicfoundation/hardhat-ethers/signers'
+import { MaxUint256 } from 'ethers'
+
+import completeFixture from './shared/completeFixture.ts'
+import { FeeAmount, TICK_SPACINGS } from './shared/constants.ts'
+import { encodePriceSqrt } from './shared/encodePriceSqrt.ts'
+import { expect } from './shared/expect.ts'
+import { getMaxTick, getMinTick } from './shared/ticks.ts'
+import { computePoolAddress } from './shared/computePoolAddress.ts'
+import snapshotGasCost from './shared/snapshotGasCost.ts'
+
+import type {
+  MockTimeNonfungiblePositionManager,
+  TestERC20,
+  TickLensTest,
+} from '../typechain-types/periphery'
+import type { ILPPFactory } from '../typechain-types/protocol'
 
 describe('TickLens', () => {
-  let wallets: Wallet[]
+  // Use ZERO fee tier to match the rest of your suite
+  const FEE = FeeAmount.ZERO
+  const fullRangeLiquidity = 1_000_000
 
-  const nftFixture: Fixture<{
-    factory: Contract
-    nft: MockTimeNonfungiblePositionManager
-    tokens: [TestERC20, TestERC20, TestERC20]
-  }> = async (wallets, provider) => {
-    const { factory, tokens, nft } = await completeFixture(wallets, provider)
+  let owner: HardhatEthersSigner
 
+  async function nftFixture() {
+    const signers = await ethers.getSigners()
+    owner = signers[0] as HardhatEthersSigner
+    const provider = ethers.provider
+
+    const { factory, tokens, nft } = await completeFixture(signers as any, provider)
+
+    const nftAddr = await nft.getAddress()
     for (const token of tokens) {
-      await token.approve(nft.address, constants.MaxUint256)
+      await (await token.approve(nftAddr, MaxUint256)).wait()
     }
 
-    return {
-      factory,
-      nft,
-      tokens,
-    }
+    return { factory, nft, tokens }
   }
 
-  let factory: Contract
+  let factory: ILPPFactory
   let nft: MockTimeNonfungiblePositionManager
   let tokens: [TestERC20, TestERC20, TestERC20]
   let poolAddress: string
   let tickLens: TickLensTest
 
-  let loadFixture: ReturnType<typeof waffle.createFixtureLoader>
+  // -------- helpers --------
 
-  before('create fixture loader', async () => {
-    wallets = await (ethers as any).getSigners()
-    loadFixture = waffle.createFixtureLoader(wallets)
-  })
+  async function createPool(tokenAddressA: string, tokenAddressB: string) {
+    let a = tokenAddressA
+    let b = tokenAddressB
+    if (a.toLowerCase() > b.toLowerCase()) [a, b] = [b, a]
+
+    // init at 1:1
+    const tx1 = await nft.createAndInitializePoolIfNecessary(a, b, FEE, encodePriceSqrt(1, 1))
+    await tx1.wait()
+
+    const spacing = TICK_SPACINGS[FEE]
+    const recipient = await owner.getAddress()
+
+    const tx2 = await nft.mint({
+      token0: a,
+      token1: b,
+      fee: FEE,
+      tickLower: getMinTick(spacing),
+      tickUpper: getMaxTick(spacing),
+      recipient,
+      amount0Desired: fullRangeLiquidity,
+      amount1Desired: fullRangeLiquidity,
+      amount0Min: 0,
+      amount1Min: 0,
+      deadline: 1,
+    })
+    await tx2.wait()
+  }
+
+  // ethers v6 replacement for callStatic: use .staticCall on the function
+  async function mint(tickLower: number, tickUpper: number, amountBothDesired: bigint | number): Promise<number> {
+    const [t0, t1] = await Promise.all([tokens[0].getAddress(), tokens[1].getAddress()])
+    const recipient = await owner.getAddress()
+
+    const params = {
+      token0: t0,
+      token1: t1,
+      fee: FEE,
+      tickLower,
+      tickUpper,
+      amount0Desired: amountBothDesired,
+      amount1Desired: amountBothDesired,
+      amount0Min: 0,
+      amount1Min: 0,
+      recipient,
+      deadline: 1,
+    } as const
+
+    const res = await nft.mint.staticCall(params) // <- replaces nft.callStatic.mint(...)
+    const liquidity = Number(res.liquidity)
+
+    await (await nft.mint(params)).wait()
+    return liquidity
+  }
+
+  // BigInt-based version of the old BigNumber helper
+  function getTickBitmapIndex(tick: number, tickSpacing: number): number {
+    const t = BigInt(tick)
+    const s = BigInt(tickSpacing)
+    const q = t / s // rounds toward 0 like Solidity
+    const word = q < 0n ? (q + 1n) / (1n << 8n) - 1n : q >> 8n
+    return Number(word)
+  }
+
+  // -------- lifecycle --------
 
   beforeEach('load fixture', async () => {
     ;({ factory, tokens, nft } = await loadFixture(nftFixture))
   })
 
+  beforeEach('create pool & lens', async () => {
+    const [t0, t1, faddr] = await Promise.all([
+      tokens[0].getAddress(),
+      tokens[1].getAddress(),
+      factory.getAddress(),
+    ])
+
+    await createPool(t0, t1)
+    poolAddress = computePoolAddress(faddr, [t0, t1], FEE)
+
+    const LensFactory = await ethers.getContractFactory('TickLensTest')
+    const deployed = await LensFactory.deploy()
+    await deployed.waitForDeployment()
+    tickLens = deployed as unknown as TickLensTest // cast via unknown to satisfy TS
+  })
+
+  // -------- tests --------
+
   describe('#getPopulatedTicksInWord', () => {
-    const fullRangeLiquidity = 1000000
-    async function createPool(tokenAddressA: string, tokenAddressB: string) {
-      if (tokenAddressA.toLowerCase() > tokenAddressB.toLowerCase())
-        [tokenAddressA, tokenAddressB] = [tokenAddressB, tokenAddressA]
-
-      await nft.createAndInitializePoolIfNecessary(
-        tokenAddressA,
-        tokenAddressB,
-        FeeAmount.MEDIUM,
-        encodePriceSqrt(1, 1)
-      )
-
-      const liquidityParams = {
-        token0: tokenAddressA,
-        token1: tokenAddressB,
-        fee: FeeAmount.MEDIUM,
-        tickLower: getMinTick(TICK_SPACINGS[FeeAmount.MEDIUM]),
-        tickUpper: getMaxTick(TICK_SPACINGS[FeeAmount.MEDIUM]),
-        recipient: wallets[0].address,
-        amount0Desired: 1000000,
-        amount1Desired: 1000000,
-        amount0Min: 0,
-        amount1Min: 0,
-        deadline: 1,
-      }
-
-      return nft.mint(liquidityParams)
-    }
-
-    async function mint(tickLower: number, tickUpper: number, amountBothDesired: BigNumberish): Promise<number> {
-      const mintParams = {
-        token0: tokens[0].address,
-        token1: tokens[1].address,
-        fee: FeeAmount.MEDIUM,
-        tickLower,
-        tickUpper,
-        amount0Desired: amountBothDesired,
-        amount1Desired: amountBothDesired,
-        amount0Min: 0,
-        amount1Min: 0,
-        recipient: wallets[0].address,
-        deadline: 1,
-      }
-
-      const { liquidity } = await nft.callStatic.mint(mintParams)
-
-      await nft.mint(mintParams)
-      return liquidity.toNumber()
-    }
-
-    beforeEach(async () => {
-      await createPool(tokens[0].address, tokens[1].address)
-      poolAddress = computePoolAddress(factory.address, [tokens[0].address, tokens[1].address], FeeAmount.MEDIUM)
-    })
-
-    beforeEach(async () => {
-      const lensFactory = await ethers.getContractFactory('TickLensTest')
-      tickLens = (await lensFactory.deploy()) as TickLensTest
-    })
-
-    function getTickBitmapIndex(tick: BigNumberish, tickSpacing: number): BigNumber {
-      const intermediate = BigNumber.from(tick).div(tickSpacing)
-      // see https://docs.soliditylang.org/en/v0.7.6/types.html#shifts
-      return intermediate.lt(0) ? intermediate.add(1).div(BigNumber.from(2).pow(8)).sub(1) : intermediate.shr(8)
-    }
-
     it('works for min/max', async () => {
+      const spacing = TICK_SPACINGS[FEE]
+
       const [min] = await tickLens.getPopulatedTicksInWord(
         poolAddress,
-        getTickBitmapIndex(getMinTick(TICK_SPACINGS[FeeAmount.MEDIUM]), TICK_SPACINGS[FeeAmount.MEDIUM])
+        getTickBitmapIndex(getMinTick(spacing), spacing)
       )
 
       const [max] = await tickLens.getPopulatedTicksInWord(
         poolAddress,
-        getTickBitmapIndex(getMaxTick(TICK_SPACINGS[FeeAmount.MEDIUM]), TICK_SPACINGS[FeeAmount.MEDIUM])
+        getTickBitmapIndex(getMaxTick(spacing), spacing)
       )
 
-      expect(min.tick).to.be.eq(getMinTick(TICK_SPACINGS[FeeAmount.MEDIUM]))
-      expect(min.liquidityNet).to.be.eq(fullRangeLiquidity)
-      expect(min.liquidityGross).to.be.eq(fullRangeLiquidity)
+      expect(min.tick).to.eq(getMinTick(spacing))
+      expect(min.liquidityNet).to.eq(fullRangeLiquidity)
+      expect(min.liquidityGross).to.eq(fullRangeLiquidity)
 
-      expect(max.tick).to.be.eq(getMaxTick(TICK_SPACINGS[FeeAmount.MEDIUM]))
-      expect(max.liquidityNet).to.be.eq(fullRangeLiquidity * -1)
-      expect(min.liquidityGross).to.be.eq(fullRangeLiquidity)
+      expect(max.tick).to.eq(getMaxTick(spacing))
+      expect(max.liquidityNet).to.eq(fullRangeLiquidity * -1)
+      expect(max.liquidityGross).to.eq(fullRangeLiquidity)
     })
 
     it('works for min/max and -2/-1/0/1', async () => {
-      const minus = -TICK_SPACINGS[FeeAmount.MEDIUM]
-      const plus = -minus
+      const spacing = TICK_SPACINGS[FEE]
+      const minus = -spacing
+      const plus = spacing
 
-      const liquidity0 = await mint(minus * 2, minus, 2)
-      const liquidity1 = await mint(minus * 2, 0, 3)
-      const liquidity2 = await mint(minus * 2, plus, 5)
-      const liquidity3 = await mint(minus, 0, 7)
-      const liquidity4 = await mint(minus, plus, 11)
-      const liquidity5 = await mint(0, plus, 13)
+      const l0 = await mint(minus * 2, minus, 2)
+      const l1 = await mint(minus * 2, 0, 3)
+      const l2 = await mint(minus * 2, plus, 5)
+      const l3 = await mint(minus, 0, 7)
+      const l4 = await mint(minus, plus, 11)
+      const l5 = await mint(0, plus, 13)
 
       const [min] = await tickLens.getPopulatedTicksInWord(
         poolAddress,
-        getTickBitmapIndex(getMinTick(TICK_SPACINGS[FeeAmount.MEDIUM]), TICK_SPACINGS[FeeAmount.MEDIUM])
+        getTickBitmapIndex(getMinTick(spacing), spacing)
       )
 
-      const [negativeOne, negativeTwo] = await tickLens.getPopulatedTicksInWord(
+      const [negOne, negTwo] = await tickLens.getPopulatedTicksInWord(
         poolAddress,
-        getTickBitmapIndex(minus, TICK_SPACINGS[FeeAmount.MEDIUM])
+        getTickBitmapIndex(minus, spacing)
       )
 
       const [one, zero] = await tickLens.getPopulatedTicksInWord(
         poolAddress,
-        getTickBitmapIndex(plus, TICK_SPACINGS[FeeAmount.MEDIUM])
+        getTickBitmapIndex(plus, spacing)
       )
 
       const [max] = await tickLens.getPopulatedTicksInWord(
         poolAddress,
-        getTickBitmapIndex(getMaxTick(TICK_SPACINGS[FeeAmount.MEDIUM]), TICK_SPACINGS[FeeAmount.MEDIUM])
+        getTickBitmapIndex(getMaxTick(spacing), spacing)
       )
 
-      expect(min.tick).to.be.eq(getMinTick(TICK_SPACINGS[FeeAmount.MEDIUM]))
-      expect(min.liquidityNet).to.be.eq(fullRangeLiquidity)
-      expect(min.liquidityGross).to.be.eq(fullRangeLiquidity)
+      expect(min.tick).to.eq(getMinTick(spacing))
+      expect(min.liquidityNet).to.eq(fullRangeLiquidity)
+      expect(min.liquidityGross).to.eq(fullRangeLiquidity)
 
-      expect(negativeTwo.tick).to.be.eq(minus * 2)
-      expect(negativeTwo.liquidityNet).to.be.eq(liquidity0 + liquidity1 + liquidity2)
-      expect(negativeTwo.liquidityGross).to.be.eq(liquidity0 + liquidity1 + liquidity2)
+      expect(negTwo.tick).to.eq(minus * 2)
+      expect(negTwo.liquidityNet).to.eq(l0 + l1 + l2)
+      expect(negTwo.liquidityGross).to.eq(l0 + l1 + l2)
 
-      expect(negativeOne.tick).to.be.eq(minus)
-      expect(negativeOne.liquidityNet).to.be.eq(liquidity3 + liquidity4 - liquidity0)
-      expect(negativeOne.liquidityGross).to.be.eq(liquidity3 + liquidity4 + liquidity0)
+      expect(negOne.tick).to.eq(minus)
+      expect(negOne.liquidityNet).to.eq(l3 + l4 - l0)
+      expect(negOne.liquidityGross).to.eq(l3 + l4 + l0)
 
-      expect(zero.tick).to.be.eq(0)
-      expect(zero.liquidityNet).to.be.eq(liquidity5 - liquidity1 - liquidity3)
-      expect(zero.liquidityGross).to.be.eq(liquidity5 + liquidity1 + liquidity3)
+      expect(zero.tick).to.eq(0)
+      expect(zero.liquidityNet).to.eq(l5 - l1 - l3)
+      expect(zero.liquidityGross).to.eq(l5 + l1 + l3)
 
-      expect(one.tick).to.be.eq(plus)
-      expect(one.liquidityNet).to.be.eq(-liquidity2 - liquidity4 - liquidity5)
-      expect(one.liquidityGross).to.be.eq(liquidity2 + liquidity4 + liquidity5)
+      expect(one.tick).to.eq(plus)
+      expect(one.liquidityNet).to.eq(-l2 - l4 - l5)
+      expect(one.liquidityGross).to.eq(l2 + l4 + l5)
 
-      expect(max.tick).to.be.eq(getMaxTick(TICK_SPACINGS[FeeAmount.MEDIUM]))
-      expect(max.liquidityNet).to.be.eq(fullRangeLiquidity * -1)
-      expect(max.liquidityGross).to.be.eq(fullRangeLiquidity)
+      expect(max.tick).to.eq(getMaxTick(spacing))
+      expect(max.liquidityNet).to.eq(fullRangeLiquidity * -1)
+      expect(max.liquidityGross).to.eq(fullRangeLiquidity)
     })
 
     it('gas for single populated tick', async () => {
+      const spacing = TICK_SPACINGS[FEE]
       await snapshotGasCost(
         tickLens.getGasCostOfGetPopulatedTicksInWord(
           poolAddress,
-          getTickBitmapIndex(getMaxTick(TICK_SPACINGS[FeeAmount.MEDIUM]), TICK_SPACINGS[FeeAmount.MEDIUM])
+          getTickBitmapIndex(getMaxTick(spacing), spacing)
         )
       )
     })
 
     it('fully populated ticks', async () => {
+      const spacing = TICK_SPACINGS[FEE]
+
       // fully populate a word
       for (let i = 0; i < 128; i++) {
-        await mint(i * TICK_SPACINGS[FeeAmount.MEDIUM], (255 - i) * TICK_SPACINGS[FeeAmount.MEDIUM], 100)
+        await mint(i * spacing, (255 - i) * spacing, 100)
       }
 
       const ticks = await tickLens.getPopulatedTicksInWord(
         poolAddress,
-        getTickBitmapIndex(0, TICK_SPACINGS[FeeAmount.MEDIUM])
+        getTickBitmapIndex(0, spacing)
       )
-      expect(ticks.length).to.be.eq(256)
+      expect(ticks.length).to.eq(256)
 
       await snapshotGasCost(
         tickLens.getGasCostOfGetPopulatedTicksInWord(
           poolAddress,
-          getTickBitmapIndex(0, TICK_SPACINGS[FeeAmount.MEDIUM])
+          getTickBitmapIndex(0, spacing)
         )
       )
     }).timeout(300_000)
