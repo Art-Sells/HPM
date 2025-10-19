@@ -1,5 +1,6 @@
 import hardhat from "hardhat";
 import { expect } from "chai";
+import { LPPFactory } from '../typechain-types/protocol'
 const { ethers, artifacts } = hardhat;
 
 const Q96 = 1n << 96n;
@@ -42,8 +43,6 @@ describe("LPP fee=0 tier (hardhat ethers v6)", () => {
     // core
     const poolDeployer = await deploy("LPPPoolDeployer", deployer);
 
-    // IMPORTANT: many factories wire the poolDeployer in the constructor.
-    // If the ctor takes 1 arg, we pass it; if 0, our helper drops it.
     const factory = await deploy(
       "LPPFactory",
       deployer,
@@ -56,7 +55,6 @@ describe("LPP fee=0 tier (hardhat ethers v6)", () => {
         await poolDeployer.getAddress()
       )).wait();
     }
-    // do NOT call poolDeployer.setFactory(); it doesn't exist in your ABI.
 
     // enable fee=0
     await (await factory.connect(deployer).enableFeeAmount(0, 5)).wait();

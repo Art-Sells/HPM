@@ -4,7 +4,7 @@
 
 - [X] Dismantle and rebuild [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Preriphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery): **Complete**
 - [X] Configure and compile [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Preriphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery): **Complete**
-- [X] Enable & test **fee = 0** tier in Factory; add **fee=0 math tests** **Complete**: [LPPZeroFeeSpec](https://github.com/Art-Sells/HPM/blob/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol/test/LPP.zeroFee.spec.ts) 
+- [X] Enable & test **fee = 0** tier in Factory; add **fee=0 math tests** **Complete**: [LPPZeroFeeSpec](https://github.com/Art-Sells/HPM/blob/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol/test/LPPFactory.spec.ts) 
 - - [ ] Test all other tests inside Protocol & Periphery folders. ***In-Progress***
 - - [ ] delete all snapshots and re-test all tests after first tests (remove "your" from all files)
 - [ ] Set governance (**Safe multisig**); protocol swap fee **disabled** 
@@ -13,7 +13,7 @@
 - [ ] **Seed liquidity**: tight **primary** range + tiny **fallback** range for each pool
 - [ ] **LPPRouter.recenterAndMint()** (atomic: price re‑center **and** LP mint in one tx) (don't forget nft.mint)
 - [ ] Make arbs find pools: contract **verification**, **Subgraph**, `RebalanceNeeded` event, **Solver Kit**
-- [ ] Implement **MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention**
+- [ ] Implement **MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention** (might have to restructure LPPPool.sol and LPPFactory to achieve this).
 - [ ] Frontend/API: router prefers **A/B/C (0‑fee)**, metrics & drift badge
 - [ ] Test: zero‑fee math, range flips, oracle failure, **atomic recenter & rebate logic**.
 - [ ] Deploy to Base, verify, publish docs, announce to searchers

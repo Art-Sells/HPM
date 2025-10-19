@@ -1,15 +1,13 @@
+// contracts/LPPFactory.sol
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity =0.7.6;
 
 import './interfaces/ILPPFactory.sol';
-
 import './LPPPoolDeployer.sol';
 import './NoDelegateCall.sol';
-
 import './LPPPool.sol';
 
-/// @title 
-/// @notice 
+/// @title LPPFactory (ZERO-fee only)
 contract LPPFactory is ILPPFactory, LPPPoolDeployer, NoDelegateCall {
     /// @inheritdoc ILPPFactory
     address public override owner;
@@ -22,13 +20,7 @@ contract LPPFactory is ILPPFactory, LPPPoolDeployer, NoDelegateCall {
     constructor() {
         owner = msg.sender;
         emit OwnerChanged(address(0), msg.sender);
-
-        feeAmountTickSpacing[500] = 10;
-        emit FeeAmountEnabled(500, 10);
-        feeAmountTickSpacing[3000] = 60;
-        emit FeeAmountEnabled(3000, 60);
-        feeAmountTickSpacing[10000] = 200;
-        emit FeeAmountEnabled(10000, 200);
+        // NOTE: Do NOT enable any fee by default. 
     }
 
     /// @inheritdoc ILPPFactory
@@ -37,35 +29,42 @@ contract LPPFactory is ILPPFactory, LPPPoolDeployer, NoDelegateCall {
         address tokenB,
         uint24 fee
     ) external override noDelegateCall returns (address pool) {
-        require(tokenA != tokenB);
+        require(tokenA != tokenB, 'IDENTICAL');
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        require(token0 != address(0));
+        require(token0 != address(0), 'ZERO_ADDR');
+
+        // ZERO-fee only
+        require(fee == 0, 'FEE_NOT_ZERO');
+
         int24 tickSpacing = feeAmountTickSpacing[fee];
-        require(tickSpacing != 0);
-        require(getPool[token0][token1][fee] == address(0));
+        require(tickSpacing != 0, 'FEE_NOT_ENABLED');
+
+        require(getPool[token0][token1][fee] == address(0), 'EXISTS');
         pool = deploy(address(this), token0, token1, fee, tickSpacing);
+
         getPool[token0][token1][fee] = pool;
-        // populate mapping in the reverse direction, deliberate choice to avoid the cost of comparing addresses
         getPool[token1][token0][fee] = pool;
+
         emit PoolCreated(token0, token1, fee, tickSpacing, pool);
     }
 
     /// @inheritdoc ILPPFactory
     function setOwner(address _owner) external override {
-        require(msg.sender == owner);
+        require(msg.sender == owner, 'NOT_OWNER');
         emit OwnerChanged(owner, _owner);
         owner = _owner;
     }
 
     /// @inheritdoc ILPPFactory
     function enableFeeAmount(uint24 fee, int24 tickSpacing) public override {
-        require(msg.sender == owner);
-        require(fee < 1000000);
-        // tick spacing is capped at 16384 to prevent the situation where tickSpacing is so large that
-        // TickBitmap#nextInitializedTickWithinOneWord overflows int24 container from a valid tick
-        // 16384 ticks represents a >5x price change with ticks of 1 bips
-        require(tickSpacing > 0 && tickSpacing < 16384);
-        require(feeAmountTickSpacing[fee] == 0);
+        require(msg.sender == owner, 'NOT_OWNER');
+
+        // ZERO-fee only
+        require(fee == 0, 'FEE_NOT_ZERO');
+
+        // Keep the same safety bounds as Uniswap v3
+        require(tickSpacing > 0 && tickSpacing < 16384, 'BAD_TICK_SPACING');
+        require(feeAmountTickSpacing[fee] == 0, 'ALREADY_ENABLED');
 
         feeAmountTickSpacing[fee] = tickSpacing;
         emit FeeAmountEnabled(fee, tickSpacing);

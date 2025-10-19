@@ -1,67 +1,46 @@
+// test/shared/utilities.ts
 import bn from 'bignumber.js'
-import { BigNumber, BigNumberish, constants, Contract, ContractTransaction, utils, Wallet } from 'ethers'
-import { TestLPPCallee } from '../../typechain/TestLPPCallee'
-import { TestLPPRouter } from '../../typechain/TestLPPRouter'
-import { MockTimeLPPPool } from '../../typechain/MockTimeLPPPool'
-import { TestERC20 } from '../../typechain/TestERC20'
+import hre from 'hardhat'
+const { ethers } = hre
 
-export const MaxUint128 = BigNumber.from(2).pow(128).sub(1)
+import type { BigNumberish, ContractTransactionResponse, Wallet } from 'ethers'
+
+import type { TestLPPCallee } from '../../typechain-types/protocol'
+import type { TestLPPRouter } from '../../typechain-types/protocol'
+import type { MockTimeLPPPool } from '../../typechain-types/protocol'
+import type { TestERC20 } from '../../typechain-types/protocol'
+
+// ---- Fee tiers: ZERO only (enum-free for ESM strip-only) ----
+export const FeeAmount = { ZERO: 0 } as const
+export type FeeAmount = typeof FeeAmount[keyof typeof FeeAmount]
+
+export const TICK_SPACINGS: Record<number, number> = {
+  [FeeAmount.ZERO]: 1, // adjust if your ZERO tier spacing differs
+}
+
+// ---- BigInt helpers & constants (ethers v6) ----
+export const MaxUint128 = (1n << 128n) - 1n
 
 export const getMinTick = (tickSpacing: number) => Math.ceil(-887272 / tickSpacing) * tickSpacing
 export const getMaxTick = (tickSpacing: number) => Math.floor(887272 / tickSpacing) * tickSpacing
-export const getMaxLiquidityPerTick = (tickSpacing: number) =>
-  BigNumber.from(2)
-    .pow(128)
-    .sub(1)
-    .div((getMaxTick(tickSpacing) - getMinTick(tickSpacing)) / tickSpacing + 1)
-
-export const MIN_SQRT_RATIO = BigNumber.from('4295128739')
-export const MAX_SQRT_RATIO = BigNumber.from('1461446703485210103287273052203988822378723970342')
-
-export enum FeeAmount {
-  LOW = 500,
-  MEDIUM = 3000,
-  HIGH = 10000,
+export const getMaxLiquidityPerTick = (tickSpacing: number) => {
+  // (2^128 - 1) / (#ticks)
+  const span = BigInt((getMaxTick(tickSpacing) - getMinTick(tickSpacing)) / tickSpacing + 1)
+  return ((1n << 128n) - 1n) / span
 }
 
-export const TICK_SPACINGS: { [amount in FeeAmount]: number } = {
-  [FeeAmount.LOW]: 10,
-  [FeeAmount.MEDIUM]: 60,
-  [FeeAmount.HIGH]: 200,
-}
+export const MIN_SQRT_RATIO = 4295128739n
+export const MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970342n
 
-export function expandTo18Decimals(n: number): BigNumber {
-  return BigNumber.from(n).mul(BigNumber.from(10).pow(18))
-}
+// ---- math utils ----
+const toBigInt = (x: BigNumberish): bigint => BigInt(x as any)
 
-export function getCreate2Address(
-  factoryAddress: string,
-  [tokenA, tokenB]: [string, string],
-  fee: number,
-  bytecode: string
-): string {
-  const [token0, token1] = tokenA.toLowerCase() < tokenB.toLowerCase() ? [tokenA, tokenB] : [tokenB, tokenA]
-  const constructorArgumentsEncoded = utils.defaultAbiCoder.encode(
-    ['address', 'address', 'uint24'],
-    [token0, token1, fee]
-  )
-  const create2Inputs = [
-    '0xff',
-    factoryAddress,
-    // salt
-    utils.keccak256(constructorArgumentsEncoded),
-    // init code. bytecode + constructor arguments
-    utils.keccak256(bytecode),
-  ]
-  const sanitizedInputs = `0x${create2Inputs.map((i) => i.slice(2)).join('')}`
-  return utils.getAddress(`0x${utils.keccak256(sanitizedInputs).slice(-40)}`)
-}
-
+// keep bignumber.js for sqrt of rational -> return as bigint
 bn.config({ EXPONENTIAL_AT: 999999, DECIMAL_PLACES: 40 })
 
-// returns the sqrt price as a 64x96
-export function encodePriceSqrt(reserve1: BigNumberish, reserve0: BigNumberish): BigNumber {
-  return BigNumber.from(
+// returns the sqrt price as a Q64.96 (bigint)
+export function encodePriceSqrt(reserve1: BigNumberish, reserve0: BigNumberish): bigint {
+  return BigInt(
     new bn(reserve1.toString())
       .div(reserve0.toString())
       .sqrt()
@@ -71,29 +50,57 @@ export function encodePriceSqrt(reserve1: BigNumberish, reserve0: BigNumberish):
   )
 }
 
-export function getPositionKey(address: string, lowerTick: number, upperTick: number): string {
-  return utils.keccak256(utils.solidityPack(['address', 'int24', 'int24'], [address, lowerTick, upperTick]))
+// ---- create2 helpers (ethers v6 utils moved to top-level) ----
+export function getCreate2Address(
+  factoryAddress: string,
+  [tokenA, tokenB]: [string, string],
+  fee: number,
+  bytecode: string
+): string {
+  const [token0, token1] = tokenA.toLowerCase() < tokenB.toLowerCase() ? [tokenA, tokenB] : [tokenB, tokenA]
+
+  const abi = ethers.AbiCoder.defaultAbiCoder()
+  const encoded = abi.encode(['address', 'address', 'uint24'], [token0, token1, fee])
+
+  const salt = ethers.keccak256(encoded)
+  const initCodeHash = ethers.keccak256(bytecode)
+
+  // keccak256(0xff ++ factory ++ salt ++ init_code_hash)[12:]
+  const digest = ethers.keccak256(
+    ethers.concat([ethers.getBytes('0xff'), ethers.getBytes(factoryAddress), ethers.getBytes(salt), ethers.getBytes(initCodeHash)])
+  )
+
+  return ethers.getAddress('0x' + digest.slice(-40))
 }
 
+export function getPositionKey(addr: string, lowerTick: number, upperTick: number): string {
+  return ethers.keccak256(ethers.solidityPacked(['address', 'int24', 'int24'], [addr, lowerTick, upperTick]))
+}
+
+// ---- pool interaction types (ethers v6: ContractTransactionResponse) ----
 export type SwapFunction = (
   amount: BigNumberish,
   to: Wallet | string,
   sqrtPriceLimitX96?: BigNumberish
-) => Promise<ContractTransaction>
-export type SwapToPriceFunction = (sqrtPriceX96: BigNumberish, to: Wallet | string) => Promise<ContractTransaction>
+) => Promise<ContractTransactionResponse>
+
+export type SwapToPriceFunction = (sqrtPriceX96: BigNumberish, to: Wallet | string) => Promise<ContractTransactionResponse>
+
 export type FlashFunction = (
   amount0: BigNumberish,
   amount1: BigNumberish,
   to: Wallet | string,
   pay0?: BigNumberish,
   pay1?: BigNumberish
-) => Promise<ContractTransaction>
+) => Promise<ContractTransactionResponse>
+
 export type MintFunction = (
   recipient: string,
   tickLower: BigNumberish,
   tickUpper: BigNumberish,
   liquidity: BigNumberish
-) => Promise<ContractTransaction>
+) => Promise<ContractTransactionResponse>
+
 export interface PoolFunctions {
   swapToLowerPrice: SwapToPriceFunction
   swapToHigherPrice: SwapToPriceFunction
@@ -104,6 +111,14 @@ export interface PoolFunctions {
   flash: FlashFunction
   mint: MintFunction
 }
+
+// small helper: resolve a Wallet | string to an address
+async function resolveTo(to: Wallet | string): Promise<string> {
+  if (typeof to === 'string') return to
+  // Wallet has .address; Hardhat signers have getAddress()
+  return ('address' in to && typeof (to as any).address === 'string') ? (to as any).address : await (to as any).getAddress()
+}
+
 export function createPoolFunctions({
   swapTarget,
   token0,
@@ -115,98 +130,84 @@ export function createPoolFunctions({
   token1: TestERC20
   pool: MockTimeLPPPool
 }): PoolFunctions {
+  // cast once for convenience where typechain signatures might not include helper funcs
+  const callee = swapTarget as any
+
   async function swapToSqrtPrice(
-    inputToken: Contract,
+    inputToken: TestERC20,
     targetPrice: BigNumberish,
     to: Wallet | string
-  ): Promise<ContractTransaction> {
-    const method = inputToken === token0 ? swapTarget.swapToLowerSqrtPrice : swapTarget.swapToHigherSqrtPrice
+  ): Promise<ContractTransactionResponse> {
+    const method =
+      inputToken === token0 ? callee.swapToLowerSqrtPrice : callee.swapToHigherSqrtPrice
 
-    await inputToken.approve(swapTarget.address, constants.MaxUint256)
-
-    const toAddress = typeof to === 'string' ? to : to.address
-
-    return method(pool.address, targetPrice, toAddress)
+    await inputToken.approve(await swapTarget.getAddress(), ethers.MaxUint256)
+    const toAddress = await resolveTo(to)
+    return method(await pool.getAddress(), targetPrice, toAddress)
   }
 
   async function swap(
-    inputToken: Contract,
+    inputToken: TestERC20,
     [amountIn, amountOut]: [BigNumberish, BigNumberish],
     to: Wallet | string,
     sqrtPriceLimitX96?: BigNumberish
-  ): Promise<ContractTransaction> {
-    const exactInput = amountOut === 0
+  ): Promise<ContractTransactionResponse> {
+    const exactInput = toBigInt(amountOut) === 0n
 
     const method =
       inputToken === token0
         ? exactInput
-          ? swapTarget.swapExact0For1
-          : swapTarget.swap0ForExact1
+          ? callee.swapExact0For1
+          : callee.swap0ForExact1
         : exactInput
-        ? swapTarget.swapExact1For0
-        : swapTarget.swap1ForExact0
+          ? callee.swapExact1For0
+          : callee.swap1ForExact0
 
     if (typeof sqrtPriceLimitX96 === 'undefined') {
-      if (inputToken === token0) {
-        sqrtPriceLimitX96 = MIN_SQRT_RATIO.add(1)
-      } else {
-        sqrtPriceLimitX96 = MAX_SQRT_RATIO.sub(1)
-      }
+      sqrtPriceLimitX96 = inputToken === token0 ? (MIN_SQRT_RATIO + 1n) : (MAX_SQRT_RATIO - 1n)
     }
-    await inputToken.approve(swapTarget.address, constants.MaxUint256)
 
-    const toAddress = typeof to === 'string' ? to : to.address
-
-    return method(pool.address, exactInput ? amountIn : amountOut, toAddress, sqrtPriceLimitX96)
+    await inputToken.approve(await swapTarget.getAddress(), ethers.MaxUint256)
+    const toAddress = await resolveTo(to)
+    return method(await pool.getAddress(), exactInput ? amountIn : amountOut, toAddress, sqrtPriceLimitX96)
   }
 
-  const swapToLowerPrice: SwapToPriceFunction = (sqrtPriceX96, to) => {
-    return swapToSqrtPrice(token0, sqrtPriceX96, to)
-  }
+  const swapToLowerPrice: SwapToPriceFunction = (sqrtPriceX96, to) =>
+    swapToSqrtPrice(token0, sqrtPriceX96, to)
 
-  const swapToHigherPrice: SwapToPriceFunction = (sqrtPriceX96, to) => {
-    return swapToSqrtPrice(token1, sqrtPriceX96, to)
-  }
+  const swapToHigherPrice: SwapToPriceFunction = (sqrtPriceX96, to) =>
+    swapToSqrtPrice(token1, sqrtPriceX96, to)
 
-  const swapExact0For1: SwapFunction = (amount, to, sqrtPriceLimitX96) => {
-    return swap(token0, [amount, 0], to, sqrtPriceLimitX96)
-  }
+  const swapExact0For1: SwapFunction = (amount, to, limit) =>
+    swap(token0, [amount, 0], to, limit)
 
-  const swap0ForExact1: SwapFunction = (amount, to, sqrtPriceLimitX96) => {
-    return swap(token0, [0, amount], to, sqrtPriceLimitX96)
-  }
+  const swap0ForExact1: SwapFunction = (amount, to, limit) =>
+    swap(token0, [0, amount], to, limit)
 
-  const swapExact1For0: SwapFunction = (amount, to, sqrtPriceLimitX96) => {
-    return swap(token1, [amount, 0], to, sqrtPriceLimitX96)
-  }
+  const swapExact1For0: SwapFunction = (amount, to, limit) =>
+    swap(token1, [amount, 0], to, limit)
 
-  const swap1ForExact0: SwapFunction = (amount, to, sqrtPriceLimitX96) => {
-    return swap(token1, [0, amount], to, sqrtPriceLimitX96)
-  }
+  const swap1ForExact0: SwapFunction = (amount, to, limit) =>
+    swap(token1, [0, amount], to, limit)
 
   const mint: MintFunction = async (recipient, tickLower, tickUpper, liquidity) => {
-    await token0.approve(swapTarget.address, constants.MaxUint256)
-    await token1.approve(swapTarget.address, constants.MaxUint256)
-    return swapTarget.mint(pool.address, recipient, tickLower, tickUpper, liquidity)
+    await token0.approve(await swapTarget.getAddress(), ethers.MaxUint256)
+    await token1.approve(await swapTarget.getAddress(), ethers.MaxUint256)
+    return (swapTarget as any).mint(await pool.getAddress(), recipient, tickLower, tickUpper, liquidity)
   }
 
   const flash: FlashFunction = async (amount0, amount1, to, pay0?: BigNumberish, pay1?: BigNumberish) => {
-    const fee = await pool.fee()
-    if (typeof pay0 === 'undefined') {
-      pay0 = BigNumber.from(amount0)
-        .mul(fee)
-        .add(1e6 - 1)
-        .div(1e6)
-        .add(amount0)
-    }
-    if (typeof pay1 === 'undefined') {
-      pay1 = BigNumber.from(amount1)
-        .mul(fee)
-        .add(1e6 - 1)
-        .div(1e6)
-        .add(amount1)
-    }
-    return swapTarget.flash(pool.address, typeof to === 'string' ? to : to.address, amount0, amount1, pay0, pay1)
+    const fee = toBigInt(await pool.fee())
+    const amt0 = toBigInt(amount0)
+    const amt1 = toBigInt(amount1)
+
+    const ceilDivFee = (x: bigint) => (x * fee + 999_999n) / 1_000_000n
+
+    const p0 = (typeof pay0 === 'undefined') ? (ceilDivFee(amt0) + amt0) : toBigInt(pay0)
+    const p1 = (typeof pay1 === 'undefined') ? (ceilDivFee(amt1) + amt1) : toBigInt(pay1)
+
+    const toAddress = await resolveTo(to)
+    return (swapTarget as any).flash(await pool.getAddress(), toAddress, amount0, amount1, p0, p1)
   }
 
   return {
@@ -237,18 +238,28 @@ export function createMultiPoolFunctions({
   poolInput: MockTimeLPPPool
   poolOutput: MockTimeLPPPool
 }): MultiPoolFunctions {
-  async function swapForExact0Multi(amountOut: BigNumberish, to: Wallet | string): Promise<ContractTransaction> {
-    const method = swapTarget.swapForExact0Multi
-    await inputToken.approve(swapTarget.address, constants.MaxUint256)
-    const toAddress = typeof to === 'string' ? to : to.address
-    return method(toAddress, poolInput.address, poolOutput.address, amountOut)
+  const router = swapTarget as any
+
+  async function swapForExact0Multi(amountOut: BigNumberish, to: Wallet | string): Promise<ContractTransactionResponse> {
+    await inputToken.approve(await swapTarget.getAddress(), ethers.MaxUint256)
+    const toAddress = await resolveTo(to)
+    return router.swapForExact0Multi(
+      toAddress,
+      await poolInput.getAddress(),
+      await poolOutput.getAddress(),
+      amountOut
+    )
   }
 
-  async function swapForExact1Multi(amountOut: BigNumberish, to: Wallet | string): Promise<ContractTransaction> {
-    const method = swapTarget.swapForExact1Multi
-    await inputToken.approve(swapTarget.address, constants.MaxUint256)
-    const toAddress = typeof to === 'string' ? to : to.address
-    return method(toAddress, poolInput.address, poolOutput.address, amountOut)
+  async function swapForExact1Multi(amountOut: BigNumberish, to: Wallet | string): Promise<ContractTransactionResponse> {
+    await inputToken.approve(await swapTarget.getAddress(), ethers.MaxUint256)
+    const toAddress = await resolveTo(to)
+    return router.swapForExact1Multi(
+      toAddress,
+      await poolInput.getAddress(),
+      await poolOutput.getAddress(),
+      amountOut
+    )
   }
 
   return {
