@@ -50,6 +50,9 @@ import type {
   SwapToPriceFunction,
 } from './shared/utilities.ts'
 
+const ZERO_FEE = true
+const Z = (n: bigint) => (ZERO_FEE ? 0n : n)
+
 type ThenArg<T> = T extends PromiseLike<infer U> ? U : T
 
 describe('LPPPool', () => {

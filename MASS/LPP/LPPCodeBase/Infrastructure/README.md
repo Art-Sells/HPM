@@ -9,14 +9,14 @@
 - - [ ] delete all snapshots and re-test all tests after first tests (remove "your" from all files)
 - [ ] **Might not need this step:** Set governance (**Safe multisig**); protocol swap fee **disabled** 
 - [ ] **There's already an Oracle Adapter so might not need to do this (delete if necessary):** Implement **LPPOracleAdapter** (cbBTC/USDC with staleness & deviation guards)
-- [ ] **Create 3 pools** (cbBTC/USDC, fee=0) & **initialize** at oracle price
-- [ ] **Seed liquidity**: tight **primary** range + tiny **fallback** range for each pool
-- [ ] **LPPRouter.recenterAndMint()** (atomic: price re‑center **and** LP mint in one tx) (don't forget nft.mint)
-- [ ] Make arbs find pools: contract **verification**, **Subgraph**, `RebalanceNeeded` event, **Solver Kit**
+- [ ] **Might not need this step (this is automatic):** **LPPRouter.recenterAndMint()** (atomic: price re‑center **and** LP mint in one tx) (don't forget nft.mint)
 - [ ] Implement **MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention**.
-- - [ ] Might have to restructure LPPPool.sol and LPPFactory to achieve this and (comb the LPPFactory and LPPPool specs to test this)
+- - [ ] Might have to restructure LPPPool.sol and LPPFactory to achieve this and (comb the LPPFactory and LPPPool specs to test this (add MEV-as-LP rebates test to LPPPool))
 - [ ] Frontend/API: router prefers **A/B/C (0‑fee)**, metrics & drift badge
 - [ ] Test: zero‑fee math, range flips, oracle failure, **atomic recenter & rebate logic**.
+- [ ] **Create 3 pools** (cbBTC/USDC, fee=0) & **initialize** at oracle price
+- [ ] **Seed liquidity**: tight **primary** range + tiny **fallback** range for each pool
+- [ ] Make arbs find pools: contract **verification**, **Subgraph**, `RebalanceNeeded` event, **Solver Kit**
 - [ ] Deploy to Base, verify, publish docs, announce to searchers
 
 ---
