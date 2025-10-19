@@ -6,7 +6,7 @@ import '../interfaces/IERC20Minimal.sol';
 import '../interfaces/callback/ILPPSupplicateCallback.sol';
 import '../interfaces/ILPPPool.sol';
 
-contract LPPPoolSwapTest is ILPPSupplicateCallback {
+contract LPPPoolSupplicateTest is ILPPSupplicateCallback {
     int256 private _amount0Delta;
     int256 private _amount1Delta;
 

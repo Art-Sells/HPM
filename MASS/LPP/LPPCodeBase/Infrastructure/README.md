@@ -7,8 +7,8 @@
 - [X] Enable & test **fee = 0** tier in Factory; add **fee=0 math tests** **Complete**: [LPPZeroFeeSpec](https://github.com/Art-Sells/HPM/blob/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol/test/LPPFactory.spec.ts) 
 - - [ ] Test all other tests inside Protocol & Periphery folders. ***In-Progress***
 - - [ ] delete all snapshots and re-test all tests after first tests (remove "your" from all files)
-- [ ] Set governance (**Safe multisig**); protocol swap fee **disabled** 
-- [ ] Implement **LPPOracleAdapter** (cbBTC/USDC with staleness & deviation guards)
+- [ ] **Might not need this step:** Set governance (**Safe multisig**); protocol swap fee **disabled** 
+- [ ] **There's already an Oracle Adapter so might not need to do this (delete if necessary):** Implement **LPPOracleAdapter** (cbBTC/USDC with staleness & deviation guards)
 - [ ] **Create 3 pools** (cbBTC/USDC, fee=0) & **initialize** at oracle price
 - [ ] **Seed liquidity**: tight **primary** range + tiny **fallback** range for each pool
 - [ ] **LPPRouter.recenterAndMint()** (atomic: price re‑center **and** LP mint in one tx) (don't forget nft.mint)

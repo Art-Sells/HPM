@@ -1,38 +1,36 @@
-import { BigNumber, BigNumberish } from 'ethers'
-import { expect } from './expect'
+// test/shared/checkObservationEquals.ts
+import type { BigNumberish } from 'ethers'
+import { expect } from './expect.ts'
 
-// helper function because we cannot do a simple deep equals with the
-// observation result object returned from ethers because it extends array
+// ethers v6 returns bigint for uints. Normalize both actual & expected to strings for deep equality.
 export default function checkObservationEquals(
-  {
-    tickCumulative,
-    blockTimestamp,
-    initialized,
-    secondsPerLiquidityCumulativeX128,
-  }: {
-    tickCumulative: BigNumber
-    secondsPerLiquidityCumulativeX128: BigNumber
+  actual: {
+    tickCumulative: bigint
+    secondsPerLiquidityCumulativeX128: bigint
     initialized: boolean
-    blockTimestamp: number
+    blockTimestamp: bigint
   },
   expected: {
     tickCumulative: BigNumberish
     secondsPerLiquidityCumulativeX128: BigNumberish
     initialized: boolean
-    blockTimestamp: number
+    blockTimestamp: number | bigint
   }
 ) {
+  const toStr = (v: any) => v.toString()
+
   expect(
     {
-      initialized,
-      blockTimestamp,
-      tickCumulative: tickCumulative.toString(),
-      secondsPerLiquidityCumulativeX128: secondsPerLiquidityCumulativeX128.toString(),
+      initialized: actual.initialized,
+      blockTimestamp: Number(actual.blockTimestamp),
+      tickCumulative: toStr(actual.tickCumulative),
+      secondsPerLiquidityCumulativeX128: toStr(actual.secondsPerLiquidityCumulativeX128),
     },
     `observation is equivalent`
   ).to.deep.eq({
-    ...expected,
-    tickCumulative: expected.tickCumulative.toString(),
-    secondsPerLiquidityCumulativeX128: expected.secondsPerLiquidityCumulativeX128.toString(),
+    initialized: expected.initialized,
+    blockTimestamp: Number(expected.blockTimestamp),
+    tickCumulative: toStr(expected.tickCumulative),
+    secondsPerLiquidityCumulativeX128: toStr(expected.secondsPerLiquidityCumulativeX128),
   })
 }
