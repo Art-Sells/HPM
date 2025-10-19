@@ -6,7 +6,7 @@ import '../interfaces/IERC20Minimal.sol';
 import '../interfaces/callback/ILPPSupplicateCallback.sol';
 import '../interfaces/ILPPPool.sol';
 
-contract TestLPPSwapPay is ILPPSupplicateCallback {
+contract TestLPPSupplicatePay is ILPPSupplicateCallback {
     function swap(
         address pool,
         address recipient,

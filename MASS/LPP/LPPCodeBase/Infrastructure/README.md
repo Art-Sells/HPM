@@ -13,7 +13,8 @@
 - [ ] **Seed liquidity**: tight **primary** range + tiny **fallback** range for each pool
 - [ ] **LPPRouter.recenterAndMint()** (atomic: price re‑center **and** LP mint in one tx) (don't forget nft.mint)
 - [ ] Make arbs find pools: contract **verification**, **Subgraph**, `RebalanceNeeded` event, **Solver Kit**
-- [ ] Implement **MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention** (might have to restructure LPPPool.sol and LPPFactory to achieve this).
+- [ ] Implement **MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention**.
+- - [ ] Might have to restructure LPPPool.sol and LPPFactory to achieve this and (comb the LPPFactory and LPPPool specs to test this)
 - [ ] Frontend/API: router prefers **A/B/C (0‑fee)**, metrics & drift badge
 - [ ] Test: zero‑fee math, range flips, oracle failure, **atomic recenter & rebate logic**.
 - [ ] Deploy to Base, verify, publish docs, announce to searchers

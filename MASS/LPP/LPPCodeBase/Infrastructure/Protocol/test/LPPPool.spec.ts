@@ -1,9 +1,9 @@
 import { ethers, waffle } from 'hardhat'
 import { BigNumber, BigNumberish, constants, Wallet } from 'ethers'
-import { TestERC20 } from '../typechain/TestERC20'
-import { LPPFactory } from '../typechain/LPPFactory'
-import { MockTimeLPPPool } from '../typechain/MockTimeLPPPool'
-import { TestLPPSwapPay } from '../typechain/TestLPPSwapPay'
+import { TestERC20 } from '../typechain-types/protocol'
+import { LPPFactory } from '../typechain-types/protocol'
+import { MockTimeLPPPool } from '../typechain-types/protocol'
+import { TestLPPSupplicatePay } from '../typechain-types/protocol'
 import checkObservationEquals from './shared/checkObservationEquals'
 import { expect } from './shared/expect'
 
@@ -1969,10 +1969,10 @@ describe('LPPPool', () => {
   })
 
   describe('swap underpayment tests', () => {
-    let underpay: TestLPPSwapPay
+    let underpay: TestLPPSupplicatePay
     beforeEach('deploy swap test', async () => {
-      const underpayFactory = await ethers.getContractFactory('TestLPPSwapPay')
-      underpay = (await underpayFactory.deploy()) as TestLPPSwapPay
+      const underpayFactory = await ethers.getContractFactory('TestLPPSupplicatePay')
+      underpay = (await underpayFactory.deploy()) as TestLPPSupplicatePay
       await token0.approve(underpay.address, constants.MaxUint256)
       await token1.approve(underpay.address, constants.MaxUint256)
       await pool.initialize(encodePriceSqrt(1, 1))
