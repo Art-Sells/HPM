@@ -1,8 +1,8 @@
-import { expect, use } from 'chai'
-import { solidity } from 'ethereum-waffle'
-import { jestSnapshotPlugin } from 'mocha-chai-jest-snapshot'
+// test/shared/expect.ts
+import { expect, use } from "chai";
+import { jestSnapshotPlugin } from "mocha-chai-jest-snapshot";
 
-use(solidity)
-use(jestSnapshotPlugin())
+// @ts-expect-error — 'update' exists at runtime
+use(jestSnapshotPlugin({ update: process.env.UPDATE_SNAPSHOTS === "1" }));
 
-export { expect }
+export { expect };
