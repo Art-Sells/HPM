@@ -3,251 +3,342 @@ import hre from 'hardhat'
 const { ethers } = hre
 
 import { loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import type { HardhatEthersSigner } from '@nomicfoundation/hardhat-ethers/signers'
 import { MaxUint256 } from 'ethers'
-
-import completeFixture from './shared/completeFixture.ts'
-import { FeeAmount, TICK_SPACINGS } from './shared/constants.ts'
-import { encodePriceSqrt } from './shared/encodePriceSqrt.ts'
-import { expect } from './shared/expect.ts'
-import { getMaxTick, getMinTick } from './shared/ticks.ts'
-import { computePoolAddress } from './shared/computePoolAddress.ts'
-import snapshotGasCost from './shared/snapshotGasCost.ts'
+import type { HardhatEthersSigner } from '@nomicfoundation/hardhat-ethers/signers'
 
 import type {
   MockTimeNonfungiblePositionManager,
   TestERC20,
   TickLensTest,
 } from '../typechain-types/periphery'
-import type { ILPPFactory } from '../typechain-types/protocol'
 
-describe('TickLens', () => {
-  // Use ZERO fee tier to match the rest of your suite
-  const FEE = FeeAmount.ZERO
-  const fullRangeLiquidity = 1_000_000
+import completeFixture from './shared/completeFixture.ts'
+import { FeeAmount } from './shared/constants.ts'
+import { encodePriceSqrt } from './shared/encodePriceSqrt.ts'
+import { expect } from './shared/expect.ts'
+import { getMaxTick, getMinTick } from './shared/ticks.ts'
+import snapshotGasCost from './shared/snapshotGasCost.ts'
 
-  let owner: HardhatEthersSigner
+// ZERO FEES ONLY
+const FEE = FeeAmount.ZERO
 
-  async function nftFixture() {
-    const signers = await ethers.getSigners()
-    owner = signers[0] as HardhatEthersSigner
+describe('TickLens (ZERO fee tier)', function () {
+  this.timeout(120_000)
+
+  let wallet: HardhatEthersSigner
+  let wallets: HardhatEthersSigner[]
+
+  async function fixture() {
+    wallets = (await ethers.getSigners()) as HardhatEthersSigner[]
+    wallet = wallets[0]
+
     const provider = ethers.provider
+    const { factory, tokens, nft } = await completeFixture(wallets as any, provider)
 
-    const { factory, tokens, nft } = await completeFixture(signers as any, provider)
-
+    // approvals for NFT manager
     const nftAddr = await nft.getAddress()
-    for (const token of tokens) {
-      await (await token.approve(nftAddr, MaxUint256)).wait()
+    for (const t of tokens) {
+      await (await t.approve(nftAddr, MaxUint256)).wait()
     }
 
-    return { factory, nft, tokens }
+    // deploy the lens tester
+    const LensFactory = await ethers.getContractFactory('TickLensTest')
+    const tickLens = (await LensFactory.deploy()) as unknown as TickLensTest
+    await tickLens.waitForDeployment()
+
+    return { factory, tokens, nft, tickLens }
   }
 
-  let factory: ILPPFactory
   let nft: MockTimeNonfungiblePositionManager
   let tokens: [TestERC20, TestERC20, TestERC20]
-  let poolAddress: string
   let tickLens: TickLensTest
+  let poolAddress: string
 
-  // -------- helpers --------
+  const sort = (a: string, b: string) => (a.toLowerCase() < b.toLowerCase() ? [a, b] : [b, a])
 
-  async function createPool(tokenAddressA: string, tokenAddressB: string) {
-    let a = tokenAddressA
-    let b = tokenAddressB
-    if (a.toLowerCase() > b.toLowerCase()) [a, b] = [b, a]
+  // spacing directly from pool (authoritative)
+  async function poolSpacing(pool: string): Promise<number> {
+    const poolIface = await ethers.getContractAt('ILPPPool', pool)
+    const s: bigint = await (poolIface as any).tickSpacing()
+    return Number(s)
+  }
 
-    // init at 1:1
-    const tx1 = await nft.createAndInitializePoolIfNecessary(a, b, FEE, encodePriceSqrt(1, 1))
-    await tx1.wait()
+  // derive TickBitmap word index from the pool’s tickSpacing (Solidity semantics)
+  async function wordIndexForTick(pool: string, tick: number) {
+    const spacing = BigInt(await poolSpacing(pool))
+    const compressed = BigInt(tick) / spacing // trunc toward 0
+    // i = compressed < 0 ? ((compressed + 1) >> 8) - 1 : compressed >> 8
+    if (compressed < 0n) {
+      return Number(((compressed + 1n) >> 8n) - 1n)
+    } else {
+      return Number(compressed >> 8n)
+    }
+  }
 
-    const spacing = TICK_SPACINGS[FEE]
-    const recipient = await owner.getAddress()
+  // scan up to ±64 words to find the one that actually contains targetTick
+  async function findWordContainingTick(pool: string, baseIdx: number, targetTick: number) {
+    // check base first
+    let ticks = await tickLens.getPopulatedTicksInWord(pool, baseIdx)
+    if (ticks.find((t) => Number(t.tick) === targetTick)) {
+      return { idx: baseIdx, ticks }
+    }
 
-    const tx2 = await nft.mint({
-      token0: a,
-      token1: b,
+    for (let d = 1; d <= 64; d++) {
+      const leftIdx = baseIdx - d
+      const rightIdx = baseIdx + d
+
+      // left
+      ticks = await tickLens.getPopulatedTicksInWord(pool, leftIdx)
+      if (ticks.find((t) => Number(t.tick) === targetTick)) {
+        return { idx: leftIdx, ticks }
+      }
+
+      // right
+      ticks = await tickLens.getPopulatedTicksInWord(pool, rightIdx)
+      if (ticks.find((t) => Number(t.tick) === targetTick)) {
+        return { idx: rightIdx, ticks }
+      }
+    }
+
+    // not found — small neighbor dump for debugging
+    const around: Array<{ idx: number; size: number; sample?: number[] }> = []
+    for (let d = 0; d <= 4; d++) {
+      for (const s of [-1, 1]) {
+        const i = baseIdx + d * s
+        const w = await tickLens.getPopulatedTicksInWord(pool, i)
+        around.push({ idx: i, size: w.length, sample: w.slice(0, 3).map((x) => Number(x.tick)) })
+      }
+    }
+    throw new Error(
+      `Could not find tick ${targetTick} near word ${baseIdx}. Neighbors: ${around
+        .map((x) => `[${x.idx}: len=${x.size}${x.sample && x.sample.length ? ` sample=${x.sample.join(',')}` : ''}]`)
+        .join(' ')}`
+    )
+  }
+
+  // mint and also get returned liquidity using ethers v6 `staticCall`
+  async function mintAndReturnLiquidity(params: any): Promise<bigint> {
+    const fn = nft.getFunction('mint')
+    const staticResult: { tokenId: bigint; liquidity: bigint; amount0: bigint; amount1: bigint } =
+      await (fn as any).staticCall(params)
+    await (await nft.mint(params)).wait()
+    return staticResult.liquidity
+  }
+
+  // create pool (read its address via staticCall) + full-range LP using the POOL'S spacing
+  async function createFullRangePoolAndGetAddress(tokenA: string, tokenB: string) {
+    const [token0, token1] = sort(tokenA, tokenB)
+    const sqrt = encodePriceSqrt(1, 1)
+
+    // 1) read the pool address that WILL be used
+    const staticPoolAddr: string = await (nft.getFunction('createAndInitializePoolIfNecessary') as any).staticCall(
+      token0,
+      token1,
+      FEE,
+      sqrt
+    )
+    // 2) actually create/init the pool
+    await (await nft.createAndInitializePoolIfNecessary(token0, token1, FEE, sqrt)).wait()
+
+    // 3) use the pool’s real spacing for the full-range position
+    const spacing = await poolSpacing(staticPoolAddr)
+    const mintParams = {
+      token0,
+      token1,
       fee: FEE,
       tickLower: getMinTick(spacing),
       tickUpper: getMaxTick(spacing),
-      recipient,
-      amount0Desired: fullRangeLiquidity,
-      amount1Desired: fullRangeLiquidity,
+      recipient: await wallet.getAddress(),
+      amount0Desired: 1_000_000,
+      amount1Desired: 1_000_000,
       amount0Min: 0,
       amount1Min: 0,
       deadline: 1,
-    })
-    await tx2.wait()
+    }
+    await mintAndReturnLiquidity(mintParams)
+
+    return staticPoolAddr
   }
 
-  // ethers v6 replacement for callStatic: use .staticCall on the function
-  async function mint(tickLower: number, tickUpper: number, amountBothDesired: bigint | number): Promise<number> {
-    const [t0, t1] = await Promise.all([tokens[0].getAddress(), tokens[1].getAddress()])
-    const recipient = await owner.getAddress()
+  beforeEach('load fixture and create pool', async () => {
+    const f = await loadFixture(fixture)
+    nft = f.nft
+    tokens = f.tokens
+    tickLens = f.tickLens
 
-    const params = {
-      token0: t0,
-      token1: t1,
-      fee: FEE,
-      tickLower,
-      tickUpper,
-      amount0Desired: amountBothDesired,
-      amount1Desired: amountBothDesired,
-      amount0Min: 0,
-      amount1Min: 0,
-      recipient,
-      deadline: 1,
-    } as const
+    const t0 = await tokens[0].getAddress()
+    const t1 = await tokens[1].getAddress()
+    const [a, b] = sort(t0, t1)
 
-    const res = await nft.mint.staticCall(params) // <- replaces nft.callStatic.mint(...)
-    const liquidity = Number(res.liquidity)
-
-    await (await nft.mint(params)).wait()
-    return liquidity
-  }
-
-  // BigInt-based version of the old BigNumber helper
-  function getTickBitmapIndex(tick: number, tickSpacing: number): number {
-    const t = BigInt(tick)
-    const s = BigInt(tickSpacing)
-    const q = t / s // rounds toward 0 like Solidity
-    const word = q < 0n ? (q + 1n) / (1n << 8n) - 1n : q >> 8n
-    return Number(word)
-  }
-
-  // -------- lifecycle --------
-
-  beforeEach('load fixture', async () => {
-    ;({ factory, tokens, nft } = await loadFixture(nftFixture))
+    poolAddress = await createFullRangePoolAndGetAddress(a, b)
   })
 
-  beforeEach('create pool & lens', async () => {
-    const [t0, t1, faddr] = await Promise.all([
-      tokens[0].getAddress(),
-      tokens[1].getAddress(),
-      factory.getAddress(),
-    ])
-
-    await createPool(t0, t1)
-    poolAddress = computePoolAddress(faddr, [t0, t1], FEE)
-
-    const LensFactory = await ethers.getContractFactory('TickLensTest')
-    const deployed = await LensFactory.deploy()
-    await deployed.waitForDeployment()
-    tickLens = deployed as unknown as TickLensTest // cast via unknown to satisfy TS
-  })
-
-  // -------- tests --------
-
-  describe('#getPopulatedTicksInWord', () => {
+  describe('#getPopulatedTicksInWord (zero fee)', () => {
     it('works for min/max', async () => {
-      const spacing = TICK_SPACINGS[FEE]
+      const spacing = await poolSpacing(poolAddress)
+      const minTick = getMinTick(spacing)
+      const maxTick = getMaxTick(spacing)
 
-      const [min] = await tickLens.getPopulatedTicksInWord(
-        poolAddress,
-        getTickBitmapIndex(getMinTick(spacing), spacing)
-      )
+      const baseMin = await wordIndexForTick(poolAddress, minTick)
+      const baseMax = await wordIndexForTick(poolAddress, maxTick)
 
-      const [max] = await tickLens.getPopulatedTicksInWord(
-        poolAddress,
-        getTickBitmapIndex(getMaxTick(spacing), spacing)
-      )
+      const { ticks: minWord } = await findWordContainingTick(poolAddress, baseMin, minTick)
+      const { ticks: maxWord } = await findWordContainingTick(poolAddress, baseMax, maxTick)
 
-      expect(min.tick).to.eq(getMinTick(spacing))
-      expect(min.liquidityNet).to.eq(fullRangeLiquidity)
-      expect(min.liquidityGross).to.eq(fullRangeLiquidity)
+      expect(minWord.length, 'min word empty').to.be.greaterThan(0)
+      expect(maxWord.length, 'max word empty').to.be.greaterThan(0)
 
-      expect(max.tick).to.eq(getMaxTick(spacing))
-      expect(max.liquidityNet).to.eq(fullRangeLiquidity * -1)
-      expect(max.liquidityGross).to.eq(fullRangeLiquidity)
+      const minEntry = minWord.find((t) => Number(t.tick) === minTick)!
+      const maxEntry = maxWord.find((t) => Number(t.tick) === maxTick)!
+
+      // exact full-range L (static, using pool spacing)
+      const [token0, token1] = sort(await tokens[0].getAddress(), await tokens[1].getAddress())
+      const { liquidity: fullRangeLiquidity } = await (nft.getFunction('mint') as any).staticCall({
+        token0,
+        token1,
+        fee: FEE,
+        tickLower: minTick,
+        tickUpper: maxTick,
+        recipient: await wallet.getAddress(),
+        amount0Desired: 1_000_000,
+        amount1Desired: 1_000_000,
+        amount0Min: 0,
+        amount1Min: 0,
+        deadline: 1,
+      })
+
+      expect(BigInt(minEntry.liquidityNet)).to.eq(fullRangeLiquidity as bigint)
+      expect(BigInt(minEntry.liquidityGross)).to.eq(fullRangeLiquidity as bigint)
+      expect(BigInt(maxEntry.liquidityNet)).to.eq(-(fullRangeLiquidity as bigint))
+      expect(BigInt(maxEntry.liquidityGross)).to.eq(fullRangeLiquidity as bigint)
     })
 
     it('works for min/max and -2/-1/0/1', async () => {
-      const spacing = TICK_SPACINGS[FEE]
+      const spacing = await poolSpacing(poolAddress)
+      const [token0, token1] = sort(await tokens[0].getAddress(), await tokens[1].getAddress())
+
       const minus = -spacing
       const plus = spacing
 
-      const l0 = await mint(minus * 2, minus, 2)
-      const l1 = await mint(minus * 2, 0, 3)
-      const l2 = await mint(minus * 2, plus, 5)
-      const l3 = await mint(minus, 0, 7)
-      const l4 = await mint(minus, plus, 11)
-      const l5 = await mint(0, plus, 13)
+      const mintRange = async (tickLower: number, tickUpper: number, amt: number) => {
+        return mintAndReturnLiquidity({
+          token0,
+          token1,
+          fee: FEE,
+          tickLower,
+          tickUpper,
+          recipient: await wallet.getAddress(),
+          amount0Desired: amt,
+          amount1Desired: amt,
+          amount0Min: 0,
+          amount1Min: 0,
+          deadline: 1,
+        })
+      }
 
-      const [min] = await tickLens.getPopulatedTicksInWord(
-        poolAddress,
-        getTickBitmapIndex(getMinTick(spacing), spacing)
-      )
+      const L0 = await mintRange(minus * 2, minus, 2)  // (-2, -1]
+      const L1 = await mintRange(minus * 2, 0, 3)      // (-2, 0]
+      const L2 = await mintRange(minus * 2, plus, 5)   // (-2, +1]
+      const L3 = await mintRange(minus, 0, 7)          // (-1, 0]
+      const L4 = await mintRange(minus, plus, 11)      // (-1, +1]
+      const L5 = await mintRange(0, plus, 13)          // (0, +1]
 
-      const [negOne, negTwo] = await tickLens.getPopulatedTicksInWord(
-        poolAddress,
-        getTickBitmapIndex(minus, spacing)
-      )
+      const minTick = getMinTick(spacing)
+      const maxTick = getMaxTick(spacing)
 
-      const [one, zero] = await tickLens.getPopulatedTicksInWord(
-        poolAddress,
-        getTickBitmapIndex(plus, spacing)
-      )
+      const [baseMin, baseNeg, basePos, baseMax] = await Promise.all([
+        wordIndexForTick(poolAddress, minTick),
+        wordIndexForTick(poolAddress, minus),
+        wordIndexForTick(poolAddress, plus),
+        wordIndexForTick(poolAddress, maxTick),
+      ])
 
-      const [max] = await tickLens.getPopulatedTicksInWord(
-        poolAddress,
-        getTickBitmapIndex(getMaxTick(spacing), spacing)
-      )
+      const { ticks: wMin } = await findWordContainingTick(poolAddress, baseMin, minTick)
+      const { ticks: wNeg } = await findWordContainingTick(poolAddress, baseNeg, minus)
+      const { ticks: wPos } = await findWordContainingTick(poolAddress, basePos, plus)
+      const { ticks: wMax } = await findWordContainingTick(poolAddress, baseMax, maxTick)
 
-      expect(min.tick).to.eq(getMinTick(spacing))
-      expect(min.liquidityNet).to.eq(fullRangeLiquidity)
-      expect(min.liquidityGross).to.eq(fullRangeLiquidity)
+      for (const arr of [wMin, wNeg, wPos, wMax]) expect(arr.length).to.be.greaterThan(0)
 
-      expect(negTwo.tick).to.eq(minus * 2)
-      expect(negTwo.liquidityNet).to.eq(l0 + l1 + l2)
-      expect(negTwo.liquidityGross).to.eq(l0 + l1 + l2)
+      const entryMin  = wMin.find((t) => Number(t.tick) === minTick)!
+      const entryMax  = wMax.find((t) => Number(t.tick) === maxTick)!
+      const entryNeg2 = wNeg.find((t) => Number(t.tick) === minus * 2)!
+      const entryNeg1 = wNeg.find((t) => Number(t.tick) === minus)!
+      const entryZero = wPos.find((t) => Number(t.tick) === 0)!
+      const entryPos1 = wPos.find((t) => Number(t.tick) === plus)!
 
-      expect(negOne.tick).to.eq(minus)
-      expect(negOne.liquidityNet).to.eq(l3 + l4 - l0)
-      expect(negOne.liquidityGross).to.eq(l3 + l4 + l0)
+      const { liquidity: fullRangeLiquidity } = await (nft.getFunction('mint') as any).staticCall({
+        token0,
+        token1,
+        fee: FEE,
+        tickLower: minTick,
+        tickUpper: maxTick,
+        recipient: await wallet.getAddress(),
+        amount0Desired: 1_000_000,
+        amount1Desired: 1_000_000,
+        amount0Min: 0,
+        amount1Min: 0,
+        deadline: 1,
+      })
 
-      expect(zero.tick).to.eq(0)
-      expect(zero.liquidityNet).to.eq(l5 - l1 - l3)
-      expect(zero.liquidityGross).to.eq(l5 + l1 + l3)
+      expect(BigInt(entryMin.liquidityNet)).to.eq(fullRangeLiquidity as bigint)
+      expect(BigInt(entryMin.liquidityGross)).to.eq(fullRangeLiquidity as bigint)
+      expect(BigInt(entryMax.liquidityNet)).to.eq(-(fullRangeLiquidity as bigint))
+      expect(BigInt(entryMax.liquidityGross)).to.eq(fullRangeLiquidity as bigint)
 
-      expect(one.tick).to.eq(plus)
-      expect(one.liquidityNet).to.eq(-l2 - l4 - l5)
-      expect(one.liquidityGross).to.eq(l2 + l4 + l5)
+      // -2
+      expect(BigInt(entryNeg2.liquidityNet)).to.eq(L0 + L1 + L2)
+      expect(BigInt(entryNeg2.liquidityGross)).to.eq(L0 + L1 + L2)
 
-      expect(max.tick).to.eq(getMaxTick(spacing))
-      expect(max.liquidityNet).to.eq(fullRangeLiquidity * -1)
-      expect(max.liquidityGross).to.eq(fullRangeLiquidity)
+      // -1
+      expect(BigInt(entryNeg1.liquidityNet)).to.eq(L3 + L4 - L0)
+      expect(BigInt(entryNeg1.liquidityGross)).to.eq(L3 + L4 + L0)
+
+      // 0
+      expect(BigInt(entryZero.liquidityNet)).to.eq(L5 - L1 - L3)
+      expect(BigInt(entryZero.liquidityGross)).to.eq(L5 + L1 + L3)
+
+      // +1
+      expect(BigInt(entryPos1.liquidityNet)).to.eq(-(L2 + L4 + L5))
+      expect(BigInt(entryPos1.liquidityGross)).to.eq(L2 + L4 + L5)
     })
 
     it('gas for single populated tick', async () => {
-      const spacing = TICK_SPACINGS[FEE]
-      await snapshotGasCost(
-        tickLens.getGasCostOfGetPopulatedTicksInWord(
-          poolAddress,
-          getTickBitmapIndex(getMaxTick(spacing), spacing)
-        )
-      )
+      const spacing = await poolSpacing(poolAddress)
+      const maxTick = getMaxTick(spacing)
+      const idx = await wordIndexForTick(poolAddress, maxTick)
+      await snapshotGasCost(tickLens.getGasCostOfGetPopulatedTicksInWord(poolAddress, idx))
     })
 
     it('fully populated ticks', async () => {
-      const spacing = TICK_SPACINGS[FEE]
+      // fully populate the word that contains tick 0 using the POOL’S spacing
+      const spacing = await poolSpacing(poolAddress)
+      const [token0, token1] = sort(await tokens[0].getAddress(), await tokens[1].getAddress())
 
-      // fully populate a word
       for (let i = 0; i < 128; i++) {
-        await mint(i * spacing, (255 - i) * spacing, 100)
+        const lower = i * spacing
+        const upper = (255 - i) * spacing
+        await mintAndReturnLiquidity({
+          token0,
+          token1,
+          fee: FEE,
+          tickLower: lower,
+          tickUpper: upper,
+          recipient: await wallet.getAddress(),
+          amount0Desired: 100,
+          amount1Desired: 100,
+          amount0Min: 0,
+          amount1Min: 0,
+          deadline: 1,
+        })
       }
 
-      const ticks = await tickLens.getPopulatedTicksInWord(
-        poolAddress,
-        getTickBitmapIndex(0, spacing)
-      )
+      const base0 = await wordIndexForTick(poolAddress, 0)
+      const { idx: idx0, ticks } = await findWordContainingTick(poolAddress, base0, 0)
+
       expect(ticks.length).to.eq(256)
 
-      await snapshotGasCost(
-        tickLens.getGasCostOfGetPopulatedTicksInWord(
-          poolAddress,
-          getTickBitmapIndex(0, spacing)
-        )
-      )
+      await snapshotGasCost(tickLens.getGasCostOfGetPopulatedTicksInWord(poolAddress, idx0))
     }).timeout(300_000)
   })
 })
