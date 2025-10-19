@@ -13,7 +13,9 @@ import type { TestERC20 } from '../../typechain-types/protocol'
 // ---- Fee tiers: ZERO only (enum-free for ESM strip-only) ----
 export const FeeAmount = { ZERO: 0 } as const
 export type FeeAmount = typeof FeeAmount[keyof typeof FeeAmount]
-
+export function expandTo18Decimals(n: number): bigint {
+  return BigInt(n) * (10n ** 18n)
+}
 export const TICK_SPACINGS: Record<number, number> = {
   [FeeAmount.ZERO]: 1, // adjust if your ZERO tier spacing differs
 }
