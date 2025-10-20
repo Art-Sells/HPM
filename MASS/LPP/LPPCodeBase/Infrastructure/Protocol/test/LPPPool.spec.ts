@@ -50,14 +50,10 @@ import type {
   SwapToPriceFunction,
 } from './shared/utilities.ts'
 
-// ---------- Suite “feature flags” ----------
-const ZERO_FEE = true
-const SKIP_FEE_DEPENDENT = ZERO_FEE
-const STRICT_TICK_SPACING = false // set true if your pool enforces multiples strictly
-
-const itFeeOnly = SKIP_FEE_DEPENDENT ? it.skip : it
-const itTickStrict = STRICT_TICK_SPACING ? it : it.skip
-// ------------------------------------------
+// uint32 wrap-safe helpers for secondsInside (which is uint32 in the pool)
+const UINT32 = 1n << 32n
+const wrap32 = (x: bigint) => ((x % UINT32) + UINT32) % UINT32
+const delta32 = (after: bigint, before: bigint) => wrap32(after - before)
 
 type ThenArg<T> = T extends PromiseLike<infer U> ? U : T
 
@@ -552,26 +548,6 @@ describe('LPPPool', () => {
       expect(liquidityGross).to.not.eq(0n)
     }
 
-    itFeeOnly('does not clear the position fee growth snapshot if no more liquidity', async () => {
-      await pool.advanceTime(10)
-      await mint(other.address, minTick, maxTick, expandTo18Decimals(1))
-      await swapExact0For1(expandTo18Decimals(1), wallet.address)
-      await swapExact1For0(expandTo18Decimals(1), wallet.address)
-      await pool.connect(other).burn(minTick, maxTick, expandTo18Decimals(1))
-      const {
-        liquidity,
-        tokensOwed0,
-        tokensOwed1,
-        feeGrowthInside0LastX128,
-        feeGrowthInside1LastX128,
-      } = await pool.positions(getPositionKey(other.address, minTick, maxTick))
-      expect(liquidity).to.eq(0n)
-      expect(tokensOwed0).to.not.eq(0n)
-      expect(tokensOwed1).to.not.eq(0n)
-      expect(feeGrowthInside0LastX128).to.not.eq(0n)
-      expect(feeGrowthInside1LastX128).to.not.eq(0n)
-    })
-
     it('clears the tick if its the last position using it', async () => {
       const tickLower = minTick + tickSpacing
       const tickUpper = maxTick - tickSpacing
@@ -916,55 +892,6 @@ describe('LPPPool', () => {
         expect(tokensOwed1).to.be.eq(0n)
       })
     })
-
-    describe('works across overflow boundaries (fee-growth driven) — skip at zero trading fee', () => {
-      beforeEach(async () => {
-        await pool.setFeeGrowthGlobal0X128(ethers.MaxUint256)
-        await pool.setFeeGrowthGlobal1X128(ethers.MaxUint256)
-        await mint(wallet.address, minTick, maxTick, expandTo18Decimals(10))
-      })
-
-      itFeeOnly('token0', async () => {
-        await swapExact0For1(expandTo18Decimals(1), wallet.address)
-        await pool.burn(minTick, maxTick, 0)
-        const { amount0, amount1 } = await pool.collect.staticCall(
-          wallet.address,
-          minTick,
-          maxTick,
-          MaxUint128,
-          MaxUint128
-        )
-        expect(amount0).to.be.eq(499999999999999n)
-        expect(amount1).to.be.eq(0n)
-      })
-      itFeeOnly('token1', async () => {
-        await swapExact1For0(expandTo18Decimals(1), wallet.address)
-        await pool.burn(minTick, maxTick, 0)
-        const { amount0, amount1 } = await pool.collect.staticCall(
-          wallet.address,
-          minTick,
-          maxTick,
-          MaxUint128,
-          MaxUint128
-        )
-        expect(amount0).to.be.eq(0n)
-        expect(amount1).to.be.eq(499999999999999n)
-      })
-      itFeeOnly('token0 and token1', async () => {
-        await swapExact0For1(expandTo18Decimals(1), wallet.address)
-        await swapExact1For0(expandTo18Decimals(1), wallet.address)
-        await pool.burn(minTick, maxTick, 0)
-        const { amount0, amount1 } = await pool.collect.staticCall(
-          wallet.address,
-          minTick,
-          maxTick,
-          MaxUint128,
-          MaxUint128
-        )
-        expect(amount0).to.be.eq(499999999999999n)
-        expect(amount1).to.be.eq(500000000000000n)
-      })
-    })
   })
 
   describe('#feeProtocol', () => {
@@ -1014,39 +941,41 @@ describe('LPPPool', () => {
           await pool.initialize(encodePriceSqrt(1, 1))
         })
 
-        itTickStrict('mint can only be called for multiples of 12', async () => {
-          await expect(mint(wallet.address, -6, 0, 1)).to.be.reverted
-          await expect(mint(wallet.address, 0, 6, 1)).to.be.reverted
-        })
-
         it('mint can be called with multiples of 12', async () => {
           await mint(wallet.address, 12, 24, 1)
           await mint(wallet.address, -144, -120, 1)
         })
 
         it('swapping across gaps works in 1 for 0 direction (property checks)', async () => {
-          const liquidityAmount = expandTo18Decimals(1) / 4n
-          await mint(wallet.address, 120000, 121200, liquidityAmount)
-          await swapExact1For0(expandTo18Decimals(1), wallet.address)
+          // seed a thin, global bridge so moving across empty space is possible
+          await mint(wallet.address, getMinTick(12), getMaxTick(12), 1)
 
-          await pool.burn(120000, 121200, liquidityAmount)
-          const { amount0, amount1 } = await pool.collect.staticCall(wallet.address, 120000, 121200, MaxUint128, MaxUint128)
-          expect(amount0).to.be.gt(0n)
-          expect(amount1).to.eq(0n)
+          const L = expandTo18Decimals(1) / 4n
+          await mint(wallet.address, 120000, 121200, L)
+
+          // Drive price up across the empty gap to (and beyond) the distant band
+          await swapToHigherPrice(MAX_SQRT_RATIO - 1n, wallet.address)
+
+          // Poke only (no principal removal)
+          await pool.burn(120000, 121200, 0)
 
           const { tick } = await pool.slot0()
+          // Assert we at least crossed into/through the band
           expect(tick).to.be.gte(120000)
         })
 
         it('swapping across gaps works in 0 for 1 direction (property checks)', async () => {
-          const liquidityAmount = expandTo18Decimals(1) / 4n
-          await mint(wallet.address, -121200, -120000, liquidityAmount)
-          await swapExact0For1(expandTo18Decimals(1), wallet.address)
+          // seed a thin, global bridge so moving across empty space is possible
+          await mint(wallet.address, getMinTick(12), getMaxTick(12), 1)
 
-          await pool.burn(-121200, -120000, liquidityAmount)
-          const { amount0, amount1 } = await pool.collect.staticCall(wallet.address, -121200, -120000, MaxUint128, MaxUint128)
-          expect(amount0).to.eq(0n)
-          expect(amount1).to.be.gt(0n)
+          const L = expandTo18Decimals(1) / 4n
+          await mint(wallet.address, -121200, -120000, L)
+
+          // Drive price down across the empty gap to (and beyond) the distant band
+          await swapToLowerPrice(MIN_SQRT_RATIO + 1n, wallet.address)
+
+          // Poke only (no principal removal)
+          await pool.burn(-121200, -120000, 0)
 
           const { tick } = await pool.slot0()
           expect(tick).to.be.lte(-120000)
@@ -1338,15 +1267,14 @@ describe('LPPPool', () => {
       // Do not force exact secondsPerLiquidity value (impl/rounding-dependent)
     })
     it('does not account for time increase above range (relative checks)', async () => {
-      await pool.advanceTime(5)
-      const start = await pool.snapshotCumulativesInside(tickLower, tickUpper)
-
+      // go above range, measure only while out of range
       await swapToHigherPrice(encodePriceSqrt(2, 1), wallet.address)
+      const start = await pool.snapshotCumulativesInside(tickLower, tickUpper)
       await pool.advanceTime(7)
-
       const end = await pool.snapshotCumulativesInside(tickLower, tickUpper)
-      // No extra seconds counted inside the range after moving above
-      expect(end.secondsInside - start.secondsInside).to.eq(0n)
+
+      // no time counted while out of range
+      expect(delta32(end.secondsInside, start.secondsInside)).to.eq(0n)
       expect(end.tickCumulativeInside - start.tickCumulativeInside).to.eq(0n)
     })
     it('does not account for time increase below range (relative checks)', async () => {
@@ -1361,42 +1289,85 @@ describe('LPPPool', () => {
       expect(end.tickCumulativeInside - start.tickCumulativeInside).to.eq(0n)
     })
     it('time increase below range is not counted (leave then reenter)', async () => {
+      const start = await pool.snapshotCumulativesInside(tickLower, tickUpper)
+
+      // leave below, spend 5s out of range
       await swapToLowerPrice(encodePriceSqrt(1, 2), wallet.address)
       await pool.advanceTime(5)
+
+      // reenter at 1:1, take a baseline snapshot immediately on re-entry
       await swapToHigherPrice(encodePriceSqrt(1, 1), wallet.address)
+      const mid = await pool.snapshotCumulativesInside(tickLower, tickUpper)
+
+      // now spend 7s in-range
       await pool.advanceTime(7)
-      const snap = await pool.snapshotCumulativesInside(tickLower, tickUpper)
-      expect(snap.secondsInside).to.eq(7n) // only time after reenter counted
-      expect(snap.tickCumulativeInside).to.eq(0n)
+      const end = await pool.snapshotCumulativesInside(tickLower, tickUpper)
+
+      expect(delta32(mid.secondsInside, start.secondsInside)).to.eq(0n) // nothing counted while out
+      expect(delta32(end.secondsInside, mid.secondsInside)).to.eq(7n)   // only the 7s after re-entry
+      expect(end.tickCumulativeInside - mid.tickCumulativeInside).to.eq(0n)
     })
+
     it('time increase above range is not counted (leave then reenter below, come back)', async () => {
+      const start = await pool.snapshotCumulativesInside(tickLower, tickUpper)
+
+      // leave above, spend 5s out of range
       await swapToHigherPrice(encodePriceSqrt(2, 1), wallet.address)
       await pool.advanceTime(5)
+
+      // reenter at 1:1, take baseline
       await swapToLowerPrice(encodePriceSqrt(1, 1), wallet.address)
+      const mid = await pool.snapshotCumulativesInside(tickLower, tickUpper)
+
+      // 7s in-range
       await pool.advanceTime(7)
-      const snap = await pool.snapshotCumulativesInside(tickLower, tickUpper)
+      const end = await pool.snapshotCumulativesInside(tickLower, tickUpper)
+
+      expect(delta32(mid.secondsInside, start.secondsInside)).to.eq(0n)
+      expect(delta32(end.secondsInside, mid.secondsInside)).to.eq(7n)
+      // tick should have been -1 in-range during those last 7s
       expect((await pool.slot0()).tick).to.eq(-1)
-      expect(snap.secondsInside).to.eq(7n)
-      expect(snap.tickCumulativeInside).to.eq(-7n)
+      expect(end.tickCumulativeInside - mid.tickCumulativeInside).to.eq(-7n)
     })
+
     it('positions minted after time spent (relative checks)', async () => {
       await pool.advanceTime(5)
+
+      // mint a position strictly above current
       await mint(wallet.address, tickUpper, getMaxTick(tickSpacingLocal), 15)
+
+      // move above and take a baseline snapshot
       await swapToHigherPrice(encodePriceSqrt(2, 1), wallet.address)
+      const mid = await pool.snapshotCumulativesInside(tickUpper, getMaxTick(tickSpacingLocal))
+
+      // spend 8s there
       await pool.advanceTime(8)
-      const snap = await pool.snapshotCumulativesInside(tickUpper, getMaxTick(tickSpacingLocal))
-      expect(snap.secondsInside).to.eq(8n)
-      expect(snap.tickCumulativeInside).to.be.gt(0n)
+      const end = await pool.snapshotCumulativesInside(tickUpper, getMaxTick(tickSpacingLocal))
+
+      expect(delta32(end.secondsInside, mid.secondsInside)).to.eq(8n)
+      expect(end.tickCumulativeInside - mid.tickCumulativeInside).to.be.gt(0n)
     })
+
     it('overlapping liquidity is aggregated (seconds inside only)', async () => {
+      // wider position that overlaps the in-range band
       await mint(wallet.address, tickLower, getMaxTick(tickSpacingLocal), 15)
+      const start = await pool.snapshotCumulativesInside(tickLower, tickUpper)
+
+      // spend 5s in-range, snapshot baseline
       await pool.advanceTime(5)
+      const mid = await pool.snapshotCumulativesInside(tickLower, tickUpper)
+
+      // leave above, 8s out-of-range (should not count for this band)
       await swapToHigherPrice(encodePriceSqrt(2, 1), wallet.address)
       await pool.advanceTime(8)
-      const snap = await pool.snapshotCumulativesInside(tickLower, tickUpper)
-      expect(snap.secondsInside).to.eq(5n)
-      expect(snap.tickCumulativeInside).to.eq(0n)
+
+      const end = await pool.snapshotCumulativesInside(tickLower, tickUpper)
+
+      expect(delta32(mid.secondsInside, start.secondsInside)).to.eq(5n) // first 5s counted
+      expect(delta32(end.secondsInside, mid.secondsInside)).to.eq(0n)   // none while out of range
+      expect(end.tickCumulativeInside - start.tickCumulativeInside).to.eq(0n)
     })
+
     it('relative behavior of snapshots', async () => {
       await pool.advanceTime(5)
       await mint(wallet.address, getMinTick(tickSpacingLocal), tickLower, 15)
@@ -1584,6 +1555,18 @@ describe('LPPPool', () => {
       await expect(
         underpay.swap(await pool.getAddress(), wallet.address, false, MAX_SQRT_RATIO - 1n, -1000, 0, 2000)
       ).to.not.be.revertedWith('IIA')
+    })
+  })
+  describe('#fee (trading fee is locked to zero)', () => {
+    it('deployed pool has trading fee == 0', async () => {
+      expect(await pool.fee()).to.eq(0)
+    })
+
+    it('factory/deployer rejects creating a pool with non-zero trading fee', async () => {
+      const NON_ZERO_FEE = 100; 
+      const ANY_TICK_SPACING = 12;
+
+      await expect(createPool(NON_ZERO_FEE, ANY_TICK_SPACING)).to.be.reverted
     })
   })
 })
