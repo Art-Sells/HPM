@@ -13,7 +13,9 @@ import type { TestERC20 } from '../../typechain-types/protocol'
 // ---- Fee tiers: ZERO only (enum-free for ESM strip-only) ----
 export const FeeAmount = { ZERO: 0 } as const
 export type FeeAmount = typeof FeeAmount[keyof typeof FeeAmount]
-
+export function expandTo18Decimals(n: number): bigint {
+  return BigInt(n) * (10n ** 18n)
+}
 export const TICK_SPACINGS: Record<number, number> = {
   [FeeAmount.ZERO]: 1, // adjust if your ZERO tier spacing differs
 }
@@ -67,7 +69,12 @@ export function getCreate2Address(
 
   // keccak256(0xff ++ factory ++ salt ++ init_code_hash)[12:]
   const digest = ethers.keccak256(
-    ethers.concat([ethers.getBytes('0xff'), ethers.getBytes(factoryAddress), ethers.getBytes(salt), ethers.getBytes(initCodeHash)])
+    ethers.concat([
+      ethers.getBytes('0xff'),
+      ethers.getBytes(factoryAddress),
+      ethers.getBytes(salt),
+      ethers.getBytes(initCodeHash),
+    ])
   )
 
   return ethers.getAddress('0x' + digest.slice(-40))
@@ -84,7 +91,10 @@ export type SwapFunction = (
   sqrtPriceLimitX96?: BigNumberish
 ) => Promise<ContractTransactionResponse>
 
-export type SwapToPriceFunction = (sqrtPriceX96: BigNumberish, to: Wallet | string) => Promise<ContractTransactionResponse>
+export type SwapToPriceFunction = (
+  sqrtPriceX96: BigNumberish,
+  to: Wallet | string
+) => Promise<ContractTransactionResponse>
 
 export type FlashFunction = (
   amount0: BigNumberish,
@@ -116,7 +126,9 @@ export interface PoolFunctions {
 async function resolveTo(to: Wallet | string): Promise<string> {
   if (typeof to === 'string') return to
   // Wallet has .address; Hardhat signers have getAddress()
-  return ('address' in to && typeof (to as any).address === 'string') ? (to as any).address : await (to as any).getAddress()
+  return ('address' in to && typeof (to as any).address === 'string')
+    ? (to as any).address
+    : await (to as any).getAddress()
 }
 
 export function createPoolFunctions({
@@ -138,8 +150,9 @@ export function createPoolFunctions({
     targetPrice: BigNumberish,
     to: Wallet | string
   ): Promise<ContractTransactionResponse> {
+    // use supplicate names from TestLPPCallee
     const method =
-      inputToken === token0 ? callee.swapToLowerSqrtPrice : callee.swapToHigherSqrtPrice
+      inputToken === token0 ? callee.supplicateToLowerSqrtPrice : callee.supplicateToHigherSqrtPrice
 
     await inputToken.approve(await swapTarget.getAddress(), ethers.MaxUint256)
     const toAddress = await resolveTo(to)
@@ -154,14 +167,11 @@ export function createPoolFunctions({
   ): Promise<ContractTransactionResponse> {
     const exactInput = toBigInt(amountOut) === 0n
 
+    // use supplicate names from TestLPPCallee
     const method =
       inputToken === token0
-        ? exactInput
-          ? callee.swapExact0For1
-          : callee.swap0ForExact1
-        : exactInput
-          ? callee.swapExact1For0
-          : callee.swap1ForExact0
+        ? (exactInput ? callee.supplicateExact0For1 : callee.supplicate0ForExact1)
+        : (exactInput ? callee.supplicateExact1For0 : callee.supplicate1ForExact0)
 
     if (typeof sqrtPriceLimitX96 === 'undefined') {
       sqrtPriceLimitX96 = inputToken === token0 ? (MIN_SQRT_RATIO + 1n) : (MAX_SQRT_RATIO - 1n)
