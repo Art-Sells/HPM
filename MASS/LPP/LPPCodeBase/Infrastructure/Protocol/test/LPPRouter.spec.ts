@@ -138,7 +138,7 @@ describe('LPPPool', () => {
         .to.emit(outputToken, 'Transfer')
         .withArgs(pool1Addr, wallet.address, 100)
         .to.emit(token1, 'Transfer')
-        .withArgs(pool0Addr, pool1Addr, 101)   // one unit of rounding on hop 2
+        .withArgs(pool0Addr, pool1Addr, 101) 
         .to.emit(inputToken, 'Transfer')
         .withArgs(wallet.address, pool0Addr, 102)
     })
