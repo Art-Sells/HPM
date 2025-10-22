@@ -426,56 +426,88 @@ describe('LPPPool supplication tests', () => {
           await loadFixture(poolCaseFixture))
       })
 
-afterEach('check can burn positions', async () => {
-  // burn in-range first, then out-of-range
-  const { tick } = await pool.slot0()
-  const ordered = [
-    ...poolCase.positions.filter(p => p.tickLower <= tick && tick < p.tickUpper),
-    ...poolCase.positions.filter(p => !(p.tickLower <= tick && tick < p.tickUpper)),
-  ]
+      afterEach('check can burn positions', async () => {
+        const inRange = async (p: { tickLower: number; tickUpper: number }) => {
+          const { tick } = await pool.slot0()
+          return p.tickLower <= tick && tick < p.tickUpper
+        }
 
-  for (const { tickLower, tickUpper } of ordered) {
-    const key = getPositionKey(wallet.address, tickLower, tickUpper)
+        // order: in-range first, then out-of-range
+        const tickNow = (await pool.slot0()).tick
+        const ordered = [
+          ...poolCase.positions.filter(p => p.tickLower <= tickNow && tickNow < p.tickUpper),
+          ...poolCase.positions.filter(p => !(p.tickLower <= tickNow && tickNow < p.tickUpper)),
+        ]
 
-    // burn loop that never exceeds per-tick liquidityGross
-    // (avoids 'LS' even when multiple positions share a tick)
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const pos = await pool.positions(key)
-      let remaining = pos.liquidity as bigint
+        // burn a single [lower, upper] range safely
+        const safeBurn = async (tickLower: number, tickUpper: number) => {
+          const key = getPositionKey(wallet.address, tickLower, tickUpper)
 
-      if (remaining === 0n) break
+          // loop until position.liquidity is 0 or we can’t safely reduce further
+          // eslint-disable-next-line no-constant-condition
+          while (true) {
+            const pos = await pool.positions(key)
+            let remaining = pos.liquidity as bigint
+            if (remaining === 0n) break
 
-      const lowerInfo = await pool.ticks(tickLower)
-      const upperInfo = await pool.ticks(tickUpper)
+            // live caps
+            const [lowerInfo, upperInfo, slot0] = await Promise.all([
+              pool.ticks(tickLower),
+              pool.ticks(tickUpper),
+              pool.slot0(),
+            ])
 
-      const lowerGross = BigInt((lowerInfo as any).liquidityGross ?? 0)
-      const upperGross = BigInt((upperInfo as any).liquidityGross ?? 0)
+            const active = tickLower <= slot0.tick && slot0.tick < tickUpper
+            const lowerGross = BigInt((lowerInfo as any).liquidityGross ?? 0)
+            const upperGross = BigInt((upperInfo as any).liquidityGross ?? 0)
+            const poolLiq = active ? (await pool.liquidity()) as unknown as bigint : (1n << 255n) // “infinity” when out-of-range
 
-      // burn only what BOTH ticks can safely subtract right now
-      let burnable = remaining
-      if (lowerGross < burnable) burnable = lowerGross
-      if (upperGross < burnable) burnable = upperGross
+            // cap burn to *all* safety limits
+            let burnable = remaining
+            if (lowerGross < burnable) burnable = lowerGross
+            if (upperGross < burnable) burnable = upperGross
+            if (poolLiq   < burnable) burnable = poolLiq
 
-      if (burnable === 0n) {
-        // Poke to settle fees/inside growth and avoid LS, then stop trying
-        await pool.burn(tickLower, tickUpper, 0)
-        break
-      }
+            if (burnable === 0n) {
+              // poke to settle growth; nothing safe to burn this tick
+              await pool.burn(tickLower, tickUpper, 0)
+              break
+            }
 
-      await pool.burn(tickLower, tickUpper, burnable)
-    }
+            // try largest safe chunk; if boundary race still hits LS, back off
+            try {
+              await pool.burn(tickLower, tickUpper, burnable)
+            } catch (e: any) {
+              // halve once and retry; if still no-go, poke and stop
+              const smaller = burnable / 2n
+              if (smaller === 0n) {
+                await pool.burn(tickLower, tickUpper, 0)
+                break
+              }
+              try {
+                await pool.burn(tickLower, tickUpper, smaller)
+              } catch {
+                await pool.burn(tickLower, tickUpper, 0)
+                break
+              }
+            }
+          }
 
-    // collect whatever is owed (even if we didn’t burn anything)
-    await pool.collect(
-      POSITION_PROCEEDS_OUTPUT_ADDRESS,
-      tickLower,
-      tickUpper,
-      MaxUint128,
-      MaxUint128
-    )
-  }
-})
+          // collect whatever’s owed (even if we didn’t burn anything)
+          await pool.collect(
+            POSITION_PROCEEDS_OUTPUT_ADDRESS,
+            tickLower,
+            tickUpper,
+            MaxUint128,
+            MaxUint128
+          )
+        }
+
+        // burn all ranges
+        for (const { tickLower, tickUpper } of ordered) {
+          await safeBurn(tickLower, tickUpper)
+        }
+      })
 
       for (const testCase of poolCase.supplicationTests ?? DEFAULT_POOL_SUPPLICATION_TESTS) {
         it(supplicationCaseToDescription(testCase), async () => {

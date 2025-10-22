@@ -1124,6 +1124,38 @@ Object {
 }
 `;
 
+exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate exactly 0.0000000000000010000 token0 for token1 1`] = `
+Object {
+  "amount0Before": "1999900007499375055",
+  "amount0Delta": "1000",
+  "amount1Before": "1999900007499375055",
+  "amount1Delta": "-999",
+  "executionPrice": "0.99900",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "0.99990",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": -2n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate exactly 0.0000000000000010000 token1 for token0 1`] = `
+Object {
+  "amount0Before": "1999900007499375055",
+  "amount0Delta": "0",
+  "amount1Before": "1999900007499375055",
+  "amount1Delta": "0",
+  "executionPrice": "NaN",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "3.4026e+38",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": 887271n,
+  "tickBefore": 0n,
+}
+`;
+
 exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate exactly 1.0000 token0 for token1 1`] = `
 Object {
   "amount0Before": "1999900007499375055",
@@ -1140,6 +1172,22 @@ Object {
 }
 `;
 
+exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate exactly 1.0000 token0 for token1 to price 0.50000 1`] = `
+Object {
+  "amount0Before": "1999900007499375055",
+  "amount0Delta": "828327127246065118",
+  "amount1Before": "1999900007499375055",
+  "amount1Delta": "-585686445126279993",
+  "executionPrice": "0.70707",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "0.50000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": -6932n,
+  "tickBefore": 0n,
+}
+`;
+
 exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate exactly 1.0000 token1 for token0 1`] = `
 Object {
   "amount0Before": "1999900007499375055",
@@ -1152,6 +1200,170 @@ Object {
   "poolPriceAfter": "3.4026e+38",
   "poolPriceBefore": "1.0000",
   "tickAfter": 887271n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate exactly 1.0000 token1 for token0 to price 2.0000 1`] = `
+Object {
+  "amount0Before": "1999900007499375055",
+  "amount0Delta": "0",
+  "amount1Before": "1999900007499375055",
+  "amount1Delta": "0",
+  "executionPrice": "NaN",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "2.0000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": 6931n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate token0 for exactly 0.0000000000000010000 token1 1`] = `
+Object {
+  "amount0Before": "1999900007499375055",
+  "amount0Delta": "1001",
+  "amount1Before": "1999900007499375055",
+  "amount1Delta": "-1000",
+  "executionPrice": "0.99900",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "0.99990",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": -2n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate token0 for exactly 1.0000 token1 1`] = `
+Object {
+  "amount0Before": "1999900007499375055",
+  "amount0Delta": "2000300012500375146",
+  "amount1Before": "1999900007499375055",
+  "amount1Delta": "-1000000000000000000",
+  "executionPrice": "0.49993",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "0.24995",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": -13866n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate token0 for exactly 1.0000 token1 to price 0.50000 1`] = `
+Object {
+  "amount0Before": "1999900007499375055",
+  "amount0Delta": "828327127246065118",
+  "amount1Before": "1999900007499375055",
+  "amount1Delta": "-585686445126279993",
+  "executionPrice": "0.70707",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "0.50000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": -6932n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate token0 for token1 to price 0.40000 1`] = `
+Object {
+  "amount0Before": "1999900007499375055",
+  "amount0Delta": "1162177662668254356",
+  "amount1Before": "1999900007499375055",
+  "amount1Delta": "-734988943432023307",
+  "executionPrice": "0.63242",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "0.40000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": -9164n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate token0 for token1 to price 2.5000 1`] = `
+Object {
+  "poolBalance0": "1999900007499375055",
+  "poolBalance1": "1999900007499375055",
+  "poolPriceBefore": "1.0000",
+  "supplicationError": "VM Exception while processing transaction: reverted with reason string 'SPL'",
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate token1 for exactly 0.0000000000000010000 token0 1`] = `
+Object {
+  "amount0Before": "1999900007499375055",
+  "amount0Delta": "0",
+  "amount1Before": "1999900007499375055",
+  "amount1Delta": "0",
+  "executionPrice": "NaN",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "3.4026e+38",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": 887271n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate token1 for exactly 1.0000 token0 1`] = `
+Object {
+  "amount0Before": "1999900007499375055",
+  "amount0Delta": "0",
+  "amount1Before": "1999900007499375055",
+  "amount1Delta": "0",
+  "executionPrice": "NaN",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "3.4026e+38",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": 887271n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate token1 for exactly 1.0000 token0 to price 2.0000 1`] = `
+Object {
+  "amount0Before": "1999900007499375055",
+  "amount0Delta": "0",
+  "amount1Before": "1999900007499375055",
+  "amount1Delta": "0",
+  "executionPrice": "NaN",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "2.0000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": 6931n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate token1 for token0 to price 0.40000 1`] = `
+Object {
+  "poolBalance0": "1999900007499375055",
+  "poolBalance1": "1999900007499375055",
+  "poolPriceBefore": "1.0000",
+  "supplicationError": "VM Exception while processing transaction: reverted with reason string 'SPL'",
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, 0 liquidity, all liquidity around current price supplicate token1 for token0 to price 2.5000 1`] = `
+Object {
+  "amount0Before": "1999900007499375055",
+  "amount0Delta": "0",
+  "amount1Before": "1999900007499375055",
+  "amount1Delta": "0",
+  "executionPrice": "NaN",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "2.5000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": 9163n,
   "tickBefore": 0n,
 }
 `;
@@ -1400,7 +1612,55 @@ Object {
 }
 `;
 
+exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate exactly 0.0000000000000010000 token0 for token1 1`] = `
+Object {
+  "amount0Before": "3999900007499375055",
+  "amount0Delta": "1000",
+  "amount1Before": "3999900007499375055",
+  "amount1Delta": "-999",
+  "executionPrice": "0.99900",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "1.0000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": -1n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate exactly 0.0000000000000010000 token1 for token0 1`] = `
+Object {
+  "amount0Before": "3999900007499375055",
+  "amount0Delta": "-999",
+  "amount1Before": "3999900007499375055",
+  "amount1Delta": "1000",
+  "executionPrice": "1.0010",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "1.0000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": 0n,
+  "tickBefore": 0n,
+}
+`;
+
 exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate exactly 1.0000 token0 for token1 1`] = `
+Object {
+  "amount0Before": "3999900007499375055",
+  "amount0Delta": "1000000000000000000",
+  "amount1Before": "3999900007499375055",
+  "amount1Delta": "-799964004619544630",
+  "executionPrice": "0.79996",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "0.63997",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": -4464n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate exactly 1.0000 token0 for token1 to price 0.50000 1`] = `
 Object {
   "amount0Before": "3999900007499375055",
   "amount0Delta": "1000000000000000000",
@@ -1428,6 +1688,170 @@ Object {
   "poolPriceAfter": "2.2500",
   "poolPriceBefore": "1.0000",
   "tickAfter": 8109n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate exactly 1.0000 token1 for token0 to price 2.0000 1`] = `
+Object {
+  "amount0Before": "3999900007499375055",
+  "amount0Delta": "-585786437626904938",
+  "amount1Before": "3999900007499375055",
+  "amount1Delta": "828427124746190112",
+  "executionPrice": "1.4142",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "2.0000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": 6931n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate token0 for exactly 0.0000000000000010000 token1 1`] = `
+Object {
+  "amount0Before": "3999900007499375055",
+  "amount0Delta": "1001",
+  "amount1Before": "3999900007499375055",
+  "amount1Delta": "-1000",
+  "executionPrice": "0.99900",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "1.0000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": -1n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate token0 for exactly 1.0000 token1 1`] = `
+Object {
+  "amount0Before": "3999900007499375055",
+  "amount0Delta": "1333411106203998467",
+  "amount1Before": "3999900007499375055",
+  "amount1Delta": "-1000000000000000000",
+  "executionPrice": "0.74996",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "0.56246",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": -5755n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate token0 for exactly 1.0000 token1 to price 0.50000 1`] = `
+Object {
+  "amount0Before": "3999900007499375055",
+  "amount0Delta": "1333411106203998467",
+  "amount1Before": "3999900007499375055",
+  "amount1Delta": "-1000000000000000000",
+  "executionPrice": "0.74996",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "0.56246",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": -5755n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate token0 for token1 to price 0.40000 1`] = `
+Object {
+  "amount0Before": "3999900007499375055",
+  "amount0Delta": "2324455322836633689",
+  "amount1Before": "3999900007499375055",
+  "amount1Delta": "-1470077879364671572",
+  "executionPrice": "0.63244",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "0.40000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": -9164n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate token0 for token1 to price 2.5000 1`] = `
+Object {
+  "poolBalance0": "3999900007499375055",
+  "poolBalance1": "3999900007499375055",
+  "poolPriceBefore": "1.0000",
+  "supplicationError": "VM Exception while processing transaction: reverted with reason string 'SPL'",
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate token1 for exactly 0.0000000000000010000 token0 1`] = `
+Object {
+  "amount0Before": "3999900007499375055",
+  "amount0Delta": "-1000",
+  "amount1Before": "3999900007499375055",
+  "amount1Delta": "1001",
+  "executionPrice": "1.0010",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "1.0000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": 0n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate token1 for exactly 1.0000 token0 1`] = `
+Object {
+  "amount0Before": "3999900007499375055",
+  "amount0Delta": "-1000000000000000000",
+  "amount1Before": "3999900007499375055",
+  "amount1Delta": "2000000000000000135",
+  "executionPrice": "2.0000",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "4.0000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": 13863n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate token1 for exactly 1.0000 token0 to price 2.0000 1`] = `
+Object {
+  "amount0Before": "3999900007499375055",
+  "amount0Delta": "-585786437626904938",
+  "amount1Before": "3999900007499375055",
+  "amount1Delta": "828427124746190112",
+  "executionPrice": "1.4142",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "2.0000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": 6931n,
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate token1 for token0 to price 0.40000 1`] = `
+Object {
+  "poolBalance0": "3999900007499375055",
+  "poolBalance1": "3999900007499375055",
+  "poolPriceBefore": "1.0000",
+  "supplicationError": "VM Exception while processing transaction: reverted with reason string 'SPL'",
+  "tickBefore": 0n,
+}
+`;
+
+exports[`LPPPool supplication tests zero fee, 1:1 price, additional liquidity around current price supplicate token1 for token0 to price 2.5000 1`] = `
+Object {
+  "amount0Before": "3999900007499375055",
+  "amount0Delta": "-735088935932648252",
+  "amount1Before": "3999900007499375055",
+  "amount1Delta": "1162277660168379350",
+  "executionPrice": "1.5811",
+  "feeGrowthGlobal0X128Delta": "0",
+  "feeGrowthGlobal1X128Delta": "0",
+  "poolPriceAfter": "2.5000",
+  "poolPriceBefore": "1.0000",
+  "tickAfter": 9163n,
   "tickBefore": 0n,
 }
 `;
