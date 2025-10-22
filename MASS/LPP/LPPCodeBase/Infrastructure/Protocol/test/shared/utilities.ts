@@ -85,13 +85,13 @@ export function getPositionKey(addr: string, lowerTick: number, upperTick: numbe
 }
 
 // ---- pool interaction types (ethers v6: ContractTransactionResponse) ----
-export type SwapFunction = (
+export type SupplicateFunction = (
   amount: BigNumberish,
   to: Wallet | string,
   sqrtPriceLimitX96?: BigNumberish
 ) => Promise<ContractTransactionResponse>
 
-export type SwapToPriceFunction = (
+export type SupplicateToPriceFunction = (
   sqrtPriceX96: BigNumberish,
   to: Wallet | string
 ) => Promise<ContractTransactionResponse>
@@ -112,12 +112,12 @@ export type MintFunction = (
 ) => Promise<ContractTransactionResponse>
 
 export interface PoolFunctions {
-  swapToLowerPrice: SwapToPriceFunction
-  swapToHigherPrice: SwapToPriceFunction
-  swapExact0For1: SwapFunction
-  swap0ForExact1: SwapFunction
-  swapExact1For0: SwapFunction
-  swap1ForExact0: SwapFunction
+  swapToLowerPrice: SupplicateToPriceFunction
+  swapToHigherPrice: SupplicateToPriceFunction
+  swapExact0For1: SupplicateFunction
+  swap0ForExact1: SupplicateFunction
+  swapExact1For0: SupplicateFunction
+  swap1ForExact0: SupplicateFunction
   flash: FlashFunction
   mint: MintFunction
 }
@@ -182,22 +182,22 @@ export function createPoolFunctions({
     return method(await pool.getAddress(), exactInput ? amountIn : amountOut, toAddress, sqrtPriceLimitX96)
   }
 
-  const swapToLowerPrice: SwapToPriceFunction = (sqrtPriceX96, to) =>
+  const swapToLowerPrice: SupplicateToPriceFunction = (sqrtPriceX96, to) =>
     swapToSqrtPrice(token0, sqrtPriceX96, to)
 
-  const swapToHigherPrice: SwapToPriceFunction = (sqrtPriceX96, to) =>
+  const swapToHigherPrice: SupplicateToPriceFunction = (sqrtPriceX96, to) =>
     swapToSqrtPrice(token1, sqrtPriceX96, to)
 
-  const swapExact0For1: SwapFunction = (amount, to, limit) =>
+  const swapExact0For1: SupplicateFunction = (amount, to, limit) =>
     swap(token0, [amount, 0], to, limit)
 
-  const swap0ForExact1: SwapFunction = (amount, to, limit) =>
+  const swap0ForExact1: SupplicateFunction = (amount, to, limit) =>
     swap(token0, [0, amount], to, limit)
 
-  const swapExact1For0: SwapFunction = (amount, to, limit) =>
+  const swapExact1For0: SupplicateFunction = (amount, to, limit) =>
     swap(token1, [amount, 0], to, limit)
 
-  const swap1ForExact0: SwapFunction = (amount, to, limit) =>
+  const swap1ForExact0: SupplicateFunction = (amount, to, limit) =>
     swap(token1, [0, amount], to, limit)
 
   const mint: MintFunction = async (recipient, tickLower, tickUpper, liquidity) => {
@@ -233,8 +233,8 @@ export function createPoolFunctions({
 }
 
 export interface MultiPoolFunctions {
-  swapForExact0Multi: SwapFunction
-  swapForExact1Multi: SwapFunction
+  swapForExact0Multi: SupplicateFunction
+  swapForExact1Multi: SupplicateFunction
 }
 
 export function createMultiPoolFunctions({
