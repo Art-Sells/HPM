@@ -18,7 +18,7 @@
 - [ ] **Create 3 pools** (cbBTC/USDC, fee=0) & **initialize** at oracle price
 - [ ] **Seed liquidity**: tight **primary** range + tiny **fallback** range for each pool
 - [ ] Make arbs find pools: contract **verification**, **Subgraph**, `RebalanceNeeded` event, **Solver Kit**
-- [ ] Deploy to Base, verify, publish docs, announce to searchers
+- [ ] Deploy to Base, test with Base Testnet hardhat config (BASE_RPC_URL), verify, publish docs, announce to searchers
 
 ---
 
