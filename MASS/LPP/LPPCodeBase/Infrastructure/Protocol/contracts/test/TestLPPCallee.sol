@@ -22,7 +22,7 @@ contract TestLPPCallee is ILPPMintCallback, ILPPSupplicateCallback, ILPPFlashCal
         address recipient,
         uint160 sqrtPriceLimitX96
     ) external {
-        ILPPPool(pool).swap(recipient, true, amount0In.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
+        ILPPPool(pool).supplicate(recipient, true, amount0In.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
     }
 
     function supplicate0ForExact1(
@@ -31,7 +31,7 @@ contract TestLPPCallee is ILPPMintCallback, ILPPSupplicateCallback, ILPPFlashCal
         address recipient,
         uint160 sqrtPriceLimitX96
     ) external {
-        ILPPPool(pool).swap(recipient, true, -amount1Out.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
+        ILPPPool(pool).supplicate(recipient, true, -amount1Out.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
     }
 
     function supplicateExact1For0(
@@ -40,7 +40,7 @@ contract TestLPPCallee is ILPPMintCallback, ILPPSupplicateCallback, ILPPFlashCal
         address recipient,
         uint160 sqrtPriceLimitX96
     ) external {
-        ILPPPool(pool).swap(recipient, false, amount1In.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
+        ILPPPool(pool).supplicate(recipient, false, amount1In.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
     }
 
     function supplicate1ForExact0(
@@ -49,7 +49,7 @@ contract TestLPPCallee is ILPPMintCallback, ILPPSupplicateCallback, ILPPFlashCal
         address recipient,
         uint160 sqrtPriceLimitX96
     ) external {
-        ILPPPool(pool).swap(recipient, false, -amount0Out.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
+        ILPPPool(pool).supplicate(recipient, false, -amount0Out.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
     }
 
     function supplicateToLowerSqrtPrice(
@@ -57,7 +57,7 @@ contract TestLPPCallee is ILPPMintCallback, ILPPSupplicateCallback, ILPPFlashCal
         uint160 sqrtPriceX96,
         address recipient
     ) external {
-        ILPPPool(pool).swap(recipient, true, type(int256).max, sqrtPriceX96, abi.encode(msg.sender));
+        ILPPPool(pool).supplicate(recipient, true, type(int256).max, sqrtPriceX96, abi.encode(msg.sender));
     }
 
     function supplicateToHigherSqrtPrice(
@@ -65,10 +65,8 @@ contract TestLPPCallee is ILPPMintCallback, ILPPSupplicateCallback, ILPPFlashCal
         uint160 sqrtPriceX96,
         address recipient
     ) external {
-        ILPPPool(pool).swap(recipient, false, type(int256).max, sqrtPriceX96, abi.encode(msg.sender));
+        ILPPPool(pool).supplicate(recipient, false, type(int256).max, sqrtPriceX96, abi.encode(msg.sender));
     }
-
-    event SwapCallback(int256 amount0Delta, int256 amount1Delta);
 
     function lppSupplicateCallback(
         int256 amount0Delta,
@@ -87,16 +85,6 @@ contract TestLPPCallee is ILPPMintCallback, ILPPSupplicateCallback, ILPPFlashCal
             // if both are not gt 0, both must be 0.
             assert(amount0Delta == 0 && amount1Delta == 0);
         }
-    }
-
-    function mint(
-        address pool,
-        address recipient,
-        int24 tickLower,
-        int24 tickUpper,
-        uint128 amount
-    ) external {
-        ILPPPool(pool).mint(recipient, tickLower, tickUpper, amount, abi.encode(msg.sender));
     }
 
     event MintCallback(uint256 amount0Owed, uint256 amount1Owed);

@@ -4,21 +4,21 @@ pragma solidity >=0.5.0;
 import './FullMath.sol';
 import './SqrtPriceMath.sol';
 
-/// @title Computes the result of a swap within ticks
-/// @notice Contains methods for computing the result of a swap within a single tick price range, i.e., a single tick.
-library SwapMath {
-    /// @notice Computes the result of swapping some amount in, or amount out, given the parameters of the swap
-    /// @dev The fee, plus the amount in, will never exceed the amount remaining if the swap's `amountSpecified` is positive
+/// @title Computes the result of a supplicate within ticks
+/// @notice Contains methods for computing the result of a supplicate within a single tick price range, i.e., a single tick.
+library SupplicateMath {
+    /// @notice Computes the result of supplicating some amount in, or amount out, given the parameters of the supplicate
+    /// @dev The fee, plus the amount in, will never exceed the amount remaining if the supplicate's `amountSpecified` is positive
     /// @param sqrtRatioCurrentX96 The current sqrt price of the pool
-    /// @param sqrtRatioTargetX96 The price that cannot be exceeded, from which the direction of the swap is inferred
+    /// @param sqrtRatioTargetX96 The price that cannot be exceeded, from which the direction of the supplicate is inferred
     /// @param liquidity The usable liquidity
-    /// @param amountRemaining How much input or output amount is remaining to be swapped in/out
+    /// @param amountRemaining How much input or output amount is remaining to be supplicated in/out
     /// @param feePips The fee taken from the input amount, expressed in hundredths of a bip
-    /// @return sqrtRatioNextX96 The price after swapping the amount in/out, not to exceed the price target
-    /// @return amountIn The amount to be swapped in, of either token0 or token1, based on the direction of the swap
-    /// @return amountOut The amount to be received, of either token0 or token1, based on the direction of the swap
+    /// @return sqrtRatioNextX96 The price after supplicatping the amount in/out, not to exceed the price target
+    /// @return amountIn The amount to be supplicated in, of either token0 or token1, based on the direction of the supplicated
+    /// @return amountOut The amount to be received, of either token0 or token1, based on the direction of the supplicated
     /// @return feeAmount The amount of input that will be taken as a fee
-    function computeSwapStep(
+    function computeSupplicateStep(
         uint160 sqrtRatioCurrentX96,
         uint160 sqrtRatioTargetX96,
         uint128 liquidity,

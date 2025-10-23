@@ -11,8 +11,8 @@ import '../interfaces/ILPPPool.sol';
 contract TestLPPRouter is ILPPSupplicateCallback {
     using SafeCast for uint256;
 
-    // flash swaps for an exact amount of token0 in the output pool
-    function swapForExact0Multi(
+    // flash supplicates for an exact amount of token0 in the output pool
+    function supplicateForExact0Multi(
         address recipient,
         address poolInput,
         address poolOutput,
@@ -20,7 +20,7 @@ contract TestLPPRouter is ILPPSupplicateCallback {
     ) external {
         address[] memory pools = new address[](1);
         pools[0] = poolInput;
-        ILPPPool(poolOutput).swap(
+        ILPPPool(poolOutput).supplicate(
             recipient,
             false,
             -amount0Out.toInt256(),
@@ -29,8 +29,8 @@ contract TestLPPRouter is ILPPSupplicateCallback {
         );
     }
 
-    // flash swaps for an exact amount of token1 in the output pool
-    function swapForExact1Multi(
+    // flash supplicates for an exact amount of token1 in the output pool
+    function supplicateForExact1Multi(
         address recipient,
         address poolInput,
         address poolOutput,
@@ -38,7 +38,7 @@ contract TestLPPRouter is ILPPSupplicateCallback {
     ) external {
         address[] memory pools = new address[](1);
         pools[0] = poolInput;
-        ILPPPool(poolOutput).swap(
+        ILPPPool(poolOutput).supplicate(
             recipient,
             true,
             -amount1Out.toInt256(),
@@ -47,14 +47,14 @@ contract TestLPPRouter is ILPPSupplicateCallback {
         );
     }
 
-    event SwapCallback(int256 amount0Delta, int256 amount1Delta);
+    event SupplicateCallback(int256 amount0Delta, int256 amount1Delta);
 
     function lppSupplicateCallback(
         int256 amount0Delta,
         int256 amount1Delta,
         bytes calldata data
     ) public override {
-        emit SwapCallback(amount0Delta, amount1Delta);
+        emit SupplicateCallback(amount0Delta, amount1Delta);
 
         (address[] memory pools, address payer) = abi.decode(data, (address[], address));
 
@@ -65,7 +65,7 @@ contract TestLPPRouter is ILPPSupplicateCallback {
             int256 amountToBePaid = amount0Delta > 0 ? amount0Delta : amount1Delta;
 
             bool zeroForOne = tokenToBePaid == ILPPPool(pools[0]).token1();
-            ILPPPool(pools[0]).swap(
+            ILPPPool(pools[0]).supplicate(
                 msg.sender,
                 zeroForOne,
                 -amountToBePaid,

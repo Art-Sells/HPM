@@ -10,8 +10,8 @@ import '../interfaces/ILPPPool.sol';
 contract TestLPPReentrantCallee is ILPPSupplicateCallback {
     string private constant expectedReason = 'LOK';
 
-    function swapToReenter(address pool) external {
-        ILPPPool(pool).swap(address(0), false, 1, TickMath.MAX_SQRT_RATIO - 1, new bytes(0));
+    function supplicateToReenter(address pool) external {
+        ILPPPool(pool).supplicate(address(0), false, 1, TickMath.MAX_SQRT_RATIO - 1, new bytes(0));
     }
 
     function lppSupplicateCallback(
@@ -19,8 +19,8 @@ contract TestLPPReentrantCallee is ILPPSupplicateCallback {
         int256,
         bytes calldata
     ) external override {
-        // try to reenter swap
-        try ILPPPool(msg.sender).swap(address(0), false, 1, 0, new bytes(0)) {} catch Error(
+        // try to reenter supplicate
+        try ILPPPool(msg.sender).supplicate(address(0), false, 1, 0, new bytes(0)) {} catch Error(
             string memory reason
         ) {
             require(keccak256(abi.encode(reason)) == keccak256(abi.encode(expectedReason)));

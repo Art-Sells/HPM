@@ -3,8 +3,8 @@ pragma solidity =0.7.6;
 
 import '../libraries/SupplicateMath.sol';
 
-contract SwapMathTest {
-    function computeSwapStep(
+contract SupplicateMathTest {
+    function computeSupplicateStep(
         uint160 sqrtP,
         uint160 sqrtPTarget,
         uint128 liquidity,
@@ -20,10 +20,10 @@ contract SwapMathTest {
             uint256 feeAmount
         )
     {
-        return SwapMath.computeSwapStep(sqrtP, sqrtPTarget, liquidity, amountRemaining, feePips);
+        return SupplicateMath.computeSupplicateStep(sqrtP, sqrtPTarget, liquidity, amountRemaining, feePips);
     }
 
-    function getGasCostOfComputeSwapStep(
+    function getGasCostOfComputeSupplicateStep(
         uint160 sqrtP,
         uint160 sqrtPTarget,
         uint128 liquidity,
@@ -31,7 +31,7 @@ contract SwapMathTest {
         uint24 feePips
     ) external view returns (uint256) {
         uint256 gasBefore = gasleft();
-        SwapMath.computeSwapStep(sqrtP, sqrtPTarget, liquidity, amountRemaining, feePips);
+        SupplicateMath.computeSupplicateStep(sqrtP, sqrtPTarget, liquidity, amountRemaining, feePips);
         return gasBefore - gasleft();
     }
 }

@@ -19,10 +19,10 @@ contract LPPPoolDeployer is ILPPPoolDeployer {
 
     /// @dev Deploys a pool with the given parameters by transiently setting the parameters storage slot and then
     /// clearing it after deploying the pool.
-    /// @param factory The contract address of the Uniswap V3 factory
+    /// @param factory The contract address of the LPP factory
     /// @param token0 The first token of the pool by address sort order
     /// @param token1 The second token of the pool by address sort order
-    /// @param fee The fee collected upon every swap in the pool, denominated in hundredths of a bip
+    /// @param fee The fee collected upon every supplication the pool, denominated in hundredths of a bip
     /// @param tickSpacing The spacing between usable ticks
     function deploy(
         address factory,

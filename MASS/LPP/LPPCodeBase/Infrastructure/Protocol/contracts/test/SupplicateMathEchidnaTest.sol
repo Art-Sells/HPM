@@ -3,7 +3,7 @@ pragma solidity =0.7.6;
 
 import '../libraries/SupplicateMath.sol';
 
-contract SwapMathEchidnaTest {
+contract SupplicateMathEchidnaTest {
     function checkComputeSwapStepInvariants(
         uint160 sqrtPriceRaw,
         uint160 sqrtPriceTargetRaw,
@@ -17,7 +17,7 @@ contract SwapMathEchidnaTest {
         require(feePips < 1e6);
 
         (uint160 sqrtQ, uint256 amountIn, uint256 amountOut, uint256 feeAmount) =
-            SwapMath.computeSwapStep(sqrtPriceRaw, sqrtPriceTargetRaw, liquidity, amountRemaining, feePips);
+            SupplicateMath.computeSupplicateStep(sqrtPriceRaw, sqrtPriceTargetRaw, liquidity, amountRemaining, feePips);
 
         assert(amountIn <= type(uint256).max - feeAmount);
 

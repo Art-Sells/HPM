@@ -61,8 +61,6 @@ contract LPPFactory is ILPPFactory, LPPPoolDeployer, NoDelegateCall {
 
         // ZERO-fee only
         require(fee == 0, 'FEE_NOT_ZERO');
-
-        // Keep the same safety bounds as Uniswap v3
         require(tickSpacing > 0 && tickSpacing < 16384, 'BAD_TICK_SPACING');
         require(feeAmountTickSpacing[fee] == 0, 'ALREADY_ENABLED');
 

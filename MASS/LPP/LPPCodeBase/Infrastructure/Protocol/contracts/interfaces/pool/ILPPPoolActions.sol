@@ -32,7 +32,7 @@ interface ILPPPoolActions {
     /// @dev Does not recompute fees earned, which must be done either via mint or burn of any amount of liquidity.
     /// Collect must be called by the position owner. To withdraw only token0 or only token1, amount0Requested or
     /// amount1Requested may be set to zero. To withdraw all tokens owed, caller may pass any value greater than the
-    /// actual tokens owed, e.g. type(uint128).max. Tokens owed may be from accumulated swap fees or burned liquidity.
+    /// actual tokens owed, e.g. type(uint128).max. Tokens owed may be from accumulated supplication fees or burned liquidity.
     /// @param recipient The address which should receive the fees collected
     /// @param tickLower The lower tick of the position for which to collect fees
     /// @param tickUpper The upper tick of the position for which to collect fees
@@ -62,17 +62,17 @@ interface ILPPPoolActions {
         uint128 amount
     ) external returns (uint256 amount0, uint256 amount1);
 
-    /// @notice Swap token0 for token1, or token1 for token0
+    /// @notice Supplicate token0 for token1, or token1 for token0
     /// @dev The caller of this method receives a callback in the form of ILPPSupplicateCallback#lppSupplicateCallback
-    /// @param recipient The address to receive the output of the swap
-    /// @param zeroForOne The direction of the swap, true for token0 to token1, false for token1 to token0
-    /// @param amountSpecified The amount of the swap, which implicitly configures the swap as exact input (positive), or exact output (negative)
+    /// @param recipient The address to receive the output of the supplication
+    /// @param zeroForOne The direction of the supplication, true for token0 to token1, false for token1 to token0
+    /// @param amountSpecified The amount of the supplication, which implicitly configures the supplication as exact input (positive), or exact output (negative)
     /// @param sqrtPriceLimitX96 The Q64.96 sqrt price limit. If zero for one, the price cannot be less than this
-    /// value after the swap. If one for zero, the price cannot be greater than this value after the swap
+    /// value after the supplication. If one for zero, the price cannot be greater than this value after the supplication
     /// @param data Any data to be passed through to the callback
     /// @return amount0 The delta of the balance of token0 of the pool, exact when negative, minimum when positive
     /// @return amount1 The delta of the balance of token1 of the pool, exact when negative, minimum when positive
-    function swap(
+    function supplicate(
         address recipient,
         bool zeroForOne,
         int256 amountSpecified,
