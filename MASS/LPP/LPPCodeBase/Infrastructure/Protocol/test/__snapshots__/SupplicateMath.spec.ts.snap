@@ -1,0 +1,17 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`SupplicateMath #computeSupplicateStep gas supplicate one for zero exact in capped 1`] = `2103`;
+
+exports[`SupplicateMath #computeSupplicateStep gas supplicate one for zero exact in partial 1`] = `2802`;
+
+exports[`SupplicateMath #computeSupplicateStep gas supplicate one for zero exact out capped 1`] = `1855`;
+
+exports[`SupplicateMath #computeSupplicateStep gas supplicate one for zero exact out partial 1`] = `2802`;
+
+exports[`SupplicateMath #computeSupplicateStep gas supplicate zero for one exact in capped 1`] = `2104`;
+
+exports[`SupplicateMath #computeSupplicateStep gas supplicate zero for one exact in partial 1`] = `3106`;
+
+exports[`SupplicateMath #computeSupplicateStep gas supplicate zero for one exact out capped 1`] = `1856`;
+
+exports[`SupplicateMath #computeSupplicateStep gas supplicate zero for one exact out partial 1`] = `3106`;
