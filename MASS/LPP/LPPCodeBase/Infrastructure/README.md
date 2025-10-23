@@ -6,8 +6,8 @@
 - [x] Configure and compile [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Periphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery): **Complete**
 - [x] Enable & test **fee = 0** tier in Factory; add **fee=0 math tests** — **Complete**: [LPPZeroFeeSpec](https://github.com/Art-Sells/HPM/blob/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol/test/LPPFactory.spec.ts)
 - [ ] Test all other tests inside Protocol & Periphery folders — **In-Progress**
-  - [ ] Delete all **snapshots** and re-test full suite
-  - [ ] Remove the word **"your"** from all files
+  - [ ] Remove the word **"your" and "swap"** from all files
+  - [ ] Delete all **snapshots**, recompile and re-test Periphery and Protocol
 - [ ] **Might not need:** Set governance (**Safe multisig**); protocol swap fee **disabled**
 - [ ] **There’s already an Oracle Adapter (delete if redundant):** Implement **LPPOracleAdapter** (cbBTC/USDC with staleness & deviation guards)
 - [ ] **Might not need (automatic):** **LPPRouter.recenterAndMint()** (atomic: price re-center **and** LP mint) *(don’t forget nft.mint)*
@@ -18,7 +18,7 @@
 - [ ] **Create 3 pools** (cbBTC/USDC, fee=0) & **initialize** at oracle price
 - [ ] **Seed liquidity**: tight **primary** range + tiny **fallback** range for each pool
 - [ ] Make arbs find pools: contract **verification**, **Subgraph**, `RebalanceNeeded` event, **Solver Kit**
-- [ ] Deploy to Base, verify, publish docs, announce to searchers
+- [ ] Deploy to Base, test with Base Testnet hardhat config (BASE_RPC_URL), verify, publish docs, announce to searchers
 
 ---
 

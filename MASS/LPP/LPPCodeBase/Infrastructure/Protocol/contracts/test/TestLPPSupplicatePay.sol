@@ -7,7 +7,7 @@ import '../interfaces/callback/ILPPSupplicateCallback.sol';
 import '../interfaces/ILPPPool.sol';
 
 contract TestLPPSupplicatePay is ILPPSupplicateCallback {
-    function swap(
+    function supplicate(
         address pool,
         address recipient,
         bool zeroForOne,
@@ -16,7 +16,7 @@ contract TestLPPSupplicatePay is ILPPSupplicateCallback {
         uint256 pay0,
         uint256 pay1
     ) external {
-        ILPPPool(pool).swap(
+        ILPPPool(pool).supplicate(
             recipient,
             zeroForOne,
             amountSpecified,

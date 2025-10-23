@@ -11,7 +11,7 @@ interface ILPPPoolDeployer {
     /// Returns factory The factory address
     /// Returns token0 The first token of the pool by address sort order
     /// Returns token1 The second token of the pool by address sort order
-    /// Returns fee The fee collected upon every swap in the pool, denominated in hundredths of a bip
+    /// Returns fee The fee collected upon every supplication in the pool, denominated in hundredths of a bip
     /// Returns tickSpacing The minimum number of ticks between initialized ticks
     function parameters()
         external

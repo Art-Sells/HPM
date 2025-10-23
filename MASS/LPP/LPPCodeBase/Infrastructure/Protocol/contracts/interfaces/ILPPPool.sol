@@ -9,7 +9,7 @@ import './pool/ILPPPoolOwnerActions.sol';
 import './pool/ILPPPoolEvents.sol';
 
 /// @title The interface for a Pool
-/// @notice A pool facilitates swapping and automated market making between any two assets that strictly conform
+/// @notice A pool facilitates supplicating and automated market making between any two assets that strictly conform
 /// to the ERC20 specification
 /// @dev The pool interface is broken up into many smaller pieces
 interface ILPPPool is

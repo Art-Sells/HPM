@@ -10,7 +10,7 @@ contract LPPPoolSupplicateTest is ILPPSupplicateCallback {
     int256 private _amount0Delta;
     int256 private _amount1Delta;
 
-    function getSwapResult(
+    function getSupplicateResult(
         address pool,
         bool zeroForOne,
         int256 amountSpecified,
@@ -23,7 +23,7 @@ contract LPPPoolSupplicateTest is ILPPSupplicateCallback {
             uint160 nextSqrtRatio
         )
     {
-        (amount0Delta, amount1Delta) = ILPPPool(pool).swap(
+        (amount0Delta, amount1Delta) = ILPPPool(pool).supplicate(
             address(0),
             zeroForOne,
             amountSpecified,

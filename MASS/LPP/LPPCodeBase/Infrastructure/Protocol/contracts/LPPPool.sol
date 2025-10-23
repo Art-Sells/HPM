@@ -19,8 +19,8 @@ import './libraries/TickMath.sol';
 import './libraries/LiquidityMath.sol';
 import './libraries/SqrtPriceMath.sol';
 import './libraries/SupplicateMath.sol';
-// NOTE: SwapMath should already exist in your repo like UniswapV3; import if needed:
-// import './libraries/SwapMath.sol';
+// NOTE: SupplicateMath should already exist in your repo like LPP; import if needed:
+// import './libraries/SupplicateMath.sol';
 
 import './interfaces/ILPPPoolDeployer.sol';
 import './interfaces/ILPPFactory.sol';
@@ -152,7 +152,7 @@ contract LPPPool is ILPPPool, NoDelegateCall {
 
     // --- rest of contract stays identical to your current version ---
     // No functional changes are required beyond enforcing fee == 0 in the constructor.
-    // (swap/flash/etc. already compute with `fee`, which will be 0 here.)
+    // (supplicate/flash/etc. already compute with `fee`, which will be 0 here.)
 
     // ---------- The remainder is exactly as you posted ----------
 
@@ -496,7 +496,7 @@ contract LPPPool is ILPPPool, NoDelegateCall {
         emit Burn(msg.sender, tickLower, tickUpper, amount, amount0, amount1);
     }
 
-    struct SwapCache {
+    struct SupplicateCache {
         uint8 feeProtocol;
         uint128 liquidityStart;
         uint32 blockTimestamp;
@@ -505,7 +505,7 @@ contract LPPPool is ILPPPool, NoDelegateCall {
         bool computedLatestObservation;
     }
 
-    struct SwapState {
+    struct SupplicateState {
         int256 amountSpecifiedRemaining;
         int256 amountCalculated;
         uint160 sqrtPriceX96;
@@ -525,7 +525,7 @@ contract LPPPool is ILPPPool, NoDelegateCall {
         uint256 feeAmount;
     }
 
-    function swap(
+    function supplicate(
         address recipient,
         bool zeroForOne,
         int256 amountSpecified,
@@ -546,8 +546,8 @@ contract LPPPool is ILPPPool, NoDelegateCall {
 
         slot0.unlocked = false;
 
-        SwapCache memory cache =
-            SwapCache({
+        SupplicateCache memory cache =
+            SupplicateCache({
                 liquidityStart: liquidity,
                 blockTimestamp: _blockTimestamp(),
                 feeProtocol: zeroForOne ? (slot0Start.feeProtocol % 16) : (slot0Start.feeProtocol >> 4),
@@ -558,8 +558,8 @@ contract LPPPool is ILPPPool, NoDelegateCall {
 
         bool exactInput = amountSpecified > 0;
 
-        SwapState memory state =
-            SwapState({
+        SupplicateState memory state =
+            SupplicateState({
                 amountSpecifiedRemaining: amountSpecified,
                 amountCalculated: 0,
                 sqrtPriceX96: slot0Start.sqrtPriceX96,
@@ -588,7 +588,7 @@ contract LPPPool is ILPPPool, NoDelegateCall {
 
             step.sqrtPriceNextX96 = TickMath.getSqrtRatioAtTick(step.tickNext);
 
-            (state.sqrtPriceX96, step.amountIn, step.amountOut, step.feeAmount) = SwapMath.computeSwapStep(
+            (state.sqrtPriceX96, step.amountIn, step.amountOut, step.feeAmount) = SupplicateMath.computeSupplicateStep(
                 state.sqrtPriceX96,
                 (zeroForOne ? step.sqrtPriceNextX96 < sqrtPriceLimitX96 : step.sqrtPriceNextX96 > sqrtPriceLimitX96)
                     ? sqrtPriceLimitX96

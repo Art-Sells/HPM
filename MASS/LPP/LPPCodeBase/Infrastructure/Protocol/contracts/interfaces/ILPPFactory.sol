@@ -12,7 +12,7 @@ interface ILPPFactory {
     /// @notice Emitted when a pool is created
     /// @param token0 The first token of the pool by address sort order
     /// @param token1 The second token of the pool by address sort order
-    /// @param fee The fee collected upon every swap in the pool, denominated in hundredths of a bip
+    /// @param fee The fee collected upon every supplicat in the pool, denominated in hundredths of a bip
     /// @param tickSpacing The minimum number of ticks between initialized ticks
     /// @param pool The address of the created pool
     event PoolCreated(
@@ -43,7 +43,7 @@ interface ILPPFactory {
     /// @dev tokenA and tokenB may be passed in either token0/token1 or token1/token0 order
     /// @param tokenA The contract address of either token0 or token1
     /// @param tokenB The contract address of the other token
-    /// @param fee The fee collected upon every swap in the pool, denominated in hundredths of a bip
+    /// @param fee The fee collected upon every supplication in the pool, denominated in hundredths of a bip
     /// @return pool The pool address
     function getPool(
         address tokenA,
