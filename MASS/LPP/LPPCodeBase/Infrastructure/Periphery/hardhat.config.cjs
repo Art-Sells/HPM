@@ -12,7 +12,7 @@ const config = {
     ],
   },
   networks: {
-    hardhat: { allowUnlimitedContractSize: false },
+    hardhat: { allowUnlimitedContractSize: true },
     base: {
       url: process.env.BASE_RPC_URL || "https://mainnet.base.org",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
