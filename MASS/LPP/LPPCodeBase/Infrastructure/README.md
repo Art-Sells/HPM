@@ -5,8 +5,8 @@
 - [x] Dismantle and rebuild [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Periphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery): **Complete**
 - [x] Configure and compile [Protocol](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol) & [Periphery](https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure/Periphery): **Complete**
 - [x] Enable & test **fee = 0** tier in Factory; add **fee=0 math tests** — **Complete**: [LPPZeroFeeSpec](https://github.com/Art-Sells/HPM/blob/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol/test/LPPFactory.spec.ts)
-- [ ] Test all other tests inside Protocol & Periphery folders — **In-Progress**
-  - [ ] Remove the word **"your" and "swap"** from all files
+- [X] Test all other tests inside Protocol & Periphery folders — **Complete**
+  - [ ] Remove the word **"your" and "swap"** from all files **In Progress**
   - [ ] Delete all **snapshots**, recompile and re-test Periphery and Protocol
 - [ ] **Might not need:** Set governance (**Safe multisig**); protocol swap fee **disabled**
 - [ ] **There’s already an Oracle Adapter (delete if redundant):** Implement **LPPOracleAdapter** (cbBTC/USDC with staleness & deviation guards)
