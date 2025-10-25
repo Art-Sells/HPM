@@ -8,7 +8,7 @@ import type { HardhatEthersSigner } from '@nomicfoundation/hardhat-ethers/signer
 
 import type { MockTimeLPPPool } from '../typechain-types/protocol'
 import type { TickMathTest } from '../typechain-types/protocol'
-import type { LPPPoolSwapTest } from '../typechain-types/protocol'
+import type { LPPPoolSupplicateTest } from '../typechain-types/protocol'
 import { expect } from './shared/expect.ts'
 
 import { poolFixture } from './shared/fixtures.ts'
@@ -26,7 +26,7 @@ import {
   MaxUint128,
   MIN_SQRT_RATIO,
   type MintFunction,
-  type SwapFunction,
+  type SupplicateFunction,
   TICK_SPACINGS,
 } from './shared/utilities.ts'
 
@@ -76,20 +76,20 @@ describe('LPPPool arbitrage tests', () => {
             await fix.token1.transfer(await arbitrageur.getAddress(), 1n << 254n)
 
             const {
-              swapExact0For1,
-              swapToHigherPrice,
-              swapToLowerPrice,
-              swapExact1For0,
+              supplicateExact0For1,
+              supplicateToHigherPrice,
+              supplicateToLowerPrice,
+              supplicateExact1For0,
               mint,
             } = await createPoolFunctions({
-              swapTarget: fix.swapTargetCallee,
+              supplicateTarget: fix.supplicateTargetCallee,
               token0: fix.token0,
               token1: fix.token1,
               pool,
             })
 
-            const testerFactory = await ethers.getContractFactory('LPPPoolSwapTest')
-            const tester = (await testerFactory.deploy()) as unknown as LPPPoolSwapTest
+            const testerFactory = await ethers.getContractFactory('LPPPoolSupplicateTest')
+            const tester = (await testerFactory.deploy()) as unknown as LPPPoolSupplicateTest
             await tester.waitForDeployment()
 
             const tickMathFactory = await ethers.getContractFactory('TickMathTest')
@@ -107,32 +107,41 @@ describe('LPPPool arbitrage tests', () => {
             expect(slot.tick).to.eq(startingTick)
             expect(slot.sqrtPriceX96).to.eq(startingPrice)
 
-            return { pool, swapExact0For1, mint, swapToHigherPrice, swapToLowerPrice, swapExact1For0, tester, tickMath }
+            return {
+              pool,
+              supplicateExact0For1,
+              mint,
+              supplicateToHigherPrice,
+              supplicateToLowerPrice,
+              supplicateExact1For0,
+              tester,
+              tickMath,
+            }
           }
 
-          let swapExact0For1: SwapFunction
-          let swapToHigherPrice: SwapFunction
-          let swapToLowerPrice: SwapFunction
-          let swapExact1For0: SwapFunction
+          let supplicateExact0For1: SupplicateFunction
+          let supplicateToHigherPrice: SupplicateFunction
+          let supplicateToLowerPrice: SupplicateFunction
+          let supplicateExact1For0: SupplicateFunction
           let pool: MockTimeLPPPool
           let mint: MintFunction
-          let tester: LPPPoolSwapTest
+          let tester: LPPPoolSupplicateTest
           let tickMath: TickMathTest
 
           beforeEach('load the fixture', async () => {
             ({
-              swapExact0For1,
+              supplicateExact0For1,
               pool,
               mint,
-              swapToHigherPrice,
-              swapToLowerPrice,
-              swapExact1For0,
+              supplicateToHigherPrice,
+              supplicateToLowerPrice,
+              supplicateExact1For0,
               tester,
               tickMath,
             } = await loadFixture(arbTestFixture))
           })
 
-          async function simulateSwap(
+          async function simulateSupplicate(
             zeroForOne: boolean,
             amountSpecified: bigint,
             sqrtPriceLimitX96?: bigint
@@ -142,7 +151,7 @@ describe('LPPPool arbitrage tests', () => {
             amount0Delta: bigint
             amount1Delta: bigint
           }> {
-            const { amount0Delta, amount1Delta, nextSqrtRatio } = await tester.getSwapResult.staticCall(
+            const { amount0Delta, amount1Delta, nextSqrtRatio } = await tester.getSupplicateResult.staticCall(
               await pool.getAddress(),
               zeroForOne,
               amountSpecified,
@@ -156,32 +165,35 @@ describe('LPPPool arbitrage tests', () => {
             return { executionPrice, nextSqrtRatio, amount0Delta, amount1Delta }
           }
 
-          for (const { zeroForOne, assumedTruePriceAfterSwap, inputAmount, description } of [
+          for (const { zeroForOne, assumedTruePriceAfterSupplicate, inputAmount, description } of [
             {
               description: 'exact input of 10e18 token0 with starting price of 1.0 and true price of 0.98',
               zeroForOne: true,
               inputAmount: expandTo18Decimals(10),
-              assumedTruePriceAfterSwap: encodePriceSqrt(98n, 100n),
+              assumedTruePriceAfterSupplicate: encodePriceSqrt(98n, 100n),
             },
             {
               description: 'exact input of 10e18 token0 with starting price of 1.0 and true price of 1.01',
               zeroForOne: true,
               inputAmount: expandTo18Decimals(10),
-              assumedTruePriceAfterSwap: encodePriceSqrt(101n, 100n),
+              assumedTruePriceAfterSupplicate: encodePriceSqrt(101n, 100n),
             },
           ]) {
             describe(description, () => {
               function valueToken1(arbBalance0: bigint, arbBalance1: bigint) {
                 // price^2 * bal0 / 2^192 + bal1  (Q64.96 squared)
-                return (assumedTruePriceAfterSwap * assumedTruePriceAfterSwap * arbBalance0) / (1n << 192n) + arbBalance1
+                return (
+                  (assumedTruePriceAfterSupplicate * assumedTruePriceAfterSupplicate * arbBalance0) / (1n << 192n) +
+                  arbBalance1
+                )
               }
 
               it('not sandwiched', async () => {
-                const { executionPrice, amount1Delta, amount0Delta } = await simulateSwap(zeroForOne, inputAmount)
+                const { executionPrice, amount1Delta, amount0Delta } = await simulateSupplicate(zeroForOne, inputAmount)
                 if (zeroForOne) {
-                  await swapExact0For1(inputAmount, await wallet.getAddress())
+                  await supplicateExact0For1(inputAmount, await wallet.getAddress())
                 } else {
-                  await swapExact1For0(inputAmount, await wallet.getAddress())
+                  await supplicateExact1For0(inputAmount, await wallet.getAddress())
                 }
 
                 const slot = await pool.slot0()
@@ -193,8 +205,8 @@ describe('LPPPool arbitrage tests', () => {
                 }).to.matchSnapshot()
               })
 
-              it('sandwiched with swap to execution price then mint max liquidity/target/burn max liquidity', async () => {
-                const { executionPrice } = await simulateSwap(zeroForOne, inputAmount)
+              it('sandwiched with supplicate to execution price then mint max liquidity/target/burn max liquidity', async () => {
+                const { executionPrice } = await simulateSupplicate(zeroForOne, inputAmount)
 
                 const firstTickAboveMarginalPrice = zeroForOne
                   ? Math.ceil(
@@ -216,7 +228,7 @@ describe('LPPPool arbitrage tests', () => {
                   ? firstTickAboveMarginalPrice - tickSpacing
                   : firstTickAboveMarginalPrice + tickSpacing
 
-                const priceSwapStart = await tickMath.getSqrtRatioAtTick(firstTickAboveMarginalPrice)
+                const priceSupplicateStart = await tickMath.getSqrtRatioAtTick(firstTickAboveMarginalPrice)
 
                 let arbBalance0: bigint = 0n
                 let arbBalance1: bigint = 0n
@@ -226,15 +238,15 @@ describe('LPPPool arbitrage tests', () => {
                   amount0Delta: frontrunDelta0,
                   amount1Delta: frontrunDelta1,
                   executionPrice: frontrunExecutionPrice,
-                } = await simulateSwap(zeroForOne, ethers.MaxUint256 / 2n, priceSwapStart)
+                } = await simulateSupplicate(zeroForOne, ethers.MaxUint256 / 2n, priceSupplicateStart)
 
                 arbBalance0 -= frontrunDelta0
                 arbBalance1 -= frontrunDelta1
 
                 if (zeroForOne) {
-                  await swapToLowerPrice(priceSwapStart, await arbitrageur.getAddress())
+                  await supplicateToLowerPrice(priceSupplicateStart, await arbitrageur.getAddress())
                 } else {
-                  await swapToHigherPrice(priceSwapStart, await arbitrageur.getAddress())
+                  await supplicateToHigherPrice(priceSupplicateStart, await arbitrageur.getAddress())
                 }
 
                 const profitToken1AfterFrontRun = valueToken1(arbBalance0, arbBalance1)
@@ -243,12 +255,20 @@ describe('LPPPool arbitrage tests', () => {
                 const tickUpper = zeroForOne ? firstTickAboveMarginalPrice : tickAfterFirstTickAboveMarginPrice
 
                 // deposit max liquidity at the tick
-                const mintReceipt = await (await mint(await wallet.getAddress(), tickLower, tickUpper, getMaxLiquidityPerTick(tickSpacing))).wait()
+                const mintReceipt = await (
+                  await mint(await wallet.getAddress(), tickLower, tickUpper, getMaxLiquidityPerTick(tickSpacing))
+                ).wait()
 
                 // parse Mint event
                 const iface = (pool as any).interface
                 const parsed = mintReceipt.logs
-                  .map((l: any) => { try { return iface.parseLog(l) } catch { return null } })
+                  .map((l: any) => {
+                    try {
+                      return iface.parseLog(l)
+                    } catch {
+                      return null
+                    }
+                  })
                   .find((p: any) => p && p.name === 'Mint')
 
                 const amount0Mint = parsed!.args.amount0 as bigint
@@ -257,12 +277,15 @@ describe('LPPPool arbitrage tests', () => {
                 arbBalance0 -= amount0Mint
                 arbBalance1 -= amount1Mint
 
-                // execute the user's swap
-                const { executionPrice: executionPriceAfterFrontrun } = await simulateSwap(zeroForOne, inputAmount)
+                // execute the user's supplicate
+                const { executionPrice: executionPriceAfterFrontrun } = await simulateSupplicate(
+                  zeroForOne,
+                  inputAmount
+                )
                 if (zeroForOne) {
-                  await swapExact0For1(inputAmount, await wallet.getAddress())
+                  await supplicateExact0For1(inputAmount, await wallet.getAddress())
                 } else {
-                  await swapExact1For0(inputAmount, await wallet.getAddress())
+                  await supplicateExact1For0(inputAmount, await wallet.getAddress())
                 }
 
                 // burn the arb's liquidity
@@ -295,18 +318,18 @@ describe('LPPPool arbitrage tests', () => {
 
                 const profitToken1AfterSandwich = valueToken1(arbBalance0, arbBalance1)
 
-                // backrun the swap to true price
-                const priceToSwapTo = zeroForOne
-                  ? applySqrtRatioBipsHundredthsDelta(assumedTruePriceAfterSwap, -feeAmount)
-                  : applySqrtRatioBipsHundredthsDelta(assumedTruePriceAfterSwap, feeAmount)
+                // backrun the supplicate to true price
+                const priceToSupplicateTo = zeroForOne
+                  ? applySqrtRatioBipsHundredthsDelta(assumedTruePriceAfterSupplicate, -feeAmount)
+                  : applySqrtRatioBipsHundredthsDelta(assumedTruePriceAfterSupplicate, feeAmount)
 
                 const {
                   amount0Delta: backrunDelta0,
                   amount1Delta: backrunDelta1,
                   executionPrice: backrunExecutionPrice,
-                } = await simulateSwap(!zeroForOne, ethers.MaxUint256 / 2n, priceToSwapTo)
+                } = await simulateSupplicate(!zeroForOne, ethers.MaxUint256 / 2n, priceToSupplicateTo)
 
-                await swapToHigherPrice(priceToSwapTo, await wallet.getAddress())
+                await supplicateToHigherPrice(priceToSupplicateTo, await wallet.getAddress())
                 arbBalance0 -= backrunDelta0
                 arbBalance1 -= backrunDelta1
 
@@ -346,31 +369,31 @@ describe('LPPPool arbitrage tests', () => {
                 }).to.matchSnapshot()
               })
 
-              it('backrun to true price after swap only', async () => {
+              it('backrun to true price after supplicate only', async () => {
                 let arbBalance0: bigint = 0n
                 let arbBalance1: bigint = 0n
 
                 if (zeroForOne) {
-                  await swapExact0For1(inputAmount, await wallet.getAddress())
+                  await supplicateExact0For1(inputAmount, await wallet.getAddress())
                 } else {
-                  await swapExact1For0(inputAmount, await wallet.getAddress())
+                  await supplicateExact1For0(inputAmount, await wallet.getAddress())
                 }
 
-                // swap to the marginal price = true price
-                const priceToSwapTo = zeroForOne
-                  ? applySqrtRatioBipsHundredthsDelta(assumedTruePriceAfterSwap, -feeAmount)
-                  : applySqrtRatioBipsHundredthsDelta(assumedTruePriceAfterSwap, feeAmount)
+                // supplicate to the marginal price = true price
+                const priceToSupplicateTo = zeroForOne
+                  ? applySqrtRatioBipsHundredthsDelta(assumedTruePriceAfterSupplicate, -feeAmount)
+                  : applySqrtRatioBipsHundredthsDelta(assumedTruePriceAfterSupplicate, feeAmount)
 
                 const {
                   amount0Delta: backrunDelta0,
                   amount1Delta: backrunDelta1,
                   executionPrice: backrunExecutionPrice,
-                } = await simulateSwap(!zeroForOne, ethers.MaxUint256 / 2n, priceToSwapTo)
+                } = await simulateSupplicate(!zeroForOne, ethers.MaxUint256 / 2n, priceToSupplicateTo)
 
                 if (zeroForOne) {
-                  await swapToHigherPrice(priceToSwapTo, await wallet.getAddress())
+                  await supplicateToHigherPrice(priceToSupplicateTo, await wallet.getAddress())
                 } else {
-                  await swapToLowerPrice(priceToSwapTo, await wallet.getAddress())
+                  await supplicateToLowerPrice(priceToSupplicateTo, await wallet.getAddress())
                 }
 
                 arbBalance0 -= backrunDelta0
@@ -381,7 +404,13 @@ describe('LPPPool arbitrage tests', () => {
                   arbBalanceDelta0: formatTokenAmount(arbBalance0),
                   arbBalanceDelta1: formatTokenAmount(arbBalance1),
                   profit: {
-                    final: formatTokenAmount((assumedTruePriceAfterSwap * assumedTruePriceAfterSwap * arbBalance0) / (1n << 192n) + arbBalance1),
+                    final: formatTokenAmount(
+                      (assumedTruePriceAfterSupplicate *
+                        assumedTruePriceAfterSupplicate *
+                        arbBalance0) /
+                        (1n << 192n) +
+                        arbBalance1
+                    ),
                   },
                   backrun: {
                     executionPrice: formatPrice(backrunExecutionPrice),

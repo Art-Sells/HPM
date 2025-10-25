@@ -1,6 +1,5 @@
 import hardhat from "hardhat";
 import { expect } from "chai";
-import { LPPFactory } from '../typechain-types/protocol'
 const { ethers, artifacts } = hardhat;
 
 const Q96 = 1n << 96n;
@@ -33,7 +32,7 @@ async function attach(name: string, addr: string, s: any) {
 }
 
 describe("LPP fee=0 tier (hardhat ethers v6)", () => {
-  it("enables fee=0, mints, swaps, and accrues zero fees", async () => {
+  it("enables fee=0, mints, supplicates, and accrues zero fees", async () => {
     const [deployer, lp, trader] = await ethers.getSigners();
 
     // tokens
@@ -88,14 +87,14 @@ describe("LPP fee=0 tier (hardhat ethers v6)", () => {
     await (await token1.connect(lp).approve(await callee.getAddress(), amount1Desired)).wait();
 
 
-    // pre-swap fee growth
+    // pre-supplication fee growth
     const fee0Before  = await pool.feeGrowthGlobal0X128();
     const fee1Before  = await pool.feeGrowthGlobal1X128();
     const protoBefore = await pool.protocolFees();
     const before0 = (protoBefore as any).token0 ?? protoBefore[0];
     const before1 = (protoBefore as any).token1 ?? protoBefore[1];
 
-    // trader swap
+    // MASS supplication
     const amountIn = 10n ** 18n;
     await (await token0.connect(deployer).transfer(await trader.getAddress(), amountIn)).wait();
     await (await token0.connect(trader).approve(await callee.getAddress(), amountIn)).wait();
@@ -110,7 +109,7 @@ describe("LPP fee=0 tier (hardhat ethers v6)", () => {
       )
     ).wait();
 
-    // post-swap checks (fee=0 → unchanged)
+    // post-supplication checks (fee=0 → unchanged)
     const fee0After  = await pool.feeGrowthGlobal0X128();
     const fee1After  = await pool.feeGrowthGlobal1X128();
     const protoAfter = await pool.protocolFees();

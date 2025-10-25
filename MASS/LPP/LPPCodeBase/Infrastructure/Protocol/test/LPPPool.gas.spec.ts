@@ -18,11 +18,11 @@ import {
   encodePriceSqrt,
   TICK_SPACINGS,
   createPoolFunctions,
-  type SwapFunction,
+  type SupplicateFunction,
   type MintFunction,
   getMaxTick,
   MaxUint128,
-  type SwapToPriceFunction,
+  type SupplicateToPriceFunction,
   MAX_SQRT_RATIO,
   MIN_SQRT_RATIO,
 } from './shared/utilities.ts'
@@ -50,12 +50,37 @@ describe('LPPPool gas tests', () => {
 
         const pool = (await fix.createPool(feeAmount, tickSpacing)) as MockTimeLPPPool
 
-        const { swapExact0For1, swapToHigherPrice, mint, swapToLowerPrice } = await createPoolFunctions({
-          swapTarget: fix.swapTargetCallee,
+        const {
+          supplicateExact0For1,
+          supplicateToHigherPrice,
+          mint,
+          supplicateToLowerPrice,
+        } = await createPoolFunctions({
+          supplicateTarget: fix.supplicateTargetCallee,
           token0: fix.token0,
           token1: fix.token1,
           pool,
-        })
+          wallet,
+        } as any)
+
+        // --- FIX FOR FAILING "second position in same range" & related burn tests ---
+        // Seed BOTH signers with ample balances and set approvals for the callee,
+        // otherwise the second minter (`other`) underflows or lacks allowance.
+        const SEED = expandTo18Decimals(1_000_000)
+        await fix.token0.mint(await wallet.getAddress(), SEED)
+        await fix.token1.mint(await wallet.getAddress(), SEED)
+        await fix.token0.mint(await other.getAddress(), SEED)
+        await fix.token1.mint(await other.getAddress(), SEED)
+
+        const calleeAddr =
+          typeof fix.supplicateTargetCallee.getAddress === 'function'
+            ? await fix.supplicateTargetCallee.getAddress()
+            : fix.supplicateTargetCallee.address
+        for (const s of [wallet, other]) {
+          await fix.token0.connect(s).approve(calleeAddr, MaxUint128)
+          await fix.token1.connect(s).approve(calleeAddr, MaxUint128)
+        }
+        // ---------------------------------------------------------------------------
 
         await pool.initialize(encodePriceSqrt(1n, 1n))
         await pool.setFeeProtocol(feeProtocol, feeProtocol)
@@ -63,58 +88,60 @@ describe('LPPPool gas tests', () => {
         await pool.advanceTime(1)
         await mint(await wallet.getAddress(), minTick, maxTick, expandTo18Decimals(2))
 
-        await swapExact0For1(expandTo18Decimals(1), await wallet.getAddress())
+        await supplicateExact0For1(expandTo18Decimals(1), await wallet.getAddress())
         await pool.advanceTime(1)
-        await swapToHigherPrice(startingPrice, await wallet.getAddress())
+        await supplicateToHigherPrice(startingPrice, await wallet.getAddress())
         await pool.advanceTime(1)
         expect((await pool.slot0()).tick).to.eq(startingTick)
         expect((await pool.slot0()).sqrtPriceX96).to.eq(startingPrice)
 
-        return { pool, swapExact0For1, mint, swapToHigherPrice, swapToLowerPrice }
+        return { pool, supplicateExact0For1, mint, supplicateToHigherPrice, supplicateToLowerPrice }
       }
 
-      let swapExact0For1: SwapFunction
-      let swapToHigherPrice: SwapToPriceFunction
-      let swapToLowerPrice: SwapToPriceFunction
+      let supplicateExact0For1: SupplicateFunction
+      let supplicateToHigherPrice: SupplicateToPriceFunction
+      let supplicateToLowerPrice: SupplicateToPriceFunction
       let pool: MockTimeLPPPool
       let mint: MintFunction
 
       beforeEach('load the fixture', async () => {
-        ;({ swapExact0For1, pool, mint, swapToHigherPrice, swapToLowerPrice } = await loadFixture(gasTestFixture))
+        ;({ supplicateExact0For1, pool, mint, supplicateToHigherPrice, supplicateToLowerPrice } = await loadFixture(
+          gasTestFixture
+        ))
       })
 
-      describe('#swapExact0For1', () => {
-        it('first swap in block with no tick movement', async () => {
-          await snapshotGasCost(swapExact0For1(2000, await wallet.getAddress()))
+      describe('#supplicateExact0For1', () => {
+        it('first supplication in block with no tick movement', async () => {
+          await snapshotGasCost(supplicateExact0For1(2000, await wallet.getAddress()))
           expect((await pool.slot0()).sqrtPriceX96).to.not.eq(startingPrice)
           expect((await pool.slot0()).tick).to.eq(startingTick)
         })
 
-        it('first swap in block moves tick, no initialized crossings', async () => {
-          await snapshotGasCost(swapExact0For1(expandTo18Decimals(1) / 10000n, await wallet.getAddress()))
+        it('first supplication in block moves tick, no initialized crossings', async () => {
+          await snapshotGasCost(supplicateExact0For1(expandTo18Decimals(1) / 10000n, await wallet.getAddress()))
           expect((await pool.slot0()).tick).to.eq(startingTick - 1)
         })
 
-        it('second swap in block with no tick movement', async () => {
-          await swapExact0For1(expandTo18Decimals(1) / 10000n, await wallet.getAddress())
+        it('second supplication in block with no tick movement', async () => {
+          await supplicateExact0For1(expandTo18Decimals(1) / 10000n, await wallet.getAddress())
           expect((await pool.slot0()).tick).to.eq(startingTick - 1)
-          await snapshotGasCost(swapExact0For1(2000, await wallet.getAddress()))
+          await snapshotGasCost(supplicateExact0For1(2000, await wallet.getAddress()))
           expect((await pool.slot0()).tick).to.eq(startingTick - 1)
         })
 
-        it('second swap in block moves tick, no initialized crossings', async () => {
-          await swapExact0For1(1000, await wallet.getAddress())
+        it('second supplication in block moves tick, no initialized crossings', async () => {
+          await supplicateExact0For1(1000, await wallet.getAddress())
           expect((await pool.slot0()).tick).to.eq(startingTick)
-          await snapshotGasCost(swapExact0For1(expandTo18Decimals(1) / 10000n, await wallet.getAddress()))
+          await snapshotGasCost(supplicateExact0For1(expandTo18Decimals(1) / 10000n, await wallet.getAddress()))
           expect((await pool.slot0()).tick).to.eq(startingTick - 1)
         })
 
-        it('first swap in block, large swap, no initialized crossings', async () => {
-          await snapshotGasCost(swapExact0For1(expandTo18Decimals(10), await wallet.getAddress()))
+        it('first supplication in block, large move, no initialized crossings', async () => {
+          await snapshotGasCost(supplicateExact0For1(expandTo18Decimals(10), await wallet.getAddress()))
           expect((await pool.slot0()).tick).to.eq(-35837)
         })
 
-        it('first swap in block, large swap crossing several initialized ticks', async () => {
+        it('first supplication in block, large move crossing several initialized ticks', async () => {
           await mint(await wallet.getAddress(), startingTick - 3 * tickSpacing, startingTick - tickSpacing, expandTo18Decimals(1))
           await mint(
             await wallet.getAddress(),
@@ -123,17 +150,17 @@ describe('LPPPool gas tests', () => {
             expandTo18Decimals(1)
           )
           expect((await pool.slot0()).tick).to.eq(startingTick)
-          await snapshotGasCost(swapExact0For1(expandTo18Decimals(1), await wallet.getAddress()))
+          await snapshotGasCost(supplicateExact0For1(expandTo18Decimals(1), await wallet.getAddress()))
           expect((await pool.slot0()).tick).to.be.lt(startingTick - 4 * tickSpacing) // crossed last tick
         })
 
-        it('first swap in block, large swap crossing a single initialized tick', async () => {
+        it('first supplication in block, large move crossing a single initialized tick', async () => {
           await mint(await wallet.getAddress(), minTick, startingTick - 2 * tickSpacing, expandTo18Decimals(1))
-          await snapshotGasCost(swapExact0For1(expandTo18Decimals(1), await wallet.getAddress()))
+          await snapshotGasCost(supplicateExact0For1(expandTo18Decimals(1), await wallet.getAddress()))
           expect((await pool.slot0()).tick).to.be.lt(startingTick - 2 * tickSpacing)
         })
 
-        it('second swap in block, large swap crossing several initialized ticks', async () => {
+        it('second supplication in block, large move crossing several initialized ticks', async () => {
           await mint(await wallet.getAddress(), startingTick - 3 * tickSpacing, startingTick - tickSpacing, expandTo18Decimals(1))
           await mint(
             await wallet.getAddress(),
@@ -141,20 +168,20 @@ describe('LPPPool gas tests', () => {
             startingTick - 2 * tickSpacing,
             expandTo18Decimals(1)
           )
-          await swapExact0For1(expandTo18Decimals(1) / 10000n, await wallet.getAddress())
-          await snapshotGasCost(swapExact0For1(expandTo18Decimals(1), await wallet.getAddress()))
+          await supplicateExact0For1(expandTo18Decimals(1) / 10000n, await wallet.getAddress())
+          await snapshotGasCost(supplicateExact0For1(expandTo18Decimals(1), await wallet.getAddress()))
           expect((await pool.slot0()).tick).to.be.lt(startingTick - 4 * tickSpacing)
         })
 
-        it('second swap in block, large swap crossing a single initialized tick', async () => {
+        it('second supplication in block, large move crossing a single initialized tick', async () => {
           await mint(await wallet.getAddress(), minTick, startingTick - 2 * tickSpacing, expandTo18Decimals(1))
-          await swapExact0For1(expandTo18Decimals(1) / 10000n, await wallet.getAddress())
+          await supplicateExact0For1(expandTo18Decimals(1) / 10000n, await wallet.getAddress())
           expect((await pool.slot0()).tick).to.be.gt(startingTick - 2 * tickSpacing) // no cross yet
-          await snapshotGasCost(swapExact0For1(expandTo18Decimals(1), await wallet.getAddress()))
+          await snapshotGasCost(supplicateExact0For1(expandTo18Decimals(1), await wallet.getAddress()))
           expect((await pool.slot0()).tick).to.be.lt(startingTick - 2 * tickSpacing)
         })
 
-        it('large swap crossing several initialized ticks after some time passes', async () => {
+        it('large move crossing several initialized ticks after some time passes', async () => {
           await mint(await wallet.getAddress(), startingTick - 3 * tickSpacing, startingTick - tickSpacing, expandTo18Decimals(1))
           await mint(
             await wallet.getAddress(),
@@ -162,13 +189,13 @@ describe('LPPPool gas tests', () => {
             startingTick - 2 * tickSpacing,
             expandTo18Decimals(1)
           )
-          await swapExact0For1(2, await wallet.getAddress())
+          await supplicateExact0For1(2, await wallet.getAddress())
           await pool.advanceTime(1)
-          await snapshotGasCost(swapExact0For1(expandTo18Decimals(1), await wallet.getAddress()))
+          await snapshotGasCost(supplicateExact0For1(expandTo18Decimals(1), await wallet.getAddress()))
           expect((await pool.slot0()).tick).to.be.lt(startingTick - 4 * tickSpacing)
         })
 
-        it('large swap crossing several initialized ticks second time after some time passes', async () => {
+        it('large move crossing several initialized ticks second time after some time passes', async () => {
           await mint(await wallet.getAddress(), startingTick - 3 * tickSpacing, startingTick - tickSpacing, expandTo18Decimals(1))
           await mint(
             await wallet.getAddress(),
@@ -176,10 +203,10 @@ describe('LPPPool gas tests', () => {
             startingTick - 2 * tickSpacing,
             expandTo18Decimals(1)
           )
-          await swapExact0For1(expandTo18Decimals(1), await wallet.getAddress())
-          await swapToHigherPrice(startingPrice, await wallet.getAddress())
+          await supplicateExact0For1(expandTo18Decimals(1), await wallet.getAddress())
+          await supplicateToHigherPrice(startingPrice, await wallet.getAddress())
           await pool.advanceTime(1)
-          await snapshotGasCost(swapExact0For1(expandTo18Decimals(1), await wallet.getAddress()))
+          await snapshotGasCost(supplicateExact0For1(expandTo18Decimals(1), await wallet.getAddress()))
           expect((await pool.slot0()).tick).to.be.lt(tickSpacing * -4)
         })
       })
@@ -247,9 +274,9 @@ describe('LPPPool gas tests', () => {
 
         it('best case', async () => {
           await mint(await wallet.getAddress(), tickLower, tickUpper, expandTo18Decimals(1))
-          await swapExact0For1(expandTo18Decimals(1) / 100n, await wallet.getAddress())
+          await supplicateExact0For1(expandTo18Decimals(1) / 100n, await wallet.getAddress())
           await pool.burn(tickLower, tickUpper, 0)
-          await swapExact0For1(expandTo18Decimals(1) / 100n, await wallet.getAddress())
+          await supplicateExact0For1(expandTo18Decimals(1) / 100n, await wallet.getAddress())
           await snapshotGasCost(pool.burn(tickLower, tickUpper, 0))
         })
       })
@@ -260,7 +287,7 @@ describe('LPPPool gas tests', () => {
 
         it('close to worst case', async () => {
           await mint(await wallet.getAddress(), tickLower, tickUpper, expandTo18Decimals(1))
-          await swapExact0For1(expandTo18Decimals(1) / 100n, await wallet.getAddress())
+          await supplicateExact0For1(expandTo18Decimals(1) / 100n, await wallet.getAddress())
           await pool.burn(tickLower, tickUpper, 0) // poke to accumulate fees
           await snapshotGasCost(pool.collect(await wallet.getAddress(), tickLower, tickUpper, MaxUint128, MaxUint128))
         })
@@ -277,21 +304,15 @@ describe('LPPPool gas tests', () => {
 
       describe('#snapshotCumulativesInside', () => {
         it('tick inside', async () => {
-          await snapshotGasCost(
-            pool.getFunction('snapshotCumulativesInside').estimateGas(minTick, maxTick)
-          )
+          await snapshotGasCost(pool.getFunction('snapshotCumulativesInside').estimateGas(minTick, maxTick))
         })
         it('tick above', async () => {
-          await swapToHigherPrice(MAX_SQRT_RATIO - 1n, await wallet.getAddress())
-          await snapshotGasCost(
-            pool.getFunction('snapshotCumulativesInside').estimateGas(minTick, maxTick)
-          )
+          await supplicateToHigherPrice(MAX_SQRT_RATIO - 1n, await wallet.getAddress())
+          await snapshotGasCost(pool.getFunction('snapshotCumulativesInside').estimateGas(minTick, maxTick))
         })
         it('tick below', async () => {
-          await swapToLowerPrice(MIN_SQRT_RATIO + 1n, await wallet.getAddress())
-          await snapshotGasCost(
-            pool.getFunction('snapshotCumulativesInside').estimateGas(minTick, maxTick)
-          )
+          await supplicateToLowerPrice(MIN_SQRT_RATIO + 1n, await wallet.getAddress())
+          await snapshotGasCost(pool.getFunction('snapshotCumulativesInside').estimateGas(minTick, maxTick))
         })
       })
     })

@@ -61,8 +61,8 @@ async function tokensFixture(): Promise<TokensFixture> {
 type TokensAndFactoryFixture = FactoryFixture & TokensFixture
 
 interface PoolFixture extends TokensAndFactoryFixture {
-  swapTargetCallee: TestLPPCallee
-  swapTargetRouter: TestLPPRouter
+  supplicateTargetCallee: TestLPPCallee
+  supplicateTargetRouter: TestLPPRouter
   createPool(
     fee: number,
     tickSpacing: number,
@@ -84,18 +84,18 @@ export const poolFixture: Fixture<PoolFixture> = async function (): Promise<Pool
   const CalleeFactory = await ethers.getContractFactory('TestLPPCallee')
   const RouterFactory = await ethers.getContractFactory('TestLPPRouter')
 
-  const swapTargetCallee = (await CalleeFactory.deploy()) as unknown as TestLPPCallee
-  const swapTargetRouter = (await RouterFactory.deploy()) as unknown as TestLPPRouter
+  const supplicateTargetCallee = (await CalleeFactory.deploy()) as unknown as TestLPPCallee
+  const supplicateTargetRouter = (await RouterFactory.deploy()) as unknown as TestLPPRouter
 
-  await Promise.all([swapTargetCallee.waitForDeployment(), swapTargetRouter.waitForDeployment()])
+  await Promise.all([supplicateTargetCallee.waitForDeployment(), supplicateTargetRouter.waitForDeployment()])
 
   return {
     token0,
     token1,
     token2,
     factory,
-    swapTargetCallee,
-    swapTargetRouter,
+    supplicateTargetCallee,
+    supplicateTargetRouter,
     createPool: async (fee, tickSpacing, firstToken = token0, secondToken = token1) => {
       const deployer = (await DeployerFactory.deploy()) as unknown as MockTimeLPPPoolDeployer
       await deployer.waitForDeployment()

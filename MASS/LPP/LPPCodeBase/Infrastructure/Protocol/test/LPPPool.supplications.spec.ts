@@ -130,22 +130,22 @@ async function executeSupplication(
   poolFunctions: ReturnType<typeof createPoolFunctions>
 ) {
   if (isSupplicate0ForExact1(testCase)) {
-    return poolFunctions.swap0ForExact1(testCase.amount1, SUPPLICATION_RECIPIENT_ADDRESS, testCase.sqrtPriceLimit)
+    return poolFunctions.supplicate0ForExact1(testCase.amount1, SUPPLICATION_RECIPIENT_ADDRESS, testCase.sqrtPriceLimit)
   }
   if (isSupplicate1ForExact0(testCase)) {
-    return poolFunctions.swap1ForExact0(testCase.amount0, SUPPLICATION_RECIPIENT_ADDRESS, testCase.sqrtPriceLimit)
+    return poolFunctions.supplicate1ForExact0(testCase.amount0, SUPPLICATION_RECIPIENT_ADDRESS, testCase.sqrtPriceLimit)
   }
   if (isSupplicateExact0For1(testCase)) {
-    return poolFunctions.swapExact0For1(testCase.amount0, SUPPLICATION_RECIPIENT_ADDRESS, testCase.sqrtPriceLimit)
+    return poolFunctions.supplicateExact0For1(testCase.amount0, SUPPLICATION_RECIPIENT_ADDRESS, testCase.sqrtPriceLimit)
   }
   if (isSupplicateExact1For0(testCase)) {
-    return poolFunctions.swapExact1For0(testCase.amount1, SUPPLICATION_RECIPIENT_ADDRESS, testCase.sqrtPriceLimit)
+    return poolFunctions.supplicateExact1For0(testCase.amount1, SUPPLICATION_RECIPIENT_ADDRESS, testCase.sqrtPriceLimit)
   }
   if (isSupplicateToLowerPrice(testCase)) {
-    return poolFunctions.swapToLowerPrice(testCase.sqrtPriceLimit!, SUPPLICATION_RECIPIENT_ADDRESS)
+    return poolFunctions.supplicateToLowerPrice(testCase.sqrtPriceLimit!, SUPPLICATION_RECIPIENT_ADDRESS)
   }
   if (isSupplicateToHigherPrice(testCase)) {
-    return poolFunctions.swapToHigherPrice(testCase.sqrtPriceLimit!, SUPPLICATION_RECIPIENT_ADDRESS)
+    return poolFunctions.supplicateToHigherPrice(testCase.sqrtPriceLimit!, SUPPLICATION_RECIPIENT_ADDRESS)
   }
   const _exhaustive: never = testCase as never
   throw new Error(`Unknown supplication test case: ${JSON.stringify(_exhaustive)}`)
@@ -277,7 +277,7 @@ const TEST_POOLS: PoolTestCase[] = [
     ],
   },
   {
-    description: 'zero fee, large liquidity around current price (stable swap)',
+    description: 'zero fee, large liquidity around current price (stable supplication)',
     feeAmount: FeeAmount.ZERO,
     tickSpacing: TICK_SPACINGS[FeeAmount.ZERO],
     startingPrice: encodePriceSqrt(1, 1),
@@ -393,9 +393,9 @@ describe('LPPPool supplication tests', () => {
   for (const poolCase of TEST_POOLS) {
     describe(poolCase.description, () => {
       const poolCaseFixture = async () => {
-        const { createPool, token0, token1, swapTargetCallee: swapTarget } = await loadFixture(poolFixture)
+        const { createPool, token0, token1, supplicateTargetCallee: supplicateTarget } = await loadFixture(poolFixture)
         const pool = await createPool(poolCase.feeAmount, poolCase.tickSpacing)
-        const poolFunctions = createPoolFunctions({ swapTarget, token0, token1, pool })
+        const poolFunctions = createPoolFunctions({ supplicateTarget, token0, token1, pool })
         await pool.initialize(poolCase.startingPrice)
 
         // mint all positions
@@ -409,7 +409,7 @@ describe('LPPPool supplication tests', () => {
           token1.balanceOf(poolAddr),
         ])
 
-        return { token0, token1, pool, poolFunctions, poolBalance0, poolBalance1, swapTarget, poolAddr }
+        return { token0, token1, pool, poolFunctions, poolBalance0, poolBalance1, supplicateTarget, poolAddr }
       }
 
       let token0: TestERC20
@@ -417,12 +417,12 @@ describe('LPPPool supplication tests', () => {
       let poolBalance0: bigint
       let poolBalance1: bigint
       let pool: MockTimeLPPPool
-      let swapTarget: TestLPPCallee
+      let supplicateTarget: TestLPPCallee
       let poolFunctions: PoolFunctions
       let poolAddr: string
 
       beforeEach('load fixture', async () => {
-        ;({ token0, token1, pool, poolFunctions, poolBalance0, poolBalance1, swapTarget, poolAddr } =
+        ;({ token0, token1, pool, poolFunctions, poolBalance0, poolBalance1, supplicateTarget, poolAddr } =
           await loadFixture(poolCaseFixture))
       })
 
@@ -567,11 +567,11 @@ describe('LPPPool supplication tests', () => {
             await expect(tx).to.emit(token1, 'Transfer').withArgs(wallet.address, poolAddr, poolBalance1Delta)
           }
 
-          // pool still emits Swap event on-chain (name unchanged)
+          // pool still emits supplicate event on-chain (name unchanged)
           await expect(tx)
-            .to.emit(pool, 'Swap')
+            .to.emit(pool, 'Supplicate')
             .withArgs(
-              await swapTarget.getAddress(),
+              await supplicateTarget.getAddress(),
               SUPPLICATION_RECIPIENT_ADDRESS,
               poolBalance0Delta,
               poolBalance1Delta,
