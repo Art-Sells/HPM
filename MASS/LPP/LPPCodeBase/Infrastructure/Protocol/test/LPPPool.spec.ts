@@ -14,7 +14,7 @@ import type {
   TestLPPCallee,
   TestLPPReentrantCallee,
   TickMathTest,
-  SwapMathTest,
+  SupplicateMathTest,
 } from '../typechain-types/protocol'
 
 import checkObservationEquals from './shared/checkObservationEquals.ts'
@@ -78,7 +78,7 @@ const diff32 = (after: bigint, before: bigint) => mod32(after - before)
 
 async function moveBelowRange(
   pool: any,
-  callee: any,           // your TestLPPCallee instance (often named `swapTarget`)
+  callee: any,           // your TestLPPCallee instance (often named `supplicateTarget`)
   tickLower: number,
   tickMath: any          // TickMathTest instance
 ) {
@@ -107,14 +107,14 @@ describe('LPPPool', () => {
 
   let factory: LPPFactory
   let pool: MockTimeLPPPool
-  let swapTarget: TestLPPCallee
+  let supplicateTarget: TestLPPCallee
 
-  let swapToLowerPrice: SupplicateToPriceFunction
-  let swapToHigherPrice: SupplicateToPriceFunction
-  let swapExact0For1: SupplicateFunction
-  let swap0ForExact1: SupplicateFunction
-  let swapExact1For0: SupplicateFunction
-  let swap1ForExact0: SupplicateFunction
+  let supplicateToLowerPrice: SupplicateToPriceFunction
+  let supplicateToHigherPrice: SupplicateToPriceFunction
+  let supplicateExact0For1: SupplicateFunction
+  let supplicate0ForExact1: SupplicateFunction
+  let supplicateExact1For0: SupplicateFunction
+  let supplicate1ForExact0: SupplicateFunction
 
   let feeAmount: number
   let tickSpacing: number
@@ -132,21 +132,21 @@ describe('LPPPool', () => {
   })
 
   beforeEach(async () => {
-    ;({ token0, token1, token2, factory, createPool, swapTargetCallee: swapTarget } = await loadFixture(poolFixture))
+    ;({ token0, token1, token2, factory, createPool, supplicateTargetCallee: supplicateTarget } = await loadFixture(poolFixture))
 
     const oldCreatePool = createPool
     createPool = async (_feeAmount, _tickSpacing) => {
       const pool = await oldCreatePool(_feeAmount, _tickSpacing)
       ;({
-        swapToLowerPrice,
-        swapToHigherPrice,
-        swapExact0For1,
-        swap0ForExact1,
-        swapExact1For0,
-        swap1ForExact0,
+        supplicateToLowerPrice,
+        supplicateToHigherPrice,
+        supplicateExact0For1,
+        supplicate0ForExact1,
+        supplicateExact1For0,
+        supplicate1ForExact0,
         mint,
         flash,
-      } = createPoolFunctions({ token0, token1, swapTarget, pool }))
+      } = createPoolFunctions({ token0, token1, supplicateTarget, pool }))
       minTick = getMinTick(_tickSpacing)
       maxTick = getMaxTick(_tickSpacing)
       feeAmount = _feeAmount
@@ -499,10 +499,10 @@ describe('LPPPool', () => {
         })
       })
 
-      it('protocol fees remain zero during swap', async () => {
+      it('protocol fees remain zero during supplicate', async () => {
         await mint(wallet.address, minTick + tickSpacing, maxTick - tickSpacing, expandTo18Decimals(1))
-        await swapExact0For1(expandTo18Decimals(1) / 10n, wallet.address)
-        await swapExact1For0(expandTo18Decimals(1) / 100n, wallet.address)
+        await supplicateExact0For1(expandTo18Decimals(1) / 10n, wallet.address)
+        await supplicateExact1For0(expandTo18Decimals(1) / 100n, wallet.address)
         const { token0, token1 } = await pool.protocolFees()
         expect(token0).to.eq(0n)
         expect(token1).to.eq(0n)
@@ -510,8 +510,8 @@ describe('LPPPool', () => {
 
       it('positions are protected before protocol fee is turned on', async () => {
         await mint(wallet.address, minTick + tickSpacing, maxTick - tickSpacing, expandTo18Decimals(1))
-        await swapExact0For1(expandTo18Decimals(1) / 10n, wallet.address)
-        await swapExact1For0(expandTo18Decimals(1) / 100n, wallet.address)
+        await supplicateExact0For1(expandTo18Decimals(1) / 10n, wallet.address)
+        await supplicateExact1For0(expandTo18Decimals(1) / 100n, wallet.address)
         let { token0: t0, token1: t1 } = await pool.protocolFees()
         expect(t0).to.eq(0n)
         expect(t1).to.eq(0n)
@@ -522,9 +522,14 @@ describe('LPPPool', () => {
       })
 
       it('poke is not allowed on uninitialized position', async () => {
+        await token0.connect(other).approve(await supplicateTarget.getAddress(), ethers.MaxUint256)
+        await token1.connect(other).approve(await supplicateTarget.getAddress(), ethers.MaxUint256)
+        const FUND = expandTo18Decimals(1_000_000) // 1e6 tokens each
+        await token0.transfer(other.address, FUND)
+        await token1.transfer(other.address, FUND)
         await mint(other.address, minTick + tickSpacing, maxTick - tickSpacing, expandTo18Decimals(1))
-        await swapExact0For1(expandTo18Decimals(1) / 10n, wallet.address)
-        await swapExact1For0(expandTo18Decimals(1) / 100n, wallet.address)
+        await supplicateExact0For1(expandTo18Decimals(1) / 10n, wallet.address)
+        await supplicateExact1For0(expandTo18Decimals(1) / 100n, wallet.address)
         await expect(pool.burn(minTick + tickSpacing, maxTick - tickSpacing, 0)).to.be.reverted
         await mint(wallet.address, minTick + tickSpacing, maxTick - tickSpacing, 1)
         let p = await pool.positions(getPositionKey(wallet.address, minTick + tickSpacing, maxTick - tickSpacing))
@@ -560,7 +565,7 @@ describe('LPPPool', () => {
       const tickUpper = maxTick - tickSpacing
       await pool.advanceTime(10)
       await mint(wallet.address, tickLower, tickUpper, 1)
-      await swapExact0For1(expandTo18Decimals(1), wallet.address)
+      await supplicateExact0For1(expandTo18Decimals(1), wallet.address)
       await pool.burn(tickLower, tickUpper, 1)
       await checkTickIsClear(tickLower)
       await checkTickIsClear(tickUpper)
@@ -572,7 +577,7 @@ describe('LPPPool', () => {
       await pool.advanceTime(10)
       await mint(wallet.address, tickLower, tickUpper, 1)
       await mint(wallet.address, tickLower + tickSpacing, tickUpper, 1)
-      await swapExact0For1(expandTo18Decimals(1), wallet.address)
+      await supplicateExact0For1(expandTo18Decimals(1), wallet.address)
       await pool.burn(tickLower, tickUpper, 1)
       await checkTickIsClear(tickLower)
       await checkTickIsNotClear(tickUpper)
@@ -584,7 +589,7 @@ describe('LPPPool', () => {
       await pool.advanceTime(10)
       await mint(wallet.address, tickLower, tickUpper, 1)
       await mint(wallet.address, tickLower, tickUpper - tickSpacing, 1)
-      await swapExact0For1(expandTo18Decimals(1), wallet.address)
+      await supplicateExact0For1(expandTo18Decimals(1), wallet.address)
       await pool.burn(tickLower, tickUpper, 1)
       await checkTickIsNotClear(tickLower)
       await checkTickIsClear(tickUpper)
@@ -611,20 +616,20 @@ describe('LPPPool', () => {
       expect(tickCumulative).to.eq(0n)
     })
 
-    it('current tick accumulator after single swap', async () => {
-      await swapExact0For1(1000, wallet.address)
+    it('current tick accumulator after single supplicate', async () => {
+      await supplicateExact0For1(1000, wallet.address)
       const { tick: t1 } = await pool.slot0()
       await pool.advanceTime(4)
       const { tickCumulatives: [tickCumulative] } = await pool.observe([0])
       expect(tickCumulative).to.eq(4n * BigInt(t1))
     })
 
-    it('current tick accumulator after two swaps', async () => {
-      await swapExact0For1(expandTo18Decimals(1) / 2n, wallet.address)
+    it('current tick accumulator after two supplicates', async () => {
+      await supplicateExact0For1(expandTo18Decimals(1) / 2n, wallet.address)
       const { tick: tA } = await pool.slot0()
       await pool.advanceTime(4)
 
-      await swapExact1For0(expandTo18Decimals(1) / 4n, wallet.address)
+      await supplicateExact1For0(expandTo18Decimals(1) / 4n, wallet.address)
       const { tick: tB } = await pool.slot0()
       await pool.advanceTime(6)
 
@@ -730,11 +735,11 @@ describe('LPPPool', () => {
           await mint(wallet.address, 0, tickSpacing, liquidityDelta)
           const kAfter = await pool.liquidity()
           expect(kAfter).to.eq(expandTo18Decimals(3))
-          await swapExact0For1(1, wallet.address)
+          await supplicateExact0For1(1, wallet.address)
           const { tick } = await pool.slot0()
           expect(tick).to.eq(-1)
-          const kAfterSwap = await pool.liquidity()
-          expect(kAfterSwap).to.eq(expandTo18Decimals(2))
+          const kAfterSupplicate = await pool.liquidity()
+          expect(kAfterSupplicate).to.eq(expandTo18Decimals(2))
         })
         it('updates correctly when entering range', async () => {
           const kBefore = await pool.liquidity()
@@ -743,11 +748,11 @@ describe('LPPPool', () => {
           await mint(wallet.address, -tickSpacing, 0, liquidityDelta)
           const kAfter = await pool.liquidity()
           expect(kAfter).to.eq(kBefore)
-          await swapExact0For1(1, wallet.address)
+          await supplicateExact0For1(1, wallet.address)
           const { tick } = await pool.slot0()
           expect(tick).to.eq(-1)
-          const kAfterSwap = await pool.liquidity()
-          expect(kAfterSwap).to.eq(expandTo18Decimals(3))
+          const kAfterSupplicate = await pool.liquidity()
+          expect(kAfterSupplicate).to.eq(expandTo18Decimals(3))
         })
       })
     })
@@ -758,7 +763,7 @@ describe('LPPPool', () => {
 
     it('limit selling 0 for 1 at tick 0 thru 1 (property checks at zero fee)', async () => {
       await mint(wallet.address, 0, 120, expandTo18Decimals(1))
-      await swapExact1For0(expandTo18Decimals(2), other.address)
+      await supplicateExact1For0(expandTo18Decimals(2), other.address)
       await pool.burn(0, 120, expandTo18Decimals(1))
       const { amount0, amount1 } = await pool.collect.staticCall(wallet.address, 0, 120, MaxUint128, MaxUint128)
       expect(amount0).to.eq(0n)
@@ -771,7 +776,7 @@ describe('LPPPool', () => {
 
     it('limit selling 1 for 0 at tick 0 thru -1 (property checks at zero fee)', async () => {
       await mint(wallet.address, -120, 0, expandTo18Decimals(1))
-      await swapExact0For1(expandTo18Decimals(2), other.address)
+      await supplicateExact0For1(expandTo18Decimals(2), other.address)
       await pool.burn(-120, 0, expandTo18Decimals(1))
       const { amount0, amount1 } = await pool.collect.staticCall(wallet.address, -120, 0, MaxUint128, MaxUint128)
       expect(amount0).to.be.gt(0n)
@@ -786,7 +791,7 @@ describe('LPPPool', () => {
       beforeEach(() => pool.setFeeProtocol(6, 6))
       it('limit selling 0 for 1 behaves like zero-fee (property checks)', async () => {
         await mint(wallet.address, 0, 120, expandTo18Decimals(1))
-        await swapExact1For0(expandTo18Decimals(2), other.address)
+        await supplicateExact1For0(expandTo18Decimals(2), other.address)
         await pool.burn(0, 120, expandTo18Decimals(1))
         const { amount0, amount1 } = await pool.collect.staticCall(wallet.address, 0, 120, MaxUint128, MaxUint128)
         expect(amount0).to.eq(0n)
@@ -794,7 +799,7 @@ describe('LPPPool', () => {
       })
       it('limit selling 1 for 0 behaves like zero-fee (property checks)', async () => {
         await mint(wallet.address, -120, 0, expandTo18Decimals(1))
-        await swapExact0For1(expandTo18Decimals(2), other.address)
+        await supplicateExact0For1(expandTo18Decimals(2), other.address)
         await pool.burn(-120, 0, expandTo18Decimals(1))
         const { amount0, amount1 } = await pool.collect.staticCall(wallet.address, -120, 0, MaxUint128, MaxUint128)
         expect(amount0).to.be.gt(0n)
@@ -812,7 +817,7 @@ describe('LPPPool', () => {
     it('works with multiple LPs (expect zero LP fees at zero trading fee)', async () => {
       await mint(wallet.address, minTick, maxTick, expandTo18Decimals(1))
       await mint(wallet.address, minTick + tickSpacing, maxTick - tickSpacing, expandTo18Decimals(2))
-      await swapExact0For1(expandTo18Decimals(1), wallet.address)
+      await supplicateExact0For1(expandTo18Decimals(1), wallet.address)
       await pool.burn(minTick, maxTick, 0)
       await pool.burn(minTick + tickSpacing, maxTick - tickSpacing, 0)
       const p0 = await pool.positions(getPositionKey(wallet.address, minTick, maxTick))
@@ -912,18 +917,18 @@ describe('LPPPool', () => {
 
         // NOTE: the supplicate helpers can place the price *past* the remote band.
         // We only assert that the distant position can be poked without reverting.
-        it('swapping across gaps works in 1 for 0 direction (property checks)', async () => {
+        it('supplicating across gaps works in 1 for 0 direction (property checks)', async () => {
           const L = expandTo18Decimals(1) / 4n
           await mint(wallet.address, 120000, 121200, L)
 
           // Push way up (can overshoot past the band)
-          await swapToHigherPrice(MAX_SQRT_RATIO - 1n, wallet.address)
+          await supplicateToHigherPrice(MAX_SQRT_RATIO - 1n, wallet.address)
 
           // Poke (no principal removal)
           await expect(pool.burn(120000, 121200, 0)).to.not.be.reverted
         })
 
-        it('swapping across gaps works in 0 for 1 direction (property checks)', async () => {
+        it('supplicating across gaps works in 0 for 1 direction (property checks)', async () => {
           const L = expandTo18Decimals(1) / 4n
           await mint(wallet.address, -121200, -120000, L)
 
@@ -931,7 +936,7 @@ describe('LPPPool', () => {
           // distant position can still be poked safely.
           // Try a large downward move but don't require success; focus on poke.
           try {
-            await swapToLowerPrice(MIN_SQRT_RATIO + 1n, wallet.address)
+            await supplicateToLowerPrice(MIN_SQRT_RATIO + 1n, wallet.address)
           } catch {}
 
           await expect(pool.burn(-121200, -120000, 0)).to.not.be.reverted
@@ -940,13 +945,12 @@ describe('LPPPool', () => {
     })
   })
 
-  // https://github.com/Uniswap/uniswap-v3-core/issues/214
-  it('tick transition cannot run twice if zero for one swap ends at fractional price just below tick', async () => {
+  it('tick transition cannot run twice if zero for one supplicate ends at fractional price just below tick', async () => {
     pool = await createPool(FeeAmount.ZERO, 1)
     const sqrtTickMath = (await (await ethers.getContractFactory('TickMathTest')).deploy()) as unknown as TickMathTest
     await sqrtTickMath.waitForDeployment()
-    const swapMath = (await (await ethers.getContractFactory('SwapMathTest')).deploy()) as unknown as SwapMathTest
-    await swapMath.waitForDeployment()
+    const supplicateMath = (await (await ethers.getContractFactory('SupplicateMathTest')).deploy()) as unknown as SupplicateMathTest
+    await supplicateMath.waitForDeployment()
 
     const p0 = (await sqrtTickMath.getSqrtRatioAtTick(-24081)) + 1n
     await pool.initialize(p0)
@@ -961,13 +965,13 @@ describe('LPPPool', () => {
     expect(await pool.liquidity()).to.eq(liquidity)
 
     {
-      const { amountOut, sqrtQ } = await swapMath.computeSwapStep(p0, p0 - 1n, liquidity, 3, FeeAmount.ZERO)
+      const { amountOut, sqrtQ } = await supplicateMath.computeSupplicateStep(p0, p0 - 1n, liquidity, 3, FeeAmount.ZERO)
       expect(sqrtQ).to.eq(p0 - 1n)
       expect(amountOut).to.eq(0n)
     }
 
     const poolAddr = await pool.getAddress()
-    await expect(swapExact0For1(3, wallet.address))
+    await expect(supplicateExact0For1(3, wallet.address))
       .to.emit(token0, 'Transfer')
       .withArgs(wallet.address, poolAddr, 3n)
       .to.not.emit(token1, 'Transfer')
@@ -1004,7 +1008,7 @@ describe('LPPPool', () => {
         it('emits an event', async () => {
           await expect(flash(1001, 2001, other.address))
             .to.emit(pool, 'Flash')
-            .withArgs(await swapTarget.getAddress(), other.address, 1001n, 2001n, 0n, 0n)
+            .withArgs(await supplicateTarget.getAddress(), other.address, 1001n, 2001n, 0n, 0n)
         })
         it('transfers the amount0 to the recipient', async () => {
           const poolAddr = await pool.getAddress()
@@ -1050,7 +1054,7 @@ describe('LPPPool', () => {
         })
         it('calls the flash callback on the sender with correct fee amounts', async () => {
           await expect(flash(1001, 2002, other.address))
-            .to.emit(swapTarget, 'FlashCallback')
+            .to.emit(supplicateTarget, 'FlashCallback')
             .withArgs(0n, 0n)
         })
         it('increases the fee growth by the expected amount', async () => {
@@ -1147,8 +1151,8 @@ describe('LPPPool', () => {
 
       const before = await pool.protocolFees()
       await mint(wallet.address, minTick + tickSpacing, maxTick - tickSpacing, expandTo18Decimals(1))
-      await swapExact0For1(expandTo18Decimals(1) / 10n, wallet.address)
-      await swapExact1For0(expandTo18Decimals(1) / 10n, wallet.address)
+      await supplicateExact0For1(expandTo18Decimals(1) / 10n, wallet.address)
+      await supplicateExact1For0(expandTo18Decimals(1) / 10n, wallet.address)
       const after = await pool.protocolFees()
 
       expect(after.token0 - before.token0).to.eq(0n)
@@ -1167,11 +1171,11 @@ describe('LPPPool', () => {
       await mint(wallet.address, minTick, maxTick, expandTo18Decimals(1))
     })
 
-    it('cannot reenter from swap callback', async () => {
+    it('cannot reenter from supplicate callback', async () => {
       const reentrant = (await (
         await ethers.getContractFactory('TestLPPReentrantCallee')
       ).deploy()) as unknown as TestLPPReentrantCallee
-      await expect(reentrant.swapToReenter(await pool.getAddress())).to.be.revertedWith('Unable to reenter')
+      await expect(reentrant.supplicateToReenter(await pool.getAddress())).to.be.revertedWith('Unable to reenter')
     })
   })
 
@@ -1216,7 +1220,7 @@ describe('#snapshotCumulativesInside', () => {
     expect(a.tickCumulativeInside).to.eq(0n)
   })
   it('does not account for time increase above range (relative checks)', async () => {
-    await swapToHigherPrice(encodePriceSqrt(2, 1), wallet.address)
+    await supplicateToHigherPrice(encodePriceSqrt(2, 1), wallet.address)
     const start = await pool.snapshotCumulativesInside(tickLower, tickUpper)
     await pool.advanceTime(7)
     const end = await pool.snapshotCumulativesInside(tickLower, tickUpper)
@@ -1226,7 +1230,7 @@ describe('#snapshotCumulativesInside', () => {
   it('does not account for time increase below range (relative checks)', async () => {
     await pool.advanceTime(5)
     const start = await pool.snapshotCumulativesInside(tickLower, tickUpper)
-    await swapToLowerPrice(encodePriceSqrt(1, 2), wallet.address)
+    await supplicateToLowerPrice(encodePriceSqrt(1, 2), wallet.address)
     await pool.advanceTime(7)
     const end = await pool.snapshotCumulativesInside(tickLower, tickUpper)
     expect(delta32(end.secondsInside, start.secondsInside)).to.eq(0n)
@@ -1238,7 +1242,7 @@ it('time increase below range is not counted (leave then reenter)', async () => 
   const poolAddr = await pool.getAddress();
 
   // leave the band to BELOW tickLower
-  await swapTarget.supplicateToLowerSqrtPrice(
+  await supplicateTarget.supplicateToLowerSqrtPrice(
     poolAddr,
     encodePriceSqrt(1, 2),     // way below (tick ~ -6932)
     wallet.address
@@ -1252,7 +1256,7 @@ it('time increase below range is not counted (leave then reenter)', async () => 
   ).to.eq(0);
 
   // re-enter inside the band (price = 1: mid)
-  await swapTarget.supplicateToHigherSqrtPrice(
+  await supplicateTarget.supplicateToHigherSqrtPrice(
     poolAddr,
     encodePriceSqrt(1, 1),
     wallet.address
@@ -1270,7 +1274,7 @@ it('time increase above range is not counted (leave then reenter below, come bac
   const poolAddr = await pool.getAddress();
 
   // leave the band to ABOVE tickUpper
-  await swapTarget.supplicateToHigherSqrtPrice(
+  await supplicateTarget.supplicateToHigherSqrtPrice(
     poolAddr,
     encodePriceSqrt(2, 1),     // way above (tick ~ +6932)
     wallet.address
@@ -1284,7 +1288,7 @@ it('time increase above range is not counted (leave then reenter below, come bac
   ).to.eq(0);
 
   // come back inside the band (price = 1)
-  await swapTarget.supplicateToLowerSqrtPrice(
+  await supplicateTarget.supplicateToLowerSqrtPrice(
     poolAddr,
     encodePriceSqrt(1, 1),
     wallet.address
@@ -1301,7 +1305,7 @@ it('time increase above range is not counted (leave then reenter below, come bac
   it('positions minted after time spent (relative checks)', async () => {
     await pool.advanceTime(5)
     await mint(wallet.address, tickUpper, getMaxTick(tsLocal), 15)
-    await swapToHigherPrice(encodePriceSqrt(2, 1), wallet.address)
+    await supplicateToHigherPrice(encodePriceSqrt(2, 1), wallet.address)
     const mid = await pool.snapshotCumulativesInside(tickUpper, getMaxTick(tsLocal))
     await pool.advanceTime(8)
     const end = await pool.snapshotCumulativesInside(tickUpper, getMaxTick(tsLocal))
@@ -1323,7 +1327,7 @@ it('overlapping liquidity is aggregated (seconds inside only)', async () => {
     await mint(wallet.address, getMinTick(tsLocal), tickLower, 15)
     const start = await pool.snapshotCumulativesInside(getMinTick(tsLocal), tickLower)
     await pool.advanceTime(8)
-    await swapToLowerPrice(encodePriceSqrt(1, 2), wallet.address)
+    await supplicateToLowerPrice(encodePriceSqrt(1, 2), wallet.address)
     await pool.advanceTime(3)
     const end = await pool.snapshotCumulativesInside(getMinTick(tsLocal), tickLower)
     expect(end.secondsInside - start.secondsInside).to.eq(3n)
@@ -1379,6 +1383,10 @@ it('overlapping liquidity is aggregated (seconds inside only)', async () => {
     it('two positions at the same snapshot', async () => {
       await pool.initialize(encodePriceSqrt(1, 1))
       await mint(wallet.address, minTick, maxTick, 1)
+      await token0.connect(other).approve(await supplicateTarget.getAddress(), ethers.MaxUint256)
+      await token1.connect(other).approve(await supplicateTarget.getAddress(), ethers.MaxUint256)
+      await token0.transfer(other.address, expandTo18Decimals(2))
+      await token1.transfer(other.address, expandTo18Decimals(2))
       await mint(other.address, minTick, maxTick, 1)
       await flash(0, 0, wallet.address, MaxUint128, 0)
       await flash(0, 0, wallet.address, MaxUint128, 0)
@@ -1397,6 +1405,10 @@ it('overlapping liquidity is aggregated (seconds inside only)', async () => {
       await pool.initialize(encodePriceSqrt(1, 1))
       await mint(wallet.address, minTick, maxTick, 1)
       await flash(0, 0, wallet.address, 1, 0)
+      await token0.connect(other).approve(await supplicateTarget.getAddress(), ethers.MaxUint256)
+      await token1.connect(other).approve(await supplicateTarget.getAddress(), ethers.MaxUint256)
+      await token0.transfer(other.address, expandTo18Decimals(2))
+      await token1.transfer(other.address, expandTo18Decimals(2))
       await mint(other.address, minTick, maxTick, 1)
       await flash(0, 0, wallet.address, MaxUint128, 0)
       await flash(0, 0, wallet.address, MaxUint128, 0)
@@ -1412,7 +1424,7 @@ it('overlapping liquidity is aggregated (seconds inside only)', async () => {
     })
   })
 
-  describe('swap underpayment tests', () => {
+  describe('supplicate underpayment tests', () => {
     let underpay: TestLPPSupplicatePay
     beforeEach(async () => {
       const f = await ethers.getContractFactory('TestLPPSupplicatePay')
@@ -1425,62 +1437,62 @@ it('overlapping liquidity is aggregated (seconds inside only)', async () => {
 
     it('underpay zero for one and exact in', async () => {
       await expect(
-        underpay.swap(await pool.getAddress(), wallet.address, true, MIN_SQRT_RATIO + 1n, 1000, 1, 0)
+        underpay.supplicate(await pool.getAddress(), wallet.address, true, MIN_SQRT_RATIO + 1n, 1000, 1, 0)
       ).to.be.revertedWith('IIA')
     })
     it('pay in the wrong token zero for one and exact in', async () => {
       await expect(
-        underpay.swap(await pool.getAddress(), wallet.address, true, MIN_SQRT_RATIO + 1n, 1000, 0, 2000)
+        underpay.supplicate(await pool.getAddress(), wallet.address, true, MIN_SQRT_RATIO + 1n, 1000, 0, 2000)
       ).to.be.revertedWith('IIA')
     })
     it('overpay zero for one and exact in', async () => {
       await expect(
-        underpay.swap(await pool.getAddress(), wallet.address, true, MIN_SQRT_RATIO + 1n, 1000, 2000, 0)
+        underpay.supplicate(await pool.getAddress(), wallet.address, true, MIN_SQRT_RATIO + 1n, 1000, 2000, 0)
       ).to.not.be.revertedWith('IIA')
     })
     it('underpay zero for one and exact out', async () => {
       await expect(
-        underpay.swap(await pool.getAddress(), wallet.address, true, MIN_SQRT_RATIO + 1n, -1000, 1, 0)
+        underpay.supplicate(await pool.getAddress(), wallet.address, true, MIN_SQRT_RATIO + 1n, -1000, 1, 0)
       ).to.be.revertedWith('IIA')
     })
     it('pay in the wrong token zero for one and exact out', async () => {
       await expect(
-        underpay.swap(await pool.getAddress(), wallet.address, true, MIN_SQRT_RATIO + 1n, -1000, 0, 2000)
+        underpay.supplicate(await pool.getAddress(), wallet.address, true, MIN_SQRT_RATIO + 1n, -1000, 0, 2000)
       ).to.be.revertedWith('IIA')
     })
     it('overpay zero for one and exact out', async () => {
       await expect(
-        underpay.swap(await pool.getAddress(), wallet.address, true, MIN_SQRT_RATIO + 1n, -1000, 2000, 0)
+        underpay.supplicate(await pool.getAddress(), wallet.address, true, MIN_SQRT_RATIO + 1n, -1000, 2000, 0)
       ).to.not.be.revertedWith('IIA')
     })
     it('underpay one for zero and exact in', async () => {
       await expect(
-        underpay.swap(await pool.getAddress(), wallet.address, false, MAX_SQRT_RATIO - 1n, 1000, 0, 1)
+        underpay.supplicate(await pool.getAddress(), wallet.address, false, MAX_SQRT_RATIO - 1n, 1000, 0, 1)
       ).to.be.revertedWith('IIA')
     })
     it('pay in the wrong token one for zero and exact in', async () => {
       await expect(
-        underpay.swap(await pool.getAddress(), wallet.address, false, MAX_SQRT_RATIO - 1n, 1000, 2000, 0)
+        underpay.supplicate(await pool.getAddress(), wallet.address, false, MAX_SQRT_RATIO - 1n, 1000, 2000, 0)
       ).to.be.revertedWith('IIA')
     })
     it('overpay one for zero and exact in', async () => {
       await expect(
-        underpay.swap(await pool.getAddress(), wallet.address, false, MAX_SQRT_RATIO - 1n, 1000, 0, 2000)
+        underpay.supplicate(await pool.getAddress(), wallet.address, false, MAX_SQRT_RATIO - 1n, 1000, 0, 2000)
       ).to.not.be.revertedWith('IIA')
     })
     it('underpay one for zero and exact out', async () => {
       await expect(
-        underpay.swap(await pool.getAddress(), wallet.address, false, MAX_SQRT_RATIO - 1n, -1000, 0, 1)
+        underpay.supplicate(await pool.getAddress(), wallet.address, false, MAX_SQRT_RATIO - 1n, -1000, 0, 1)
       ).to.be.revertedWith('IIA')
     })
     it('pay in the wrong token one for zero and exact out', async () => {
       await expect(
-        underpay.swap(await pool.getAddress(), wallet.address, false, MAX_SQRT_RATIO - 1n, -1000, 2000, 0)
+        underpay.supplicate(await pool.getAddress(), wallet.address, false, MAX_SQRT_RATIO - 1n, -1000, 2000, 0)
       ).to.be.revertedWith('IIA')
     })
     it('overpay one for zero and exact out', async () => {
       await expect(
-        underpay.swap(await pool.getAddress(), wallet.address, false, MAX_SQRT_RATIO - 1n, -1000, 0, 2000)
+        underpay.supplicate(await pool.getAddress(), wallet.address, false, MAX_SQRT_RATIO - 1n, -1000, 0, 2000)
       ).to.not.be.revertedWith('IIA')
     })
   })

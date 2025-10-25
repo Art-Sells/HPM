@@ -50,21 +50,37 @@ describe('LPPPool gas tests', () => {
 
         const pool = (await fix.createPool(feeAmount, tickSpacing)) as MockTimeLPPPool
 
-        // IMPORTANT: pass both target keys AND the signer, so utilities.ts has a signer to call getAddress() on.
         const {
           supplicateExact0For1,
           supplicateToHigherPrice,
           mint,
           supplicateToLowerPrice,
         } = await createPoolFunctions({
-          // new key the spec reads:
           supplicateTarget: fix.supplicateTargetCallee,
           token0: fix.token0,
           token1: fix.token1,
           pool,
-          // give utilities a signer so any internal approvals/transfers can do signer.getAddress()
           wallet,
         } as any)
+
+        // --- FIX FOR FAILING "second position in same range" & related burn tests ---
+        // Seed BOTH signers with ample balances and set approvals for the callee,
+        // otherwise the second minter (`other`) underflows or lacks allowance.
+        const SEED = expandTo18Decimals(1_000_000)
+        await fix.token0.mint(await wallet.getAddress(), SEED)
+        await fix.token1.mint(await wallet.getAddress(), SEED)
+        await fix.token0.mint(await other.getAddress(), SEED)
+        await fix.token1.mint(await other.getAddress(), SEED)
+
+        const calleeAddr =
+          typeof fix.supplicateTargetCallee.getAddress === 'function'
+            ? await fix.supplicateTargetCallee.getAddress()
+            : fix.supplicateTargetCallee.address
+        for (const s of [wallet, other]) {
+          await fix.token0.connect(s).approve(calleeAddr, MaxUint128)
+          await fix.token1.connect(s).approve(calleeAddr, MaxUint128)
+        }
+        // ---------------------------------------------------------------------------
 
         await pool.initialize(encodePriceSqrt(1n, 1n))
         await pool.setFeeProtocol(feeProtocol, feeProtocol)
@@ -288,21 +304,15 @@ describe('LPPPool gas tests', () => {
 
       describe('#snapshotCumulativesInside', () => {
         it('tick inside', async () => {
-          await snapshotGasCost(
-            pool.getFunction('snapshotCumulativesInside').estimateGas(minTick, maxTick)
-          )
+          await snapshotGasCost(pool.getFunction('snapshotCumulativesInside').estimateGas(minTick, maxTick))
         })
         it('tick above', async () => {
           await supplicateToHigherPrice(MAX_SQRT_RATIO - 1n, await wallet.getAddress())
-          await snapshotGasCost(
-            pool.getFunction('snapshotCumulativesInside').estimateGas(minTick, maxTick)
-          )
+          await snapshotGasCost(pool.getFunction('snapshotCumulativesInside').estimateGas(minTick, maxTick))
         })
         it('tick below', async () => {
           await supplicateToLowerPrice(MIN_SQRT_RATIO + 1n, await wallet.getAddress())
-          await snapshotGasCost(
-            pool.getFunction('snapshotCumulativesInside').estimateGas(minTick, maxTick)
-          )
+          await snapshotGasCost(pool.getFunction('snapshotCumulativesInside').estimateGas(minTick, maxTick))
         })
       })
     })
