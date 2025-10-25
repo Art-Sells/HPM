@@ -17,8 +17,8 @@ import './libraries/PoolAddress.sol';
 import './libraries/CallbackValidation.sol';
 import './interfaces/external/IWETH9.sol';
 
-/// @title  Swap Router
-/// @notice Router for stateless execution of swaps
+/// @title  Supplicate Router
+/// @notice Router for stateless execution of supplicates
 contract SupplicateRouter is
     ISupplicateRouter,
     PeripheryImmutableState,
@@ -30,11 +30,11 @@ contract SupplicateRouter is
     using Path for bytes;
     using SafeCast for uint256;
 
-    /// @dev Used as the placeholder value for amountInCached, because the computed amount in for an exact output swap
+    /// @dev Used as the placeholder value for amountInCached, because the computed amount in for an exact output supplicate
     /// can never actually be this value
     uint256 private constant DEFAULT_AMOUNT_IN_CACHED = type(uint256).max;
 
-    /// @dev Transient storage variable used for returning the computed amount in for an exact output swap.
+    /// @dev Transient storage variable used for returning the computed amount in for an exact output supplicate.
     uint256 private amountInCached = DEFAULT_AMOUNT_IN_CACHED;
 
     constructor(address _factory, address _WETH9) PeripheryImmutableState(_factory, _WETH9) {}
@@ -48,7 +48,7 @@ contract SupplicateRouter is
         return ILPPPool(PoolAddress.computeAddress(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee)));
     }
 
-    struct SwapCallbackData {
+    struct SupplicateCallbackData {
         bytes path;
         address payer;
     }
@@ -59,8 +59,8 @@ contract SupplicateRouter is
         int256 amount1Delta,
         bytes calldata _data
     ) external override {
-        require(amount0Delta > 0 || amount1Delta > 0); // swaps entirely within 0-liquidity regions are not supported
-        SwapCallbackData memory data = abi.decode(_data, (SwapCallbackData));
+        require(amount0Delta > 0 || amount1Delta > 0); // supplicates entirely within 0-liquidity regions are not supported
+        SupplicateCallbackData memory data = abi.decode(_data, (SupplicateCallbackData));
         (address tokenIn, address tokenOut, uint24 fee) = data.path.decodeFirstPool();
         CallbackValidation.verifyCallback(factory, tokenIn, tokenOut, fee);
 
@@ -71,26 +71,26 @@ contract SupplicateRouter is
         if (isExactInput) {
             pay(tokenIn, data.payer, msg.sender, amountToPay);
         } else {
-            // either initiate the next swap or pay
+            // either initiate the next supplicate or pay
             if (data.path.hasMultiplePools()) {
                 data.path = data.path.skipToken();
                 exactOutputInternal(amountToPay, msg.sender, 0, data);
             } else {
                 amountInCached = amountToPay;
-                tokenIn = tokenOut; // swap in/out because exact output swaps are reversed
+                tokenIn = tokenOut; // supplicate in/out because exact output supplicates are reversed
                 pay(tokenIn, data.payer, msg.sender, amountToPay);
             }
         }
     }
 
-    /// @dev Performs a single exact input swap
+    /// @dev Performs a single exact input supplicate
     function exactInputInternal(
         uint256 amountIn,
         address recipient,
         uint160 sqrtPriceLimitX96,
-        SwapCallbackData memory data
+        SupplicateCallbackData memory data
     ) private returns (uint256 amountOut) {
-        // allow swapping to the router address with address 0
+        // allow supplicating to the router address with address 0
         if (recipient == address(0)) recipient = address(this);
 
         (address tokenIn, address tokenOut, uint24 fee) = data.path.decodeFirstPool();
@@ -98,7 +98,7 @@ contract SupplicateRouter is
         bool zeroForOne = tokenIn < tokenOut;
 
         (int256 amount0, int256 amount1) =
-            getPool(tokenIn, tokenOut, fee).swap(
+            getPool(tokenIn, tokenOut, fee).supplicate(
                 recipient,
                 zeroForOne,
                 amountIn.toInt256(),
@@ -123,7 +123,7 @@ contract SupplicateRouter is
             params.amountIn,
             params.recipient,
             params.sqrtPriceLimitX96,
-            SwapCallbackData({path: abi.encodePacked(params.tokenIn, params.fee, params.tokenOut), payer: msg.sender})
+            SupplicateCallbackData({path: abi.encodePacked(params.tokenIn, params.fee, params.tokenOut), payer: msg.sender})
         );
         require(amountOut >= params.amountOutMinimum, 'Too little received');
     }
@@ -141,12 +141,12 @@ contract SupplicateRouter is
         while (true) {
             bool hasMultiplePools = params.path.hasMultiplePools();
 
-            // the outputs of prior swaps become the inputs to subsequent ones
+            // the outputs of prior supplicates become the inputs to subsequent ones
             params.amountIn = exactInputInternal(
                 params.amountIn,
-                hasMultiplePools ? address(this) : params.recipient, // for intermediate swaps, this contract custodies
+                hasMultiplePools ? address(this) : params.recipient, // for intermediate supplicates, this contract custodies
                 0,
-                SwapCallbackData({
+                SupplicateCallbackData({
                     path: params.path.getFirstPool(), // only the first pool in the path is necessary
                     payer: payer
                 })
@@ -165,14 +165,14 @@ contract SupplicateRouter is
         require(amountOut >= params.amountOutMinimum, 'Too little received');
     }
 
-    /// @dev Performs a single exact output swap
+    /// @dev Performs a single exact output supplicate
     function exactOutputInternal(
         uint256 amountOut,
         address recipient,
         uint160 sqrtPriceLimitX96,
-        SwapCallbackData memory data
+        SupplicateCallbackData memory data
     ) private returns (uint256 amountIn) {
-        // allow swapping to the router address with address 0
+        // allow supplicating to the router address with address 0
         if (recipient == address(0)) recipient = address(this);
 
         (address tokenOut, address tokenIn, uint24 fee) = data.path.decodeFirstPool();
@@ -180,7 +180,7 @@ contract SupplicateRouter is
         bool zeroForOne = tokenIn < tokenOut;
 
         (int256 amount0Delta, int256 amount1Delta) =
-            getPool(tokenIn, tokenOut, fee).swap(
+            getPool(tokenIn, tokenOut, fee).supplicate(
                 recipient,
                 zeroForOne,
                 -amountOut.toInt256(),
@@ -207,12 +207,12 @@ contract SupplicateRouter is
         checkDeadline(params.deadline)
         returns (uint256 amountIn)
     {
-        // avoid an SLOAD by using the swap return data
+        // avoid an SLOAD by using the supplicate return data
         amountIn = exactOutputInternal(
             params.amountOut,
             params.recipient,
             params.sqrtPriceLimitX96,
-            SwapCallbackData({path: abi.encodePacked(params.tokenOut, params.fee, params.tokenIn), payer: msg.sender})
+            SupplicateCallbackData({path: abi.encodePacked(params.tokenOut, params.fee, params.tokenIn), payer: msg.sender})
         );
 
         require(amountIn <= params.amountInMaximum, 'Too much requested');
@@ -229,12 +229,12 @@ contract SupplicateRouter is
         returns (uint256 amountIn)
     {
         // it's okay that the payer is fixed to msg.sender here, as they're only paying for the "final" exact output
-        // swap, which happens first, and subsequent swaps are paid for within nested callback frames
+        // supplicate, which happens first, and subsequent supplicates are paid for within nested callback frames
         exactOutputInternal(
             params.amountOut,
             params.recipient,
             0,
-            SwapCallbackData({path: params.path, payer: msg.sender})
+            SupplicateCallbackData({path: params.path, payer: msg.sender})
         );
 
         amountIn = amountInCached;

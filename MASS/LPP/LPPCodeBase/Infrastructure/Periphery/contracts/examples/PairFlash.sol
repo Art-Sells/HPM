@@ -18,14 +18,14 @@ contract PairFlash is ILPPFlashCallback, PeripheryPayments {
     using LowGasSafeMath for uint256;
     using LowGasSafeMath for int256;
 
-    ISupplicateRouter public immutable swapRouter;
+    ISupplicateRouter public immutable supplicateRouter;
 
     constructor(
-        ISupplicateRouter _swapRouter,
+        ISupplicateRouter _supplicateRouter,
         address _factory,
         address _WETH9
     ) PeripheryImmutableState(_factory, _WETH9) {
-        swapRouter = _swapRouter;
+        supplicateRouter = _supplicateRouter;
     }
 
     // fee2 and fee3 are the two other fees associated with the two other pools of token0 and token1
@@ -54,15 +54,15 @@ contract PairFlash is ILPPFlashCallback, PeripheryPayments {
         address token0 = decoded.poolKey.token0;
         address token1 = decoded.poolKey.token1;
 
-        // profitability parameters - we must receive at least the required payment from the arbitrage swaps
+        // profitability parameters - we must receive at least the required payment from the arbitrage supplicates
         // exactInputSingle will fail if this amount not met
         uint256 amount0Min = LowGasSafeMath.add(decoded.amount0, fee0);
         uint256 amount1Min = LowGasSafeMath.add(decoded.amount1, fee1);
 
-        // call exactInputSingle for swapping token1 for token0 in pool with fee2
-        TransferHelper.safeApprove(token1, address(swapRouter), decoded.amount1);
+        // call exactInputSingle for supplicating token1 for token0 in pool with fee2
+        TransferHelper.safeApprove(token1, address(supplicateRouter), decoded.amount1);
         uint256 amountOut0 =
-            swapRouter.exactInputSingle(
+            supplicateRouter.exactInputSingle(
                 ISupplicateRouter.ExactInputSingleParams({
                     tokenIn: token1,
                     tokenOut: token0,
@@ -75,10 +75,10 @@ contract PairFlash is ILPPFlashCallback, PeripheryPayments {
                 })
             );
 
-        // call exactInputSingle for swapping token0 for token 1 in pool with fee3
-        TransferHelper.safeApprove(token0, address(swapRouter), decoded.amount0);
+        // call exactInputSingle for supplicating token0 for token 1 in pool with fee3
+        TransferHelper.safeApprove(token0, address(supplicateRouter), decoded.amount0);
         uint256 amountOut1 =
-            swapRouter.exactInputSingle(
+            supplicateRouter.exactInputSingle(
                 ISupplicateRouter.ExactInputSingleParams({
                     tokenIn: token0,
                     tokenOut: token1,

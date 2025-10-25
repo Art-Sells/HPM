@@ -15,16 +15,16 @@ import '../libraries/PoolAddress.sol';
 import '../libraries/CallbackValidation.sol';
 import '../libraries/PoolTicksCounter.sol';
 
-/// @title Provides quotes for swaps
-/// @notice Allows getting the expected amount out or amount in for a given swap without executing the swap
+/// @title Provides quotes for supplicates
+/// @notice Allows getting the expected amount out or amount in for a given supplicate without executing the supplicate
 /// @dev These functions are not gas efficient and should _not_ be called on chain. Instead, optimistically execute
-/// the swap and check the amounts in the callback.
+/// the supplicate and check the amounts in the callback.
 contract SupplicateSupplicateQuoterV2 is ISupplicateQuoterV2, ILPPSupplicateCallback, PeripheryImmutableState {
     using Path for bytes;
     using SafeCast for uint256;
     using PoolTicksCounter for ILPPPool;
 
-    /// @dev Transient storage variable used to check a safety condition in exact output swaps.
+    /// @dev Transient storage variable used to check a safety condition in exact output supplicates.
     uint256 private amountOutCached;
 
     constructor(address _factory, address _WETH9) PeripheryImmutableState(_factory, _WETH9) {}
@@ -43,7 +43,7 @@ contract SupplicateSupplicateQuoterV2 is ISupplicateQuoterV2, ILPPSupplicateCall
         int256 amount1Delta,
         bytes memory path
     ) external view override {
-        require(amount0Delta > 0 || amount1Delta > 0); // swaps entirely within 0-liquidity regions are not supported
+        require(amount0Delta > 0 || amount1Delta > 0); // supplicates entirely within 0-liquidity regions are not supported
         (address tokenIn, address tokenOut, uint24 fee) = path.decodeFirstPool();
         CallbackValidation.verifyCallback(factory, tokenIn, tokenOut, fee);
 
@@ -135,7 +135,7 @@ contract SupplicateSupplicateQuoterV2 is ISupplicateQuoterV2, ILPPSupplicateCall
 
         uint256 gasBefore = gasleft();
         try
-            pool.swap(
+            pool.supplicate(
                 address(this), // address(0) might cause issues with some tokens
                 zeroForOne,
                 params.amountIn.toInt256(),
@@ -167,7 +167,7 @@ contract SupplicateSupplicateQuoterV2 is ISupplicateQuoterV2, ILPPSupplicateCall
         while (true) {
             (address tokenIn, address tokenOut, uint24 fee) = path.decodeFirstPool();
 
-            // the outputs of prior swaps become the inputs to subsequent ones
+            // the outputs of prior supplicates become the inputs to subsequent ones
             (uint256 _amountOut, uint160 _sqrtPriceX96After, uint32 _initializedTicksCrossed, uint256 _gasEstimate) =
                 quoteExactInputSingle(
                     QuoteExactInputSingleParams({
@@ -207,11 +207,11 @@ contract SupplicateSupplicateQuoterV2 is ISupplicateQuoterV2, ILPPSupplicateCall
         bool zeroForOne = params.tokenIn < params.tokenOut;
         ILPPPool pool = getPool(params.tokenIn, params.tokenOut, params.fee);
 
-        // if no price limit has been specified, cache the output amount for comparison in the swap callback
+        // if no price limit has been specified, cache the output amount for comparison in the supplicate callback
         if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.amount;
         uint256 gasBefore = gasleft();
         try
-            pool.swap(
+            pool.supplicate(
                 address(this), // address(0) might cause issues with some tokens
                 zeroForOne,
                 -params.amount.toInt256(),
@@ -244,7 +244,7 @@ contract SupplicateSupplicateQuoterV2 is ISupplicateQuoterV2, ILPPSupplicateCall
         while (true) {
             (address tokenOut, address tokenIn, uint24 fee) = path.decodeFirstPool();
 
-            // the inputs of prior swaps become the outputs of subsequent ones
+            // the inputs of prior supplicates become the outputs of subsequent ones
             (uint256 _amountIn, uint160 _sqrtPriceX96After, uint32 _initializedTicksCrossed, uint256 _gasEstimate) =
                 quoteExactOutputSingle(
                     QuoteExactOutputSingleParams({

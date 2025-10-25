@@ -13,15 +13,15 @@ import '../libraries/Path.sol';
 import '../libraries/PoolAddress.sol';
 import '../libraries/CallbackValidation.sol';
 
-/// @title Provides quotes for swaps
-/// @notice Allows getting the expected amount out or amount in for a given swap without executing the swap
+/// @title Provides quotes for supplicates
+/// @notice Allows getting the expected amount out or amount in for a given supplicate without executing the supplicate
 /// @dev These functions are not gas efficient and should _not_ be called on chain. Instead, optimistically execute
-/// the swap and check the amounts in the callback.
+/// the supplicate and check the amounts in the callback.
 contract SupplicateQuoter is ISupplicateQuoter, ILPPSupplicateCallback, PeripheryImmutableState {
     using Path for bytes;
     using SafeCast for uint256;
 
-    /// @dev Transient storage variable used to check a safety condition in exact output swaps.
+    /// @dev Transient storage variable used to check a safety condition in exact output supplicates.
     uint256 private amountOutCached;
 
     constructor(address _factory, address _WETH9) PeripheryImmutableState(_factory, _WETH9) {}
@@ -40,7 +40,7 @@ contract SupplicateQuoter is ISupplicateQuoter, ILPPSupplicateCallback, Peripher
         int256 amount1Delta,
         bytes memory path
     ) external view override {
-        require(amount0Delta > 0 || amount1Delta > 0); // swaps entirely within 0-liquidity regions are not supported
+        require(amount0Delta > 0 || amount1Delta > 0); // supplicates entirely within 0-liquidity regions are not supported
         (address tokenIn, address tokenOut, uint24 fee) = path.decodeFirstPool();
         CallbackValidation.verifyCallback(factory, tokenIn, tokenOut, fee);
 
@@ -88,7 +88,7 @@ contract SupplicateQuoter is ISupplicateQuoter, ILPPSupplicateCallback, Peripher
         bool zeroForOne = tokenIn < tokenOut;
 
         try
-            getPool(tokenIn, tokenOut, fee).swap(
+            getPool(tokenIn, tokenOut, fee).supplicate(
                 address(this), // address(0) might cause issues with some tokens
                 zeroForOne,
                 amountIn.toInt256(),
@@ -109,7 +109,7 @@ contract SupplicateQuoter is ISupplicateQuoter, ILPPSupplicateCallback, Peripher
 
             (address tokenIn, address tokenOut, uint24 fee) = path.decodeFirstPool();
 
-            // the outputs of prior swaps become the inputs to subsequent ones
+            // the outputs of prior supplicates become the inputs to subsequent ones
             amountIn = quoteExactInputSingle(tokenIn, tokenOut, fee, amountIn, 0);
 
             // decide whether to continue or terminate
@@ -131,10 +131,10 @@ contract SupplicateQuoter is ISupplicateQuoter, ILPPSupplicateCallback, Peripher
     ) public override returns (uint256 amountIn) {
         bool zeroForOne = tokenIn < tokenOut;
 
-        // if no price limit has been specified, cache the output amount for comparison in the swap callback
+        // if no price limit has been specified, cache the output amount for comparison in the supplicate callback
         if (sqrtPriceLimitX96 == 0) amountOutCached = amountOut;
         try
-            getPool(tokenIn, tokenOut, fee).swap(
+            getPool(tokenIn, tokenOut, fee).supplicate(
                 address(this), // address(0) might cause issues with some tokens
                 zeroForOne,
                 -amountOut.toInt256(),
@@ -156,7 +156,7 @@ contract SupplicateQuoter is ISupplicateQuoter, ILPPSupplicateCallback, Peripher
 
             (address tokenOut, address tokenIn, uint24 fee) = path.decodeFirstPool();
 
-            // the inputs of prior swaps become the outputs of subsequent ones
+            // the inputs of prior supplicates become the outputs of subsequent ones
             amountOut = quoteExactOutputSingle(tokenIn, tokenOut, fee, amountOut, 0);
 
             // decide whether to continue or terminate

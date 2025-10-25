@@ -10,7 +10,7 @@ library CallbackValidation {
     /// @param factory The contract address of the  factory
     /// @param tokenA The contract address of either token0 or token1
     /// @param tokenB The contract address of the other token
-    /// @param fee The fee collected upon every swap in the pool, denominated in hundredths of a bip
+    /// @param fee The fee collected upon every supplication in the pool, denominated in hundredths of a bip
     /// @return pool The V3 pool contract address
     function verifyCallback(
         address factory,

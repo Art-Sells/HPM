@@ -11,7 +11,7 @@ interface IPeripheryPayments {
     function unwrapWETH9(uint256 amountMinimum, address recipient) external payable;
 
     /// @notice Refunds any ETH balance held by this contract to the `msg.sender`
-    /// @dev Useful for bundling with mint or increase liquidity that uses ether, or exact output swaps
+    /// @dev Useful for bundling with mint or increase liquidity that uses ether, or exact output supplicates
     /// that use ether for the input amount
     function refundETH() external payable;
 

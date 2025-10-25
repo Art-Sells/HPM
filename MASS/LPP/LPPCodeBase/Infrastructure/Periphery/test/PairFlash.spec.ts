@@ -100,7 +100,7 @@ describe('PairFlash (ZERO fee only)', () => {
         // borrow transfers from ZERO-fee pool to flash
         .to.emit(token0, 'Transfer').withArgs(pool,  flash.target, amount0In)
         .to.emit(token1, 'Transfer').withArgs(pool,  flash.target, amount1In)
-        // swap proceeds back to flash
+        // supplicate proceeds back to flash
         .to.emit(token0, 'Transfer').withArgs(pool,  flash.target, expectedAmountOut0)
         .to.emit(token1, 'Transfer').withArgs(pool,  flash.target, expectedAmountOut1)
         // flash keeps profit (no fee charged)

@@ -694,7 +694,7 @@ contract LPPPool is ILPPPool, NoDelegateCall {
             require(balance1Before.add(uint256(amount1)) <= balance1(), 'IIA');
         }
 
-        emit Swap(msg.sender, recipient, amount0, amount1, state.sqrtPriceX96, state.liquidity, state.tick);
+        emit Supplicate(msg.sender, recipient, amount0, amount1, state.sqrtPriceX96, state.liquidity, state.tick);
         slot0.unlocked = true;
     }
 

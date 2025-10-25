@@ -9,40 +9,40 @@ import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 contract TestLPPCallee is ILPPSupplicateCallback {
     using SafeCast for uint256;
 
-    function swapExact0For1(
+    function supplicateExact0For1(
         address pool,
         uint256 amount0In,
         address recipient,
         uint160 sqrtPriceLimitX96
     ) external {
-        ILPPPool(pool).swap(recipient, true, amount0In.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
+        ILPPPool(pool).supplicate(recipient, true, amount0In.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
     }
 
-    function swap0ForExact1(
+    function supplicate0ForExact1(
         address pool,
         uint256 amount1Out,
         address recipient,
         uint160 sqrtPriceLimitX96
     ) external {
-        ILPPPool(pool).swap(recipient, true, -amount1Out.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
+        ILPPPool(pool).supplicate(recipient, true, -amount1Out.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
     }
 
-    function swapExact1For0(
+    function supplicateExact1For0(
         address pool,
         uint256 amount1In,
         address recipient,
         uint160 sqrtPriceLimitX96
     ) external {
-        ILPPPool(pool).swap(recipient, false, amount1In.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
+        ILPPPool(pool).supplicate(recipient, false, amount1In.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
     }
 
-    function swap1ForExact0(
+    function supplicate1ForExact0(
         address pool,
         uint256 amount0Out,
         address recipient,
         uint160 sqrtPriceLimitX96
     ) external {
-        ILPPPool(pool).swap(recipient, false, -amount0Out.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
+        ILPPPool(pool).supplicate(recipient, false, -amount0Out.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
     }
 
     function lppSupplicateCallback(
