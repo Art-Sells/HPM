@@ -309,3 +309,49 @@ export function createMultiPoolFunctions({
     supplicateForExact1Multi,
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/*                  MEV-as-LP Rebates: tiny mintWithRebate helper             */
+/* -------------------------------------------------------------------------- */
+
+export type MintWithRebateParams = {
+  hookAddress: string
+  recipient: string
+  payer?: string
+  tickLower: BigNumberish
+  tickUpper: BigNumberish
+  liquidity: BigNumberish
+}
+
+export type MintWithRebateFunction = (p: MintWithRebateParams) => Promise<ContractTransactionResponse>
+
+export function createRebateFunctions({
+  pool,
+  token0,
+  token1,
+}: {
+  pool: MockTimeLPPPool
+  token0: TestERC20
+  token1: TestERC20
+}): { mintWithRebate: MintWithRebateFunction } {
+  const mintWithRebate: MintWithRebateFunction = async (p) => {
+    const hook = await ethers.getContractAt('LPPMintHook', p.hookAddress)
+
+    // approvals for the hook to pull owed + surcharge during lppMintCallback
+    await token0.approve(p.hookAddress, ethers.MaxUint256)
+    await token1.approve(p.hookAddress, ethers.MaxUint256)
+
+    const params = {
+      pool: await pool.getAddress(),
+      tickLower: p.tickLower,
+      tickUpper: p.tickUpper,
+      liquidity: p.liquidity,
+      recipient: p.recipient,
+      payer: p.payer ?? p.recipient,
+    }
+
+    return (hook as any).mintWithRebate(params)
+  }
+
+  return { mintWithRebate }
+}
