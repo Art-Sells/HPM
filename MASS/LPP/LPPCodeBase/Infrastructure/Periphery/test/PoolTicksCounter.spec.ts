@@ -1,7 +1,7 @@
 // test/PoolTicksCounter.spec.ts
 import hre from 'hardhat'
 const { ethers, artifacts } = hre
-import { expect } from './shared/expect'
+import { expect } from './shared/expect.ts'
 
 // waffle mock utils (still fine to use with HH)
 // NOTE: don't import Fixture here—we're not using it

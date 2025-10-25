@@ -36,8 +36,7 @@ describe('SupplicateRouter gas tests', function () {
 
   const FEE = FeeAmount.ZERO
 
-  async function swapRouterFixture() {
-    // the helper expects (wallets, provider)
+  async function supplicateRouterFixture() {
     const wallets = await ethers.getSigners()
     const provider = ethers.provider
     ;[wallet, trader] = wallets as unknown as [HardhatEthersSigner, HardhatEthersSigner]
@@ -66,7 +65,7 @@ describe('SupplicateRouter gas tests', function () {
         a,
         b,
         FEE,
-        encodePriceSqrt(100005, 100000) // we don't want to cross any ticks
+        encodePriceSqrt(100005, 100000) // avoid crossing ticks
       )
 
       const walletAddr = await wallet.getAddress()
@@ -127,7 +126,7 @@ describe('SupplicateRouter gas tests', function () {
   let pools: [ILPPPool, ILPPPool, ILPPPool]
 
   beforeEach('load fixture', async () => {
-    ;({ router, weth9, tokens, pools } = await loadFixture(swapRouterFixture))
+    ;({ router, weth9, tokens, pools } = await loadFixture(supplicateRouterFixture))
   })
 
   async function exactInput(
@@ -148,7 +147,7 @@ describe('SupplicateRouter gas tests', function () {
       recipient: outputIsWETH9 ? ZeroAddress : traderAddr,
       deadline: 1,
       amountIn,
-      amountOutMinimum: outputIsWETH9 ? 0 : amountOutMinimum, // save on calldata,
+      amountOutMinimum: outputIsWETH9 ? 0 : amountOutMinimum, // save on calldata
     }
 
     const data = [router.interface.encodeFunctionData('exactInput', [params])]
@@ -183,7 +182,7 @@ describe('SupplicateRouter gas tests', function () {
       recipient: outputIsWETH9 ? ZeroAddress : traderAddr,
       deadline: 1,
       amountIn,
-      amountOutMinimum: outputIsWETH9 ? 0 : amountOutMinimum, // save on calldata
+      amountOutMinimum: outputIsWETH9 ? 0 : amountOutMinimum,
     }
 
     const data = [router.interface.encodeFunctionData('exactInputSingle', [params])]
@@ -256,7 +255,7 @@ describe('SupplicateRouter gas tests', function () {
   }
 
   // initialize feeGrowthGlobals a bit
-  beforeEach('intialize feeGrowthGlobals', async () => {
+  beforeEach('initialize feeGrowthGlobals', async () => {
     await exactInput([await tokens[0].getAddress(), await tokens[1].getAddress()], 1, 0)
     await exactInput([await tokens[1].getAddress(), await tokens[0].getAddress()], 1, 0)
     await exactInput([await tokens[1].getAddress(), await tokens[2].getAddress()], 1, 0)
@@ -265,21 +264,21 @@ describe('SupplicateRouter gas tests', function () {
     await exactInput([await weth9.getAddress(), await tokens[0].getAddress()], 1, 0)
   })
 
-    beforeEach('ensure feeGrowthGlobals reflect 0 bps pools', async () => {
-      const slots = await Promise.all(
-        pools.map((pool) =>
-          Promise.all([
-            pool.feeGrowthGlobal0X128().then((f: bigint) => f.toString()),
-            pool.feeGrowthGlobal1X128().then((f: bigint) => f.toString()),
-          ])
-        )
+  beforeEach('ensure feeGrowthGlobals reflect 0 bps pools', async () => {
+    const slots = await Promise.all(
+      pools.map((pool) =>
+        Promise.all([
+          pool.feeGrowthGlobal0X128().then((f: bigint) => f.toString()),
+          pool.feeGrowthGlobal1X128().then((f: bigint) => f.toString()),
+        ])
       )
+    )
 
-      for (const [g0, g1] of slots) {
-        expect(BigInt(g0)).to.equal(0n)
-        expect(BigInt(g1)).to.equal(0n)
-      }
-    })
+    for (const [g0, g1] of slots) {
+      expect(BigInt(g0)).to.equal(0n)
+      expect(BigInt(g1)).to.equal(0n)
+    }
+  })
 
   beforeEach('ensure ticks are 0 before', async () => {
     const slots = await Promise.all(pools.map((pool) => pool.slot0().then(({ tick }) => tick)))
@@ -311,7 +310,7 @@ describe('SupplicateRouter gas tests', function () {
       await snapshotGasCost(
         callee
           .connect(trader)
-          .swapExact0For1(await pools[0].getAddress(), 2, traderAddr, 4295128740n)
+          .supplicateExact0For1(await pools[0].getAddress(), 2, traderAddr, 4295128740n)
       )
     })
 
@@ -350,7 +349,7 @@ describe('SupplicateRouter gas tests', function () {
       await weth9.connect(trader).deposit({ value: 3 })
       await weth9.connect(trader).approve(await router.getAddress(), MaxUint256)
 
-      const swap0 = {
+      const supp0 = {
         path: encodePath([await weth9.getAddress(), await tokens[0].getAddress()], [FEE]),
         recipient: ZeroAddress,
         deadline: 1,
@@ -358,7 +357,7 @@ describe('SupplicateRouter gas tests', function () {
         amountOutMinimum: 0,
       }
 
-      const swap1 = {
+      const supp1 = {
         path: encodePath([await tokens[1].getAddress(), await tokens[0].getAddress()], [FEE]),
         recipient: ZeroAddress,
         deadline: 1,
@@ -367,8 +366,8 @@ describe('SupplicateRouter gas tests', function () {
       }
 
       const data = [
-        router.interface.encodeFunctionData('exactInput', [swap0]),
-        router.interface.encodeFunctionData('exactInput', [swap1]),
+        router.interface.encodeFunctionData('exactInput', [supp0]),
+        router.interface.encodeFunctionData('exactInput', [supp1]),
         router.interface.encodeFunctionData('sweepToken', [await tokens[0].getAddress(), 2, await trader.getAddress()]),
       ]
 
@@ -380,7 +379,7 @@ describe('SupplicateRouter gas tests', function () {
       await weth9.connect(trader).approve(await router.getAddress(), MaxUint256)
       const traderAddr = await trader.getAddress()
 
-      const swap0 = {
+      const supp0 = {
         path: encodePath([await weth9.getAddress(), await tokens[0].getAddress()], [FEE]),
         recipient: traderAddr,
         deadline: 1,
@@ -388,7 +387,7 @@ describe('SupplicateRouter gas tests', function () {
         amountOutMinimum: 1,
       }
 
-      const swap1 = {
+      const supp1 = {
         path: encodePath([await tokens[0].getAddress(), await tokens[1].getAddress()], [FEE]),
         recipient: traderAddr,
         deadline: 1,
@@ -396,7 +395,7 @@ describe('SupplicateRouter gas tests', function () {
         amountOutMinimum: 1,
       }
 
-      const swap2 = {
+      const supp2 = {
         path: encodePath([await tokens[1].getAddress(), await tokens[2].getAddress()], [FEE]),
         recipient: traderAddr,
         deadline: 1,
@@ -405,9 +404,9 @@ describe('SupplicateRouter gas tests', function () {
       }
 
       const data = [
-        router.interface.encodeFunctionData('exactInput', [swap0]),
-        router.interface.encodeFunctionData('exactInput', [swap1]),
-        router.interface.encodeFunctionData('exactInput', [swap2]),
+        router.interface.encodeFunctionData('exactInput', [supp0]),
+        router.interface.encodeFunctionData('exactInput', [supp1]),
+        router.interface.encodeFunctionData('exactInput', [supp2]),
       ]
 
       await snapshotGasCost(router.connect(trader).multicall(data))
@@ -419,7 +418,7 @@ describe('SupplicateRouter gas tests', function () {
     await weth9.connect(trader).approve(await router.getAddress(), MaxUint256)
     const traderAddr = await trader.getAddress()
 
-    const swap0 = {
+    const supp0 = {
       path: encodePath([await weth9.getAddress(), await tokens[0].getAddress()], [FEE]),
       recipient: traderAddr,
       deadline: 1,
@@ -427,7 +426,7 @@ describe('SupplicateRouter gas tests', function () {
       amountOutMinimum: 1,
     }
 
-    const swap1 = {
+    const supp1 = {
       path: encodePath([await tokens[1].getAddress(), await tokens[0].getAddress()], [FEE]),
       recipient: traderAddr,
       deadline: 1,
@@ -436,8 +435,8 @@ describe('SupplicateRouter gas tests', function () {
     }
 
     const data = [
-      router.interface.encodeFunctionData('exactInput', [swap0]),
-      router.interface.encodeFunctionData('exactInput', [swap1]),
+      router.interface.encodeFunctionData('exactInput', [supp0]),
+      router.interface.encodeFunctionData('exactInput', [supp1]),
     ]
 
     await snapshotGasCost(router.connect(trader).multicall(data))
