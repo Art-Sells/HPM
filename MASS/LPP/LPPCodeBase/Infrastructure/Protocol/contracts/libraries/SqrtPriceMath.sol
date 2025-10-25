@@ -100,7 +100,7 @@ library SqrtPriceMath {
     /// @dev Throws if price or liquidity are 0, or if the next price is out of bounds
     /// @param sqrtPX96 The starting price, i.e., before accounting for the input amount
     /// @param liquidity The amount of usable liquidity
-    /// @param amountIn How much of token0, or token1, is being swapped in
+    /// @param amountIn How much of token0, or token1, is being suplicated in
     /// @param zeroForOne Whether the amount in is token0 or token1
     /// @return sqrtQX96 The price after adding the input amount to token0 or token1
     function getNextSqrtPriceFromInput(
@@ -123,7 +123,7 @@ library SqrtPriceMath {
     /// @dev Throws if price or liquidity are 0 or the next price is out of bounds
     /// @param sqrtPX96 The starting price before accounting for the output amount
     /// @param liquidity The amount of usable liquidity
-    /// @param amountOut How much of token0, or token1, is being swapped out
+    /// @param amountOut How much of token0, or token1, is being supplicated out
     /// @param zeroForOne Whether the amount out is token0 or token1
     /// @return sqrtQX96 The price after removing the output amount of token0 or token1
     function getNextSqrtPriceFromOutput(

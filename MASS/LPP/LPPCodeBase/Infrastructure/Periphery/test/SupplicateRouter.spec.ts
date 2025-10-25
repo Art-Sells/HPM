@@ -43,7 +43,7 @@ describe('SupplicateRouter', function () {
 
   const addrEq = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
 
-  async function swapRouterFixture() {
+  async function supplicateRouterFixture() {
     const wallets = await ethers.getSigners()
     const provider = ethers.provider
     ;[wallet, trader] = wallets as unknown as [HardhatEthersSigner, HardhatEthersSigner]
@@ -123,7 +123,7 @@ describe('SupplicateRouter', function () {
   }
 
   beforeEach('load fixture', async () => {
-    const fix = await loadFixture(swapRouterFixture)
+    const fix = await loadFixture(supplicateRouterFixture)
     router  = fix.router
     weth9   = fix.weth9
     factory = fix.factory
@@ -208,7 +208,7 @@ describe('SupplicateRouter', function () {
     expect(((code.length - 2) / 2) as number).to.matchSnapshot()
   })
 
-  describe('swaps', () => {
+  describe('supplications', () => {
     //
     // ────────────────────────────────────────────────────────────────────
     //  #exactInput
@@ -242,7 +242,7 @@ describe('SupplicateRouter', function () {
           // unwrap whatever we received (no min on unwrap itself)
           data.push(router.interface.encodeFunctionData('unwrapWETH9', [0, traderAddr]))
 
-        // sanity: force a revert with absurd min (on the swap step)
+        // sanity: force a revert with absurd min (on the supplication step)
         const _origMin = params.amountOutMinimum
         params.amountOutMinimum = 1_000_000_000
         await expect(router.connect(trader).exactInput(params, { value })).to.be.reverted

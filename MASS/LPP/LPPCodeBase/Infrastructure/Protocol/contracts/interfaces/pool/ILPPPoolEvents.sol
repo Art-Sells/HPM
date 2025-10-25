@@ -5,7 +5,7 @@ pragma solidity >=0.5.0;
 /// @notice Contains all events emitted by the pool
 interface ILPPPoolEvents {
     /// @notice Emitted exactly once by a pool when #initialize is first called on the pool
-    /// @dev Mint/Burn/Swap cannot be emitted by the pool before Initialize
+    /// @dev Mint/Burn/Supplicate cannot be emitted by the pool before Initialize
     /// @param sqrtPriceX96 The initial sqrt price of the pool, as a Q64.96
     /// @param tick The initial tick of the pool, i.e. log base 1.0001 of the starting price of the pool
     event Initialize(uint160 sqrtPriceX96, int24 tick);
@@ -61,15 +61,15 @@ interface ILPPPoolEvents {
         uint256 amount1
     );
 
-    /// @notice Emitted by the pool for any swaps between token0 and token1
-    /// @param sender The address that initiated the swap call, and that received the callback
-    /// @param recipient The address that received the output of the swap
+    /// @notice Emitted by the pool for any supplications between token0 and token1
+    /// @param sender The address that initiated the supplicate call, and that received the callback
+    /// @param recipient The address that received the output of the supplicate
     /// @param amount0 The delta of the token0 balance of the pool
     /// @param amount1 The delta of the token1 balance of the pool
-    /// @param sqrtPriceX96 The sqrt(price) of the pool after the swap, as a Q64.96
-    /// @param liquidity The liquidity of the pool after the swap
-    /// @param tick The log base 1.0001 of price of the pool after the swap
-    event Swap(
+    /// @param sqrtPriceX96 The sqrt(price) of the pool after the supplicate, as a Q64.96
+    /// @param liquidity The liquidity of the pool after the supplicate
+    /// @param tick The log base 1.0001 of price of the pool after the supplicate
+    event Supplicate(
         address indexed sender,
         address indexed recipient,
         int256 amount0,
@@ -80,7 +80,7 @@ interface ILPPPoolEvents {
     );
 
     /// @notice Emitted by the pool for any flashes of token0/token1
-    /// @param sender The address that initiated the swap call, and that received the callback
+    /// @param sender The address that initiated the supplicate call, and that received the callback
     /// @param recipient The address that received the tokens from flash
     /// @param amount0 The amount of token0 that was flashed
     /// @param amount1 The amount of token1 that was flashed
@@ -97,7 +97,7 @@ interface ILPPPoolEvents {
 
     /// @notice Emitted by the pool for increases to the number of observations that can be stored
     /// @dev observationCardinalityNext is not the observation cardinality until an observation is written at the index
-    /// just before a mint/swap/burn.
+    /// just before a mint/supplicate/burn.
     /// @param observationCardinalityNextOld The previous value of the next observation cardinality
     /// @param observationCardinalityNextNew The updated value of the next observation cardinality
     event IncreaseObservationCardinalityNext(
@@ -116,6 +116,6 @@ interface ILPPPoolEvents {
     /// @param sender The address that collects the protocol fees
     /// @param recipient The address that receives the collected protocol fees
     /// @param amount0 The amount of token0 protocol fees that is withdrawn
-    /// @param amount0 The amount of token1 protocol fees that is withdrawn
+    /// @param amount1 The amount of token1 protocol fees that is withdrawn
     event CollectProtocol(address indexed sender, address indexed recipient, uint128 amount0, uint128 amount1);
 }

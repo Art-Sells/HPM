@@ -3,7 +3,7 @@ pragma solidity >=0.6.0;
 
 import './BytesLib.sol';
 
-/// @title Functions for manipulating path data for multihop swaps
+/// @title Functions for manipulating path data for multihop supplicates
 library Path {
     using BytesLib for bytes;
 
@@ -20,14 +20,14 @@ library Path {
     uint256 private constant MULTIPLE_POOLS_MIN_LENGTH = POP_OFFSET + NEXT_OFFSET;
 
     /// @notice Returns true iff the path contains two or more pools
-    /// @param path The encoded swap path
+    /// @param path The encoded supplicate path
     /// @return True if path contains two or more pools, otherwise false
     function hasMultiplePools(bytes memory path) internal pure returns (bool) {
         return path.length >= MULTIPLE_POOLS_MIN_LENGTH;
     }
 
     /// @notice Returns the number of pools in the path
-    /// @param path The encoded swap path
+    /// @param path The encoded supplicate path
     /// @return The number of pools in the path
     function numPools(bytes memory path) internal pure returns (uint256) {
         // Ignore the first token address. From then on every fee and token offset indicates a pool.
@@ -35,7 +35,7 @@ library Path {
     }
 
     /// @notice Decodes the first pool in path
-    /// @param path The bytes encoded swap path
+    /// @param path The bytes encoded supplicate path
     /// @return tokenA The first token of the given pool
     /// @return tokenB The second token of the given pool
     /// @return fee The fee level of the pool
@@ -54,14 +54,14 @@ library Path {
     }
 
     /// @notice Gets the segment corresponding to the first pool in the path
-    /// @param path The bytes encoded swap path
+    /// @param path The bytes encoded supplicate path
     /// @return The segment containing all data necessary to target the first pool in the path
     function getFirstPool(bytes memory path) internal pure returns (bytes memory) {
         return path.slice(0, POP_OFFSET);
     }
 
     /// @notice Skips a token + fee element from the buffer and returns the remainder
-    /// @param path The swap path
+    /// @param path The supplicate path
     /// @return The remaining token + fee elements in the path
     function skipToken(bytes memory path) internal pure returns (bytes memory) {
         return path.slice(NEXT_OFFSET, path.length - NEXT_OFFSET);

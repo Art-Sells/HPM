@@ -4,7 +4,7 @@ pragma solidity =0.7.6;
 import '../libraries/SupplicateMath.sol';
 
 contract SupplicateMathEchidnaTest {
-    function checkComputeSwapStepInvariants(
+    function checkComputeSupplicateStepInvariants(
         uint160 sqrtPriceRaw,
         uint160 sqrtPriceTargetRaw,
         uint128 liquidity,

@@ -29,7 +29,7 @@ describe('PoolAddress', () => {
       expect(hash).to.match(/^0x[0-9a-fA-F]{64}$/)
       // exact literal from PoolAddress.sol
       expect(hash).to.eq(
-        '0x4de2ff1161ce569769358bdde75ab6d732e0281dfe07f002480ea00f537a259d'
+        '0x600d293db7a57a8944a22fd4cd41aaaf1a5cb5d9c71fa8a591c24284cd610564'
       )
     })
   })
