@@ -49,8 +49,8 @@ describe('LPPPool', () => {
   let minTick: number
   let maxTick: number
 
-  let swapTargetCallee: TestLPPCallee
-  let swapTargetRouter: TestLPPRouter
+  let supplicateTargetCallee: TestLPPCallee
+  let supplicateTargetRouter: TestLPPRouter
 
   let createPool: ThenArg<ReturnType<typeof poolFixture>>['createPool']
 
@@ -62,7 +62,7 @@ describe('LPPPool', () => {
   })
 
   beforeEach('deploy first fixture', async () => {
-    ;({ token0, token1, token2, factory, createPool, swapTargetCallee, swapTargetRouter } =
+    ;({ token0, token1, token2, factory, createPool, supplicateTargetCallee, supplicateTargetRouter } =
       await loadFixture(poolFixture))
 
     const createPoolWrapped = async (
@@ -73,7 +73,7 @@ describe('LPPPool', () => {
     ): Promise<[MockTimeLPPPool, PoolFunctions]> => {
       const pool = await createPool(amount, spacing, firstToken, secondToken)
       const poolFunctions = createPoolFunctions({
-        swapTarget: swapTargetCallee,
+        supplicateTarget: supplicateTargetCallee,
         token0: firstToken,
         token1: secondToken,
         pool,
@@ -120,11 +120,11 @@ describe('LPPPool', () => {
 
       // Alias the "swap" helpers to "supplicate" names for this test file
       const {
-        swapForExact0Multi: supplicateForExact0Multi,
-        swapForExact1Multi: supplicateForExact1Multi,
+        supplicateForExact0Multi: supplicateForExact0Multi,
+        supplicateForExact1Multi: supplicateForExact1Multi,
       } = createMultiPoolFunctions({
         inputToken: token0,
-        swapTarget: swapTargetRouter,
+        supplicateTarget: supplicateTargetRouter,
         poolInput: pool0,
         poolOutput: pool1,
       })

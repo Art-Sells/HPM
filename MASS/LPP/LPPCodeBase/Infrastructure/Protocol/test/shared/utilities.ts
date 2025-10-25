@@ -9,6 +9,7 @@ import type { TestLPPCallee } from '../../typechain-types/protocol'
 import type { TestLPPRouter } from '../../typechain-types/protocol'
 import type { MockTimeLPPPool } from '../../typechain-types/protocol'
 import type { TestERC20 } from '../../typechain-types/protocol'
+import type { ILPPPool } from '../../typechain-types/protocol'
 
 // ---- Fee tiers: ZERO only (enum-free for ESM strip-only) ----
 export const FeeAmount = { ZERO: 0 } as const
@@ -17,7 +18,7 @@ export function expandTo18Decimals(n: number): bigint {
   return BigInt(n) * (10n ** 18n)
 }
 export const TICK_SPACINGS: Record<number, number> = {
-  [FeeAmount.ZERO]: 1, // adjust if your ZERO tier spacing differs
+  [FeeAmount.ZERO]: 1,
 }
 
 // ---- BigInt helpers & constants (ethers v6) ----
@@ -36,11 +37,8 @@ export const MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970342n
 
 // ---- math utils ----
 const toBigInt = (x: BigNumberish): bigint => BigInt(x as any)
-
-// keep bignumber.js for sqrt of rational -> return as bigint
 bn.config({ EXPONENTIAL_AT: 999999, DECIMAL_PLACES: 40 })
 
-// returns the sqrt price as a Q64.96 (bigint)
 export function encodePriceSqrt(reserve1: BigNumberish, reserve0: BigNumberish): bigint {
   return BigInt(
     new bn(reserve1.toString())
@@ -67,7 +65,6 @@ export function getCreate2Address(
   const salt = ethers.keccak256(encoded)
   const initCodeHash = ethers.keccak256(bytecode)
 
-  // keccak256(0xff ++ factory ++ salt ++ init_code_hash)[12:]
   const digest = ethers.keccak256(
     ethers.concat([
       ethers.getBytes('0xff'),
@@ -112,12 +109,12 @@ export type MintFunction = (
 ) => Promise<ContractTransactionResponse>
 
 export interface PoolFunctions {
-  swapToLowerPrice: SupplicateToPriceFunction
-  swapToHigherPrice: SupplicateToPriceFunction
-  swapExact0For1: SupplicateFunction
-  swap0ForExact1: SupplicateFunction
-  swapExact1For0: SupplicateFunction
-  swap1ForExact0: SupplicateFunction
+  supplicateToLowerPrice: SupplicateToPriceFunction
+  supplicateToHigherPrice: SupplicateToPriceFunction
+  supplicateExact0For1: SupplicateFunction
+  supplicate0ForExact1: SupplicateFunction
+  supplicateExact1For0: SupplicateFunction
+  supplicate1ForExact0: SupplicateFunction
   flash: FlashFunction
   mint: MintFunction
 }
@@ -125,41 +122,38 @@ export interface PoolFunctions {
 // small helper: resolve a Wallet | string to an address
 async function resolveTo(to: Wallet | string): Promise<string> {
   if (typeof to === 'string') return to
-  // Wallet has .address; Hardhat signers have getAddress()
   return ('address' in to && typeof (to as any).address === 'string')
     ? (to as any).address
     : await (to as any).getAddress()
 }
 
 export function createPoolFunctions({
-  swapTarget,
+  supplicateTarget,
   token0,
   token1,
   pool,
 }: {
-  swapTarget: TestLPPCallee
+  supplicateTarget: TestLPPCallee
   token0: TestERC20
   token1: TestERC20
   pool: MockTimeLPPPool
 }): PoolFunctions {
-  // cast once for convenience where typechain signatures might not include helper funcs
-  const callee = swapTarget as any
+  const callee = supplicateTarget as any
 
-  async function swapToSqrtPrice(
+  async function supplicateToSqrtPrice(
     inputToken: TestERC20,
     targetPrice: BigNumberish,
     to: Wallet | string
   ): Promise<ContractTransactionResponse> {
-    // use supplicate names from TestLPPCallee
     const method =
       inputToken === token0 ? callee.supplicateToLowerSqrtPrice : callee.supplicateToHigherSqrtPrice
 
-    await inputToken.approve(await swapTarget.getAddress(), ethers.MaxUint256)
+    await inputToken.approve(await supplicateTarget.getAddress(), ethers.MaxUint256)
     const toAddress = await resolveTo(to)
     return method(await pool.getAddress(), targetPrice, toAddress)
   }
 
-  async function swap(
+  async function supplicate(
     inputToken: TestERC20,
     [amountIn, amountOut]: [BigNumberish, BigNumberish],
     to: Wallet | string,
@@ -167,7 +161,6 @@ export function createPoolFunctions({
   ): Promise<ContractTransactionResponse> {
     const exactInput = toBigInt(amountOut) === 0n
 
-    // use supplicate names from TestLPPCallee
     const method =
       inputToken === token0
         ? (exactInput ? callee.supplicateExact0For1 : callee.supplicate0ForExact1)
@@ -177,33 +170,72 @@ export function createPoolFunctions({
       sqrtPriceLimitX96 = inputToken === token0 ? (MIN_SQRT_RATIO + 1n) : (MAX_SQRT_RATIO - 1n)
     }
 
-    await inputToken.approve(await swapTarget.getAddress(), ethers.MaxUint256)
+    await inputToken.approve(await supplicateTarget.getAddress(), ethers.MaxUint256)
     const toAddress = await resolveTo(to)
     return method(await pool.getAddress(), exactInput ? amountIn : amountOut, toAddress, sqrtPriceLimitX96)
   }
 
-  const swapToLowerPrice: SupplicateToPriceFunction = (sqrtPriceX96, to) =>
-    swapToSqrtPrice(token0, sqrtPriceX96, to)
+  const supplicateToLowerPrice: SupplicateToPriceFunction = (sqrtPriceX96, to) =>
+    supplicateToSqrtPrice(token0, sqrtPriceX96, to)
 
-  const swapToHigherPrice: SupplicateToPriceFunction = (sqrtPriceX96, to) =>
-    swapToSqrtPrice(token1, sqrtPriceX96, to)
+  const supplicateToHigherPrice: SupplicateToPriceFunction = (sqrtPriceX96, to) =>
+    supplicateToSqrtPrice(token1, sqrtPriceX96, to)
 
-  const swapExact0For1: SupplicateFunction = (amount, to, limit) =>
-    swap(token0, [amount, 0], to, limit)
+  const supplicateExact0For1: SupplicateFunction = (amount, to, limit) =>
+    supplicate(token0, [amount, 0], to, limit)
 
-  const swap0ForExact1: SupplicateFunction = (amount, to, limit) =>
-    swap(token0, [0, amount], to, limit)
+  const supplicate0ForExact1: SupplicateFunction = (amount, to, limit) =>
+    supplicate(token0, [0, amount], to, limit)
 
-  const swapExact1For0: SupplicateFunction = (amount, to, limit) =>
-    swap(token1, [amount, 0], to, limit)
+  const supplicateExact1For0: SupplicateFunction = (amount, to, limit) =>
+    supplicate(token1, [amount, 0], to, limit)
 
-  const swap1ForExact0: SupplicateFunction = (amount, to, limit) =>
-    swap(token1, [0, amount], to, limit)
+  const supplicate1ForExact0: SupplicateFunction = (amount, to, limit) =>
+    supplicate(token1, [0, amount], to, limit)
 
+  // --- Call ILPPPoolActions.mint on the pool, from the callee address, so lppMintCallback triggers on TestLPPCallee ---
   const mint: MintFunction = async (recipient, tickLower, tickUpper, liquidity) => {
-    await token0.approve(await swapTarget.getAddress(), ethers.MaxUint256)
-    await token1.approve(await swapTarget.getAddress(), ethers.MaxUint256)
-    return (swapTarget as any).mint(await pool.getAddress(), recipient, tickLower, tickUpper, liquidity)
+    // Let TestLPPCallee pull owed tokens in lppMintCallback
+    await token0.approve(await supplicateTarget.getAddress(), ethers.MaxUint256)
+    await token1.approve(await supplicateTarget.getAddress(), ethers.MaxUint256)
+
+    // Data expected by your lppMintCallback (decoded as address sender)
+    const data = ethers.AbiCoder.defaultAbiCoder().encode(['address'], [recipient])
+
+    const calleeAddr = await supplicateTarget.getAddress()
+
+    // Impersonate the callee so msg.sender in pool.mint == TestLPPCallee
+    await hre.network.provider.request({
+      method: 'hardhat_impersonateAccount',
+      params: [calleeAddr],
+    })
+    await hre.network.provider.send('hardhat_setBalance', [
+      calleeAddr,
+      '0x56BC75E2D63100000', // 100 ETH
+    ])
+    const calleeSigner = await ethers.getSigner(calleeAddr)
+
+    try {
+      // Use the ILPPPool type from typechain for compile-time ABI correctness
+      const poolAsILPP = (await ethers.getContractAt(
+        'ILPPPool',
+        await pool.getAddress(),
+        calleeSigner
+      )) as unknown as ILPPPool
+
+      return await (poolAsILPP as any).mint(
+        recipient,
+        tickLower as any,
+        tickUpper as any,
+        liquidity as any,
+        data
+      )
+    } finally {
+      await hre.network.provider.request({
+        method: 'hardhat_stopImpersonatingAccount',
+        params: [calleeAddr],
+      })
+    }
   }
 
   const flash: FlashFunction = async (amount0, amount1, to, pay0?: BigNumberish, pay1?: BigNumberish) => {
@@ -217,43 +249,43 @@ export function createPoolFunctions({
     const p1 = (typeof pay1 === 'undefined') ? (ceilDivFee(amt1) + amt1) : toBigInt(pay1)
 
     const toAddress = await resolveTo(to)
-    return (swapTarget as any).flash(await pool.getAddress(), toAddress, amount0, amount1, p0, p1)
+    return (supplicateTarget as any).flash(await pool.getAddress(), toAddress, amount0, amount1, p0, p1)
   }
 
   return {
-    swapToLowerPrice,
-    swapToHigherPrice,
-    swapExact0For1,
-    swap0ForExact1,
-    swapExact1For0,
-    swap1ForExact0,
+    supplicateToLowerPrice,
+    supplicateToHigherPrice,
+    supplicateExact0For1,
+    supplicate0ForExact1,
+    supplicateExact1For0,
+    supplicate1ForExact0,
     mint,
     flash,
   }
 }
 
 export interface MultiPoolFunctions {
-  swapForExact0Multi: SupplicateFunction
-  swapForExact1Multi: SupplicateFunction
+  supplicateForExact0Multi: SupplicateFunction
+  supplicateForExact1Multi: SupplicateFunction
 }
 
 export function createMultiPoolFunctions({
   inputToken,
-  swapTarget,
+  supplicateTarget,
   poolInput,
   poolOutput,
 }: {
   inputToken: TestERC20
-  swapTarget: TestLPPRouter
+  supplicateTarget: TestLPPRouter
   poolInput: MockTimeLPPPool
   poolOutput: MockTimeLPPPool
 }): MultiPoolFunctions {
-  const router = swapTarget as any
+  const router = supplicateTarget as any
 
-  async function swapForExact0Multi(amountOut: BigNumberish, to: Wallet | string): Promise<ContractTransactionResponse> {
-    await inputToken.approve(await swapTarget.getAddress(), ethers.MaxUint256)
+  async function supplicateForExact0Multi(amountOut: BigNumberish, to: Wallet | string): Promise<ContractTransactionResponse> {
+    await inputToken.approve(await supplicateTarget.getAddress(), ethers.MaxUint256)
     const toAddress = await resolveTo(to)
-    return router.swapForExact0Multi(
+    return router.supplicateForExact0Multi(
       toAddress,
       await poolInput.getAddress(),
       await poolOutput.getAddress(),
@@ -261,10 +293,10 @@ export function createMultiPoolFunctions({
     )
   }
 
-  async function swapForExact1Multi(amountOut: BigNumberish, to: Wallet | string): Promise<ContractTransactionResponse> {
-    await inputToken.approve(await swapTarget.getAddress(), ethers.MaxUint256)
+  async function supplicateForExact1Multi(amountOut: BigNumberish, to: Wallet | string): Promise<ContractTransactionResponse> {
+    await inputToken.approve(await supplicateTarget.getAddress(), ethers.MaxUint256)
     const toAddress = await resolveTo(to)
-    return router.swapForExact1Multi(
+    return router.supplicateForExact1Multi(
       toAddress,
       await poolInput.getAddress(),
       await poolOutput.getAddress(),
@@ -273,7 +305,7 @@ export function createMultiPoolFunctions({
   }
 
   return {
-    swapForExact0Multi,
-    swapForExact1Multi,
+    supplicateForExact0Multi,
+    supplicateForExact1Multi,
   }
 }
