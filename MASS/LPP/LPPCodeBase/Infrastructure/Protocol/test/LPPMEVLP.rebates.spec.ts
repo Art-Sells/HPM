@@ -591,16 +591,14 @@ describe('MEV-as-LP Rebates — mintWithRebate', () => {
 
 const CANON_REBATE_BPS    = [100, 180, 250, 350] as const; // T1..T4
 const CANON_RETENTION_BPS = [ 50,  90, 125, 175] as const; // T1..T4
+const MID_SHARE_BPS       = [750, 1500, 2750, 5500] as const; // test midpoints
 
-// Breakpoints (bps) chosen to make the hook’s "count thresholds crossed" tier logic
-// line up with the human tiers above at the midpoints we test:
-const SHARE_BREAKS_BPS = [500, 1000, 3500, 5000] as const; // 5%, 10%, 35%, 50%
+// Breakpoints in bps so the hook’s "count of breaks crossed" yields:
+// 7.5% -> tier 0, 15% -> tier 1, 27.5% -> tier 2, 55% -> tier 3 (cap)
+const SHARE_BREAKS_BPS = [1000, 2000, 3500, 5000] as const; // 10%, 20%, 35%, 50%
 
-// Human tier midpoints (bps) we will mint to:
-const MID_SHARE_BPS = [750, 1500, 2750, 5500] as const; // ~7.5%, 15%, 27.5%, 55%
-
-// Map human T1..T4 (index 0..3) to the contract’s tier ids (0..3)
-const HUMAN_TIER_TO_CONTRACT_TIER = [1, 2, 2, 3] as const;
+// Human T1..T4 map 1:1 to contract tiers 0..3 with the breaks above
+const HUMAN_TIER_TO_CONTRACT_TIER = [0, 1, 2, 3] as const;
 
 /** minted = s / (1 - s) * TVL, where s is share in bps */
 function liquidityForShareBps(tvl: bigint, sBps: number): bigint {

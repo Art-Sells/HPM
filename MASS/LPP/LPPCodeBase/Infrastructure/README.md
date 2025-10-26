@@ -9,18 +9,17 @@
 - [x] Enable & test **fee = 0** tier in Factory; add **fee=0 math tests** — **Complete**: [LPPZeroFeeSpec](https://github.com/Art-Sells/HPM/blob/main/MASS/LPP/LPPCodeBase/Infrastructure/Protocol/test/LPPFactory.spec.ts)
 - [x] Test all other tests inside Protocol & Periphery folders — **Complete**
   - [x] Delete all **snapshots**, recompile and re‑test Periphery and Protocol — **Complete**
-- [ ] **Implement MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention**  ← **In Progress**
-  - [ ] Wire periphery mint wrapper (**LPPMintHook**) to compute rebates & retentions
-  - [ ] Deploy **LPPRebateVault** & **LPPTreasury**; set roles
-  - [ ] Add **tier math** (share‑of‑TVL → rebate/retention bps)
-  - [ ] Emit events; index in Subgraph; spec tests
+- [X] **Implement MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention**  - **Complete**
+  - [X] Wire periphery mint wrapper (**LPPMintHook**) to compute rebates & retentions - **Complete**
+  - [X] Deploy **LPPRebateVault** & **LPPTreasury**; set roles - **Complete**
+  - [X] Add **tier math** (share‑of‑TVL → rebate/retention bps) - **Complete**
+  - [ ] Emit events; index in Subgraph; spec tests - **In Progress**
 - [ ] Frontend/API: router prefers **A/B/C (0‑fee)**, metrics & drift badge
 - [ ] Tests: zero‑fee invariants, range flips, oracle failure stubs, **rebate logic**
 - [ ] **Create 3 pools** (cbBTC/USDC, fee=0) & **initialize** near reference price
 - [ ] **Seed liquidity**: tight **primary** range + tiny **fallback** range for each pool
 - [ ] Discovery: contract **verification**, **Subgraph**, `RebalanceNeeded` event, **Solver Kit**
 - [ ] Deploy to Base, verify, publish docs, announce to searchers
-
 ### Deferred (Optional, not required to ship rebates)
 - [ ] **LPPOracleAdapter** (USD oracle with staleness & deviation guards) — *deferred*
 - [ ] **LPPRouter.recenterAndMint()** (atomic re‑center + mint) — *deferred*
