@@ -108,6 +108,14 @@ export type MintFunction = (
   liquidity: BigNumberish
 ) => Promise<ContractTransactionResponse>
 
+export type AttemptDirectMintFn = (
+  recipient: string,
+  tickLower: BigNumberish,
+  tickUpper: BigNumberish,
+  liquidity: BigNumberish,
+  data?: string
+) => Promise<ContractTransactionResponse>
+
 export interface PoolFunctions {
   supplicateToLowerPrice: SupplicateToPriceFunction
   supplicateToHigherPrice: SupplicateToPriceFunction
@@ -137,7 +145,7 @@ export function createPoolFunctions({
   token0: TestERC20
   token1: TestERC20
   pool: MockTimeLPPPool
-}): PoolFunctions {
+}): PoolFunctions & { attemptDirectMint: AttemptDirectMintFn } {
   const callee = supplicateTarget as any
 
   async function supplicateToSqrtPrice(
@@ -193,7 +201,7 @@ export function createPoolFunctions({
   const supplicate1ForExact0: SupplicateFunction = (amount, to, limit) =>
     supplicate(token1, [0, amount], to, limit)
 
-  // --- Call ILPPPoolActions.mint on the pool, from the callee address, so lppMintCallback triggers on TestLPPCallee ---
+  // Legacy callee-based mint (still available if needed elsewhere)
   const mint: MintFunction = async (recipient, tickLower, tickUpper, liquidity) => {
     // Let TestLPPCallee pull owed tokens in lppMintCallback
     await token0.approve(await supplicateTarget.getAddress(), ethers.MaxUint256)
@@ -216,14 +224,11 @@ export function createPoolFunctions({
     const calleeSigner = await ethers.getSigner(calleeAddr)
 
     try {
-      // Use the ILPPPool type from typechain for compile-time ABI correctness
-      const poolAsILPP = (await ethers.getContractAt(
-        'ILPPPool',
-        await pool.getAddress(),
-        calleeSigner
-      )) as unknown as ILPPPool
+      // ✅ No artifact lookup -> no ILPPPool name collision.
+      const poolFromCallee = (pool.connect(calleeSigner)) as any
 
-      return await (poolAsILPP as any).mint(
+      // Call mint from the impersonated TestLPPCallee
+      return await poolFromCallee.mint(
         recipient,
         tickLower as any,
         tickUpper as any,
@@ -236,6 +241,12 @@ export function createPoolFunctions({
         params: [calleeAddr],
       })
     }
+  }
+
+  // NEW: attempt to call pool.mint directly from the test signer (EOA),
+  // used to assert the pool is gated (should revert with ONLY_MINT_HOOK).
+  const attemptDirectMint: AttemptDirectMintFn = async (recipient, tickLower, tickUpper, liquidity, data = '0x') => {
+    return (pool as any).mint(recipient, tickLower, tickUpper, liquidity, data)
   }
 
   const flash: FlashFunction = async (amount0, amount1, to, pay0?: BigNumberish, pay1?: BigNumberish) => {
@@ -261,6 +272,7 @@ export function createPoolFunctions({
     supplicate1ForExact0,
     mint,
     flash,
+    attemptDirectMint,
   }
 }
 
@@ -308,4 +320,50 @@ export function createMultiPoolFunctions({
     supplicateForExact0Multi,
     supplicateForExact1Multi,
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/*                  MEV-as-LP Rebates: tiny mintWithRebate helper             */
+/* -------------------------------------------------------------------------- */
+
+export type MintWithRebateParams = {
+  hookAddress: string
+  recipient: string
+  payer?: string
+  tickLower: BigNumberish
+  tickUpper: BigNumberish
+  liquidity: BigNumberish
+}
+
+export type MintWithRebateFunction = (p: MintWithRebateParams) => Promise<ContractTransactionResponse>
+
+export function createRebateFunctions({
+  pool,
+  token0,
+  token1,
+}: {
+  pool: MockTimeLPPPool
+  token0: TestERC20
+  token1: TestERC20
+}): { mintWithRebate: MintWithRebateFunction } {
+  const mintWithRebate: MintWithRebateFunction = async (p) => {
+    const hook = await ethers.getContractAt('LPPMintHook', p.hookAddress)
+
+    // approvals for the hook to pull owed + surcharge during lppMintCallback
+    await token0.approve(p.hookAddress, ethers.MaxUint256)
+    await token1.approve(p.hookAddress, ethers.MaxUint256)
+
+    const params = {
+      pool: await pool.getAddress(),
+      tickLower: p.tickLower,
+      tickUpper: p.tickUpper,
+      liquidity: p.liquidity,
+      recipient: p.recipient,
+      payer: p.payer ?? p.recipient,
+    }
+
+    return (hook as any).mintWithRebate(params)
+  }
+
+  return { mintWithRebate }
 }

@@ -5,10 +5,16 @@ import "./interfaces/IERC20.sol";
 import "./interfaces/ILPPPoolMinimal.sol";
 import "./interfaces/ILPPMintHook.sol";
 
-/// V0 "surcharge" model: user mints full liquidity; in lppMintCallback we:
-/// - pay owed amounts to the pool, and
-/// - pull surcharge (rebate + retention) from payer to vault/treasury.
-/// No storage cache is used; data is encoded and decoded in the callback.
+/**
+ * @notice MEV-as-LP "surcharge" mint hook.
+ *         User mints full liquidity; in lppMintCallback we:
+ *         - pay owed amounts to the pool, and
+ *         - pull surcharge (rebate + retention) from payer to vault/treasury.
+ *
+ *         Supports both callback signatures:
+ *           - lppMintCallback(int256,int256,bytes)  // required by ILPPPoolMinimal
+ *           - lppMintCallback(uint256,uint256,bytes) // optional convenience
+ */
 contract LPPMintHook is ILPPMintHook, ILPPPoolMintCallback {
     address public owner;
     address public rebateVault;
@@ -28,16 +34,15 @@ contract LPPMintHook is ILPPMintHook, ILPPPoolMintCallback {
     event RebatePaid(address indexed lp, address indexed pool, address indexed token, uint256 amount, uint8 tier);
     event Retained(address indexed pool, address indexed token, uint256 amount, uint8 tier);
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "not owner");
-        _;
-    }
+    modifier onlyOwner() { require(msg.sender == owner, "not owner"); _; }
 
     constructor(address _rebateVault, address _treasury) {
         owner = msg.sender;
         rebateVault = _rebateVault;
         treasury = _treasury;
     }
+
+    // --- admin ---
 
     function setOwner(address _owner) external onlyOwner {
         emit OwnerUpdated(owner, _owner);
@@ -55,14 +60,16 @@ contract LPPMintHook is ILPPMintHook, ILPPPoolMintCallback {
     }
 
     function setTiers(
-        uint16[4] calldata _shareThresholdBps,
-        uint16[4] calldata _rebateBps,
-        uint16[4] calldata _retentionBps
+        uint16[4] calldata _share,
+        uint16[4] calldata _rebate,
+        uint16[4] calldata _retention
     ) external onlyOwner {
-        shareThresholdBps = _shareThresholdBps;
-        rebateBps = _rebateBps;
-        retentionBps = _retentionBps;
+        shareThresholdBps = _share;
+        rebateBps = _rebate;
+        retentionBps = _retention;
     }
+
+    // --- entrypoint ---
 
     function mintWithRebate(MintParamsLiquidity calldata p)
         external
@@ -90,7 +97,10 @@ contract LPPMintHook is ILPPMintHook, ILPPPoolMintCallback {
         (amount0, amount1) = pool.mint(p.recipient, p.tickLower, p.tickUpper, p.liquidity, data);
     }
 
-    function lppMintCallback(int256 amount0Owed, int256 amount1Owed, bytes calldata data) external override {
+    // --- callback plumbing (both signatures supported) ---
+
+    // Internal single implementation used by both externals
+    function _lppMintCallback(uint256 amount0Owed, uint256 amount1Owed, bytes calldata data) internal {
         (address payer, address lp, uint8 tier, uint16 rBps, uint16 kBps) =
             abi.decode(data, (address, address, uint8, uint16, uint16));
 
@@ -98,9 +108,9 @@ contract LPPMintHook is ILPPMintHook, ILPPPoolMintCallback {
 
         // --- token0 path (scoped to keep stack shallow) ---
         {
-            address t0 = ILPPPool(pool).token0();
-            uint256 o0 = amount0Owed > 0 ? uint256(amount0Owed) : 0;
+            uint256 o0 = amount0Owed;
             if (o0 > 0) {
+                address t0 = ILPPPool(pool).token0();
                 _pullPay(payer, t0, pool, o0); // pay pool first
 
                 uint256 rebate0 = (o0 * rBps) / 10_000;
@@ -119,9 +129,9 @@ contract LPPMintHook is ILPPMintHook, ILPPPoolMintCallback {
 
         // --- token1 path (separate scope to drop prior locals) ---
         {
-            address t1 = ILPPPool(pool).token1();
-            uint256 o1 = amount1Owed > 0 ? uint256(amount1Owed) : 0;
+            uint256 o1 = amount1Owed;
             if (o1 > 0) {
+                address t1 = ILPPPool(pool).token1();
                 _pullPay(payer, t1, pool, o1); // pay pool first
 
                 uint256 rebate1 = (o1 * rBps) / 10_000;
@@ -138,6 +148,22 @@ contract LPPMintHook is ILPPMintHook, ILPPPoolMintCallback {
             }
         }
     }
+
+    /// Optional convenience overload (some pools emit uint256 owed values)
+    function lppMintCallback(uint256 amount0Owed, uint256 amount1Owed, bytes calldata data) external {
+        _lppMintCallback(amount0Owed, amount1Owed, data);
+    }
+
+    /// Required by ILPPPoolMinimal: satisfies the interface exactly
+    function lppMintCallback(int256 amount0Owed, int256 amount1Owed, bytes calldata data)
+        external
+        override
+    {
+        require(amount0Owed >= 0 && amount1Owed >= 0, "negative owed");
+        _lppMintCallback(uint256(amount0Owed), uint256(amount1Owed), data);
+    }
+
+    // --- utils ---
 
     function _pullPay(address from, address token, address to, uint256 amt) internal {
         if (amt == 0) return;
