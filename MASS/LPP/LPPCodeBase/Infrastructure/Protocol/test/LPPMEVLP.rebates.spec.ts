@@ -39,14 +39,6 @@ describe('MEV-as-LP Rebates — mintWithRebate', () => {
   async function rebatesFixture() {
     // Base protocol fixture (tokens, factory, callee, etc.)
     const fix = await (poolFixture as any)([wallet], ethers.provider)
-    const pool: MockTimeLPPPool = await fix.createPool(FeeAmount.ZERO, TICK_SPACINGS[FeeAmount.ZERO])
-
-    // Initialize @ price = 1.0
-    await pool.initialize(encodePriceSqrt(1n, 1n))
-
-    const ts = TICK_SPACINGS[FeeAmount.ZERO]
-    const minTick = getMinTick(ts)
-    const maxTick = getMaxTick(ts)
 
     // Deploy vault + treasury
     const RebateVaultF = await ethers.getContractFactory('LPPRebateVault')
@@ -64,12 +56,28 @@ describe('MEV-as-LP Rebates — mintWithRebate', () => {
       await treasury.waitForDeployment()
     }
 
-    // Deploy the canonical hook (THIS is the one baked/gated by the pool in your production code)
+    // Deploy the canonical hook
     const HookF = await ethers.getContractFactory('LPPMintHook')
     const hook = (await HookF.deploy(await vault.getAddress(), await treasury.getAddress())) as unknown as LPPMintHook
     await hook.waitForDeployment()
 
-    // Helpers
+    // NOW create the pool (pass hook in case deployer requires it)
+    const pool: MockTimeLPPPool = await fix.createPool(
+      FeeAmount.ZERO,
+      TICK_SPACINGS[FeeAmount.ZERO],
+      undefined,
+      undefined,
+      await hook.getAddress()            // <-- pass to fixture
+    )
+
+    // Initialize @ price = 1.0
+    await pool.initialize(encodePriceSqrt(1n, 1n))
+
+    const ts = TICK_SPACINGS[FeeAmount.ZERO]
+    const minTick = getMinTick(ts)
+    const maxTick = getMaxTick(ts)
+
+    // Helpers stay the same…
     const { mintWithRebate } = createRebateFunctions({ pool, token0: fix.token0, token1: fix.token1 })
     const { attemptDirectMint, mint: legacyCalleeMint } = createPoolFunctions({
       supplicateTarget: fix.supplicateTargetCallee,
@@ -78,7 +86,7 @@ describe('MEV-as-LP Rebates — mintWithRebate', () => {
       pool,
     })
 
-    // --- Baseline TVL via HOOK (not via direct pool.mint) ---
+    // Baseline TVL via HOOK
     const L0 = expandTo18Decimals(10)
     await (await mintWithRebate({
       hookAddress: await hook.getAddress(),
@@ -88,20 +96,7 @@ describe('MEV-as-LP Rebates — mintWithRebate', () => {
       liquidity: L0,
     })).wait()
 
-    return {
-      fix,
-      pool,
-      hook,
-      vault,
-      treasury,
-      ts,
-      minTick,
-      maxTick,
-      L0,
-      mintWithRebate,
-      attemptDirectMint,
-      legacyCalleeMint,
-    }
+    return { fix, pool, hook, vault, treasury, ts, minTick, maxTick, L0, mintWithRebate, attemptDirectMint, legacyCalleeMint }
   }
 
   // ---------------- Existing tests (unchanged behavior-wise) ----------------
@@ -586,4 +581,123 @@ describe('MEV-as-LP Rebates — mintWithRebate', () => {
       // If not implemented yet, this test is a no-op
     }
   })
+  // --- UPDATED: Canonical tier schedule checks (BPS + payout correctness) ---
+
+// Canonical table (human-facing):
+// T1: 5–<10 => 1.00% / 0.50%
+// T2: 10–<20 => 1.80% / 0.90%
+// T3: 20–<35 => 2.50% / 1.25%
+// T4: ≥50 (cap) => 3.50% / 1.75%
+
+const CANON_REBATE_BPS    = [100, 180, 250, 350] as const; // T1..T4
+const CANON_RETENTION_BPS = [ 50,  90, 125, 175] as const; // T1..T4
+
+// Breakpoints (bps) chosen to make the hook’s "count thresholds crossed" tier logic
+// line up with the human tiers above at the midpoints we test:
+const SHARE_BREAKS_BPS = [500, 1000, 3500, 5000] as const; // 5%, 10%, 35%, 50%
+
+// Human tier midpoints (bps) we will mint to:
+const MID_SHARE_BPS = [750, 1500, 2750, 5500] as const; // ~7.5%, 15%, 27.5%, 55%
+
+// Map human T1..T4 (index 0..3) to the contract’s tier ids (0..3)
+const HUMAN_TIER_TO_CONTRACT_TIER = [1, 2, 2, 3] as const;
+
+/** minted = s / (1 - s) * TVL, where s is share in bps */
+function liquidityForShareBps(tvl: bigint, sBps: number): bigint {
+  const s = BigInt(sBps);
+  return (tvl * s) / (10_000n - s);
+}
+
+it('default tier table matches the canonical BPS values', async () => {
+  const { hook } = await loadFixture(rebatesFixture);
+  // The contract exposes 4 indices (0..3). We expect those indices to hold the canonical BPS
+  // for T1..T4 (the hook’s tier 0 is the “tiny share” band and isn’t in the table).
+  for (let i = 0; i < 4; i++) {
+    const r = await (hook as any).rebateBps(i);
+    const k = await (hook as any).retentionBps(i);
+    expect(Number(r), `rebateBps(${i})`).to.eq(CANON_REBATE_BPS[i]);
+    expect(Number(k), `retentionBps(${i})`).to.eq(CANON_RETENTION_BPS[i]);
+  }
+});
+
+describe('canonical payouts match table per tier', () => {
+  [0, 1, 2, 3].forEach((humanTierIdx) => {
+    it(`Tier ${humanTierIdx + 1} payout (rebate + retention) matches canonical schedule`, async () => {
+      const {
+        fix, pool, hook, vault, treasury, minTick, maxTick, L0, mintWithRebate,
+      } = await loadFixture(rebatesFixture);
+
+      // Force the exact table (BPS) + share breaks we want to verify
+      await (hook as any).setTiers(SHARE_BREAKS_BPS, CANON_REBATE_BPS, CANON_RETENTION_BPS);
+
+      const lp = await wallet.getAddress();
+      const hookAddr = await hook.getAddress();
+      const mintL = liquidityForShareBps(L0, MID_SHARE_BPS[humanTierIdx]);
+
+      const t0 = fix.token0, t1 = fix.token1;
+      const vAddr = await vault.getAddress();
+      const kAddr = await treasury.getAddress();
+
+      const bV0 = await t0.balanceOf(vAddr);
+      const bV1 = await t1.balanceOf(vAddr);
+      const bK0 = await t0.balanceOf(kAddr);
+      const bK1 = await t1.balanceOf(kAddr);
+
+      const receipt = await (await mintWithRebate({
+        hookAddress: hookAddr,
+        recipient: lp,
+        payer: lp,
+        tickLower: minTick,
+        tickUpper: maxTick,
+        liquidity: mintL,
+      })).wait();
+
+      // Which tier did the hook classify?
+      const hookIface = (hook as any).interface;
+      const q = receipt!.logs
+        .map((l: any) => { try { return hookIface.parseLog(l) } catch { return null } })
+        .filter(Boolean)
+        .find((p: any) => p.name === 'Qualified');
+
+      expect(q, 'Qualified event missing').to.not.eq(undefined);
+
+      const contractTier = Number(q!.args.tier);
+      const expectedTier = HUMAN_TIER_TO_CONTRACT_TIER[humanTierIdx];
+      expect(contractTier, 'tier chosen').to.eq(expectedTier);
+
+      // Pull owed from pool Mint event
+      const poolIface = (pool as any).interface;
+      const mintEvt = receipt!.logs
+        .map((l: any) => { try { return poolIface.parseLog(l) } catch { return null } })
+        .find((p: any) => p && p.name === 'Mint');
+      expect(mintEvt, 'Mint event missing').to.not.eq(undefined);
+
+      const amount0: bigint = mintEvt!.args.amount0 as bigint;
+      const amount1: bigint = mintEvt!.args.amount1 as bigint;
+
+      // BPS the hook will actually use for this tier
+      const rBps = BigInt(await (hook as any).rebateBps(contractTier));
+      const kBps = BigInt(await (hook as any).retentionBps(contractTier));
+
+      // Ensure those BPS equal the canonical values for the human tier we’re testing
+      expect(Number(rBps)).to.eq(CANON_REBATE_BPS[humanTierIdx]);
+      expect(Number(kBps)).to.eq(CANON_RETENTION_BPS[humanTierIdx]);
+
+      const expectedRb0 = (amount0 * rBps) / 10_000n;
+      const expectedRb1 = (amount1 * rBps) / 10_000n;
+      const expectedKt0 = (amount0 * kBps) / 10_000n;
+      const expectedKt1 = (amount1 * kBps) / 10_000n;
+
+      const aV0 = await t0.balanceOf(vAddr);
+      const aV1 = await t1.balanceOf(vAddr);
+      const aK0 = await t0.balanceOf(kAddr);
+      const aK1 = await t1.balanceOf(kAddr);
+
+      expect(aV0 - bV0, 'vault token0 rebate').to.eq(expectedRb0);
+      expect(aV1 - bV1, 'vault token1 rebate').to.eq(expectedRb1);
+      expect(aK0 - bK0, 'treasury token0 retention').to.eq(expectedKt0);
+      expect(aK1 - bK1, 'treasury token1 retention').to.eq(expectedKt1);
+    });
+  });
+});
 })

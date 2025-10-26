@@ -78,7 +78,8 @@ interface PoolFixture extends TokensAndFactoryFixture {
     fee: number,
     tickSpacing: number,
     firstToken?: TestERC20,
-    secondToken?: TestERC20
+    secondToken?: TestERC20,
+    mintHook?: string, // optional hook address for newer deployer shape
   ): Promise<MockTimeLPPPool>
 }
 
@@ -107,7 +108,13 @@ export const poolFixture: Fixture<PoolFixture> = async function (): Promise<Pool
     factory,
     supplicateTargetCallee,
     supplicateTargetRouter,
-    createPool: async (fee, tickSpacing, firstToken = token0, secondToken = token1) => {
+    createPool: async (
+      fee,
+      tickSpacing,
+      firstToken = token0,
+      secondToken = token1,
+      mintHook?: string
+    ) => {
       const deployer = (await DeployerFactory.deploy()) as unknown as MockTimeLPPPoolDeployer
       await deployer.waitForDeployment()
 
@@ -115,7 +122,34 @@ export const poolFixture: Fixture<PoolFixture> = async function (): Promise<Pool
       const t0 = await firstToken.getAddress()
       const t1 = await secondToken.getAddress()
 
-      const tx = await (deployer as any).deploy(factoryAddr, t0, t1, fee, tickSpacing)
+      let tx: any | undefined
+      let lastErr: any
+
+      // Try legacy 5-arg deploy: (factory, token0, token1, fee, tickSpacing)
+      try {
+        tx = await (deployer as any).deploy(factoryAddr, t0, t1, fee, tickSpacing)
+      } catch (e) {
+        lastErr = e
+      }
+
+      // Try newer 6-arg deploy: (factory, token0, token1, fee, tickSpacing, mintHook)
+      if (!tx) {
+        const hookArg = mintHook ?? ethers.ZeroAddress
+        try {
+          tx = await (deployer as any).deploy(factoryAddr, t0, t1, fee, tickSpacing, hookArg)
+        } catch (e2) {
+          const fns =
+            (deployer as any).interface?.fragments
+              ?.filter((f: any) => f.type === 'function' && f.name === 'deploy')
+              ?.map((f: any) => (f.format ? f.format() : String(f))) ?? []
+          throw new Error(
+            `MockTimeLPPPoolDeployer.deploy() did not match known shapes (5 or 6 args).
+ABI deploy variants: ${fns.join(', ') || '[unknown]'}
+Last 5-arg error: ${lastErr}`
+          )
+        }
+      }
+
       const receipt = await tx.wait()
 
       // Parse the pool address from the deployer event
