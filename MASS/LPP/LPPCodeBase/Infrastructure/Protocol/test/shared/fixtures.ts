@@ -21,7 +21,18 @@ interface FactoryFixture {
 
 async function factoryFixture(): Promise<FactoryFixture> {
   const Factory = await ethers.getContractFactory('LPPFactory')
-  const factory = (await Factory.deploy()) as unknown as LPPFactory
+
+  // Support both ctor shapes:
+  //  - constructor()
+  //  - constructor(address owner)
+  let factory: LPPFactory
+  try {
+    factory = (await Factory.deploy()) as unknown as LPPFactory
+  } catch {
+    const [deployer] = await ethers.getSigners()
+    factory = (await Factory.deploy(await deployer.getAddress())) as unknown as LPPFactory
+  }
+
   await factory.waitForDeployment()
   return { factory }
 }

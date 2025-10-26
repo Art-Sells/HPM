@@ -12,6 +12,7 @@ contract LPPPoolDeployer is ILPPPoolDeployer {
         address token1;
         uint24 fee;
         int24 tickSpacing;
+        address mintHook;
     }
 
     /// @inheritdoc ILPPPoolDeployer
@@ -29,9 +30,17 @@ contract LPPPoolDeployer is ILPPPoolDeployer {
         address token0,
         address token1,
         uint24 fee,
-        int24 tickSpacing
+        int24 tickSpacing,
+        address mintHook
     ) internal returns (address pool) {
-        parameters = Parameters({factory: factory, token0: token0, token1: token1, fee: fee, tickSpacing: tickSpacing});
+        parameters = Parameters({
+            factory: factory, 
+            token0: token0, 
+            token1: token1, 
+            fee: fee, 
+            tickSpacing: tickSpacing, 
+            mintHook: mintHook
+            });
         pool = address(new LPPPool{salt: keccak256(abi.encode(token0, token1, fee))}());
         delete parameters;
     }

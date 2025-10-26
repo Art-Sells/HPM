@@ -46,6 +46,7 @@ contract LPPPool is ILPPPool, NoDelegateCall {
     address public immutable override token0;
     /// @inheritdoc ILPPPoolImmutables
     address public immutable override token1;
+    address public immutable mintHook;
     /// @inheritdoc ILPPPoolImmutables
     uint24 public immutable override fee;
 
@@ -109,8 +110,9 @@ contract LPPPool is ILPPPool, NoDelegateCall {
         address _token1;
         uint24 _fee;
         int24  _tickSpacing;
+        address _mintHook;
 
-        (_factory, _token0, _token1, _fee, _tickSpacing) = ILPPPoolDeployer(msg.sender).parameters();
+        (_factory, _token0, _token1, _fee, _tickSpacing, _mintHook) = ILPPPoolDeployer(msg.sender).parameters();
 
         // ZERO-fee enforcement without reading the immutable
         require(_fee == 0, 'FEE_NOT_ZERO');
@@ -121,6 +123,7 @@ contract LPPPool is ILPPPool, NoDelegateCall {
         token1      = _token1;
         fee         = _fee;
         tickSpacing = _tickSpacing;
+        mintHook    = _mintHook;  
 
         // Use the local value to compute the other immutable
         maxLiquidityPerTick = Tick.tickSpacingToMaxLiquidityPerTick(_tickSpacing);
@@ -419,6 +422,7 @@ contract LPPPool is ILPPPool, NoDelegateCall {
         uint128 amount,
         bytes calldata data
     ) external override lock returns (uint256 amount0, uint256 amount1) {
+        require(msg.sender == mintHook, 'ONLY_MINT_HOOK'); 
         require(amount > 0);
         (, int256 amount0Int, int256 amount1Int) =
             _modifyPosition(
