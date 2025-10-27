@@ -1,7 +1,0 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
-
-exports[`LPPFactory #createPool gas 1`] = `4546221`;
-
-exports[`LPPFactory factory bytecode size 1`] = `25288`;
-
-exports[`LPPFactory pool bytecode size 1`] = `22080`;
