@@ -1095,7 +1095,7 @@
 "@lpp/lpp-periphery@file:Periphery":
   version "0.1.0"
   dependencies:
-    "@lpp/lpp-protocol" "link:../../../../../../../../../../Caches/Yarn/v6/npm-@lpp-lpp-periphery-0.1.0-78b0693a-f149-4106-a438-18eac81d6f71-1761402111722/node_modules/@lpp/Protocol"
+    "@lpp/lpp-protocol" "link:../../../../../../../../../../Caches/Yarn/v6/npm-@lpp-lpp-periphery-0.1.0-650afe0f-5688-4631-b84e-c867533d2967-1761695411764/node_modules/@lpp/Protocol"
     "@openzeppelin/contracts" "3.4.2-solc-0.7"
     base64-sol "1.0.1"
     is-svg "^6.1.0"

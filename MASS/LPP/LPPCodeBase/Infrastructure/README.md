@@ -11,8 +11,9 @@
   - [x] Delete all **snapshots**, recompile and re‑test Periphery and Protocol — **Complete**
 - [X] **Implement MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention**  - **Complete**
   - [X] Wire periphery mint wrapper (**LPPMintHook**) to compute rebates & retentions - **Complete**
-  - [X] Deploy **LPPRebateVault** & **LPPTreasury**; set roles - **Complete**
-  - [X] Add **tier math** (share‑of‑TVL → rebate/retention bps) - **Complete**
+  - [ ] Add conservative and time locking **In Progress**
+  - [ ] Re-test all spec tests
+  - [ ] Forking MEV bot repos for testing arbitrage/rebate opportunities with tiny liquidity beginnings…
   - [ ] Emit events; index in Subgraph; spec tests - **In Progress**
 - [ ] Frontend/API: router prefers **A/B/C (0‑fee)**, metrics & drift badge
 - [ ] Tests: zero‑fee invariants, range flips, oracle failure stubs, **rebate logic**
