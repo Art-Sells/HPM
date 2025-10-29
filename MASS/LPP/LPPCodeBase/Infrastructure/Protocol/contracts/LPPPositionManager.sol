@@ -1,21 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.20;
 
-import "./interfaces/ILPPPool.sol";
 import "./utils/Ownable.sol";
 
 contract LPPPositionManager is Ownable {
     error LOCK_ACTIVE();
     error NOT_HOOK();
+
     event ConservativeModeSet(bool enabled);
     event LockScheduleUpdated(uint32[4] lockSecs);
     event PositionLocked(uint256 indexed tokenId, uint8 indexed tier, uint64 lockUntil);
 
     address public immutable mintHook;     // canonical hook allowed to finalize
     bool    public conservativeMode;       // doubles all locks
-    uint32[4] public baseLockSecs;         // default: [6h, 1d, 3d, 7d]
+    uint32[4] public baseLockSecs;         // default schedule
 
     mapping(uint256 => uint64) public lockUntil;
+
+    uint256 private _nextId;
 
     constructor(address _hook, uint32[4] memory _base) {
         mintHook = _hook;
@@ -39,33 +41,34 @@ contract LPPPositionManager is Ownable {
 
     // called *only* by the hook after it settled the surcharge
     function finalizeMintFromHook(
-        address pool,
-        address recipient,
-        int24 tickLower,
-        int24 tickUpper,
-        uint128 liquidity,
+        address /*pool*/,
+        address /*recipient*/,
+        int24 /*tickLower*/,
+        int24 /*tickUpper*/,
+        uint128 /*liquidity*/,
         uint8 tier,
         uint32 hookSuggestedLockSecs
     ) external onlyHook returns (uint256 tokenId) {
-        // mint the position (as in your current flow)
-        tokenId = _mintPosition(pool, recipient, tickLower, tickUpper, liquidity);
+        tokenId = _mintPosition();
 
-        uint32 base = hookSuggestedLockSecs; // or baseLockSecs[tier] if you want manager to own it
+        uint32 base = hookSuggestedLockSecs; // or baseLockSecs[tier] if you prefer
         uint64 until = uint64(block.timestamp) + (conservativeMode ? base * 2 : base);
         lockUntil[tokenId] = until;
         emit PositionLocked(tokenId, tier, until);
     }
 
-    // Example gate on your decrease/burn path
-    function decreaseLiquidity(/* params incl tokenId */) external {
-        uint256 tokenId = /* read from params */;
+    // Simple API so tests can call and hit the lock gate
+    function decreaseLiquidity(uint256 tokenId) external {
         if (block.timestamp < lockUntil[tokenId]) revert LOCK_ACTIVE();
-        _decrease(/* ... */);
+        _decrease(tokenId);
     }
 
-    // --- internal stubs bound to your existing NFPM / Router ---
-    function _mintPosition(address pool, address recipient, int24 a, int24 b, uint128 L)
-        internal returns (uint256 tokenId) { /* your existing mint path */ }
+    // --- internal stubs (replace with real NFPM integration when ready) ---
+    function _mintPosition() internal returns (uint256 tokenId) {
+        tokenId = ++_nextId;
+    }
 
-    function _decrease(/*...*/) internal { /* your existing burn/decrease path */ }
+    function _decrease(uint256 /*tokenId*/) internal {
+        // no-op in the stub
+    }
 }

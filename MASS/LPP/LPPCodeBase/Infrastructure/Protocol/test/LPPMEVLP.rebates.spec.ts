@@ -754,31 +754,65 @@ describe('canonical payouts match table per tier', () => {
       // Now it should pass
       await (manager as any).decreaseLiquidity({ tokenId, /* ... */ });
     });
-    it('conservative mode doubles the lock durations', async () => {
-      const { hook, minTick, maxTick, mintWithRebate } = await loadFixture(rebatesFixture);
-      const manager = await ethers.getContractAt('LPPPositionManager', await (await hook._manager()));
+it('conservative mode doubles the lock durations', async () => {
+  const { hook, minTick, maxTick, mintWithRebate } = await loadFixture(rebatesFixture);
 
-      await (manager as any).setConservativeMode(true);
+  // Manager address comes from the hook’s public var
+  const mgrAddr = await (hook as any).manager();
+  const manager = await ethers.getContractAt('LPPPositionManager', mgrAddr);
 
-      const r = await (await mintWithRebate({
-        hookAddress: await hook.getAddress(),
-        recipient: await wallet.getAddress(),
-        payer: await wallet.getAddress(),
-        tickLower: minTick, tickUpper: maxTick, liquidity: expandTo18Decimals(2),
-      })).wait();
+  // Turn on conservative mode (2x locks)
+  await (manager as any).setConservativeMode(true);
 
-      const tokenId = /* parse */;
-      // Travel *just under* the base lock → still locked because conservative doubled it
-      await ethers.provider.send('evm_increaseTime', [6 * 3600 - 60]);
-      await ethers.provider.send('evm_mine', []);
-      await expect((manager as any).decreaseLiquidity({ tokenId, /*...*/ }))
-        .to.be.revertedWithCustomError(manager, 'LOCK_ACTIVE');
+  // Mint via the hook
+  const tx = await mintWithRebate({
+    hookAddress: await hook.getAddress(),
+    recipient: await wallet.getAddress(),
+    payer: await wallet.getAddress(),
+    tickLower: minTick,
+    tickUpper: maxTick,
+    liquidity: expandTo18Decimals(2),
+  });
+  const receipt = await tx.wait();
 
-      // Travel the remaining time (doubling base) → unlocks
-      await ethers.provider.send('evm_increaseTime', [6 * 3600 + 120]);
-      await ethers.provider.send('evm_mine', []);
-      await (manager as any).decreaseLiquidity({ tokenId, /*...*/ });
-    });
+  // Parse tier from hook’s Qualified event
+  const hookIface = (hook as any).interface;
+  const qualified = receipt!.logs
+    .map((l: any) => { try { return hookIface.parseLog(l) } catch { return null } })
+    .find((p: any) => p && p.name === 'Qualified');
+  expect(qualified, 'Qualified event missing').to.not.eq(undefined);
+  const tier: number = Number(qualified!.args.tier);
+
+  // Parse tokenId + lockUntil from manager’s PositionLocked event
+  const mgrIface = (manager as any).interface;
+  const locked = receipt!.logs
+    .map((l: any) => { try { return mgrIface.parseLog(l) } catch { return null } })
+    .find((p: any) => p && p.name === 'PositionLocked');
+  expect(locked, 'PositionLocked event missing').to.not.eq(undefined);
+
+  const tokenId: bigint = locked!.args.tokenId as bigint;
+  const lockUntil: bigint = locked!.args.lockUntil as bigint;
+
+  // Assert that conservative mode doubled the base lock
+  const blk = await ethers.provider.getBlock(Number(receipt!.blockNumber));
+  const startTs = BigInt(blk!.timestamp);
+
+  // public uint32[4] lockSecs → getter lockSecs(uint256)
+  const base: bigint = BigInt(await (hook as any).lockSecs(tier));
+  expect(lockUntil - startTs, 'expected doubled lock').to.eq(base * 2n);
+
+  // Travel to just before lockUntil → still locked
+  const secondsToNear = Number(lockUntil - startTs - 60n);
+  await ethers.provider.send('evm_increaseTime', [secondsToNear]);
+  await ethers.provider.send('evm_mine', []);
+  await expect((manager as any).decreaseLiquidity(tokenId))
+    .to.be.revertedWithCustomError(manager, 'LOCK_ACTIVE');
+
+  // Travel past lockUntil → unlocks
+  await ethers.provider.send('evm_increaseTime', [120]);
+  await ethers.provider.send('evm_mine', []);
+  await (manager as any).decreaseLiquidity(tokenId);
+});
   });
 });
 })

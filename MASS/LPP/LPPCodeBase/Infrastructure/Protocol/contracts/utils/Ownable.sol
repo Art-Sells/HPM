@@ -1,6 +1,6 @@
 // contracts/utils/Ownable.sol
 // SPDX-License-Identifier: MIT
-pragma solidity =0.7.6;
+pragma solidity ^0.8.20;
 
 abstract contract Ownable {
     address public owner;
