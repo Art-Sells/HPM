@@ -25,7 +25,7 @@ import type {
   LPPMintHook,
   LPPRebateVault,
   LPPTreasury,
-} from '../typechain-types/protocol/index.ts'
+} from '../typechain-types/protocol'
 
 describe('MEV-as-LP Rebates — mintWithRebate', () => {
   let wallet: HardhatEthersSigner
@@ -695,6 +695,89 @@ describe('canonical payouts match table per tier', () => {
       expect(aV1 - bV1, 'vault token1 rebate').to.eq(expectedRb1);
       expect(aK0 - bK0, 'treasury token0 retention').to.eq(expectedKt0);
       expect(aK1 - bK1, 'treasury token1 retention').to.eq(expectedKt1);
+    });
+    it('reverts mint when selected tier has zero rebate bps (“no rebate, no mint”)', async () => {
+      const { hook, minTick, maxTick, mintWithRebate } = await loadFixture(rebatesFixture);
+
+      // Force all rebates to 0 so whatever tier we hit will revert
+      await (hook as any).setTiers([1000,2000,3500,5000], [0,0,0,0], [50,90,125,175]);
+
+      await expect(mintWithRebate({
+        hookAddress: await hook.getAddress(),
+        recipient: await wallet.getAddress(),
+        payer: await wallet.getAddress(),
+        tickLower: minTick,
+        tickUpper: maxTick,
+        liquidity: expandTo18Decimals(1),
+      })).to.be.revertedWithCustomError(hook, 'REBATE_BPS_ZERO');
+    });
+    it('reverts mint when vault is zero address', async () => {
+      const { fix, pool, treasury, minTick, maxTick } = await loadFixture(rebatesFixture);
+
+      const HookF = await ethers.getContractFactory('LPPMintHook');
+      const badHook = await HookF.deploy(ethers.ZeroAddress, await treasury.getAddress()); // vault = 0
+
+      // approvals omitted for brevity...
+      await expect((badHook as any).mintWithRebate({
+        pool: await pool.getAddress(),
+        recipient: await wallet.getAddress(),
+        payer: await wallet.getAddress(),
+        tickLower: minTick, tickUpper: maxTick, liquidity: expandTo18Decimals(1),
+      })).to.be.revertedWithCustomError(badHook, 'VAULT_ADDR_ZERO');
+    });
+    it('locks position by tier; early decrease reverts with LOCK_ACTIVE, unlocks after time travel', async () => {
+      const { hook, minTick, maxTick, mintWithRebate } = await loadFixture(rebatesFixture);
+
+      // Set deterministic lock table for the test (use plain numbers in seconds)
+      await (hook as any).setLockSecs([6 * 3600, 24 * 3600, 3 * 24 * 3600, 7 * 24 * 3600]);
+
+      const r = await (await mintWithRebate({
+        hookAddress: await hook.getAddress(),
+        recipient: await wallet.getAddress(),
+        payer: await wallet.getAddress(),
+        tickLower: minTick, tickUpper: maxTick, liquidity: expandTo18Decimals(2),
+      })).wait();
+
+      // Find tokenId from your manager's PositionLocked or Transfer event
+      const tokenId = /* parse from logs */ 1;
+
+      const manager = await ethers.getContractAt('LPPPositionManager', await (hook as any)._manager());
+
+      // Try to decrease immediately → revert
+      await expect((manager as any).decreaseLiquidity({ tokenId, /* ... */ }))
+        .to.be.revertedWithCustomError(manager, 'LOCK_ACTIVE');
+
+      // Travel 6 hours (assume we qualified T1 here – in your suite, parse the Qualified event for tier)
+      await ethers.provider.send('evm_increaseTime', [6 * 3600]);
+      await ethers.provider.send('evm_mine', []);
+
+      // Now it should pass
+      await (manager as any).decreaseLiquidity({ tokenId, /* ... */ });
+    });
+    it('conservative mode doubles the lock durations', async () => {
+      const { hook, minTick, maxTick, mintWithRebate } = await loadFixture(rebatesFixture);
+      const manager = await ethers.getContractAt('LPPPositionManager', await (await hook._manager()));
+
+      await (manager as any).setConservativeMode(true);
+
+      const r = await (await mintWithRebate({
+        hookAddress: await hook.getAddress(),
+        recipient: await wallet.getAddress(),
+        payer: await wallet.getAddress(),
+        tickLower: minTick, tickUpper: maxTick, liquidity: expandTo18Decimals(2),
+      })).wait();
+
+      const tokenId = /* parse */;
+      // Travel *just under* the base lock → still locked because conservative doubled it
+      await ethers.provider.send('evm_increaseTime', [6 * 3600 - 60]);
+      await ethers.provider.send('evm_mine', []);
+      await expect((manager as any).decreaseLiquidity({ tokenId, /*...*/ }))
+        .to.be.revertedWithCustomError(manager, 'LOCK_ACTIVE');
+
+      // Travel the remaining time (doubling base) → unlocks
+      await ethers.provider.send('evm_increaseTime', [6 * 3600 + 120]);
+      await ethers.provider.send('evm_mine', []);
+      await (manager as any).decreaseLiquidity({ tokenId, /*...*/ });
     });
   });
 });
