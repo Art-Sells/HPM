@@ -11,7 +11,7 @@
   - [x] Delete all **snapshots**, recompile and re‑test Periphery and Protocol — **Complete**
 - [X] **Implement MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention**  - **Complete**
   - [X] Wire periphery mint wrapper (**LPPMintHook**) to compute rebates & retentions - **Complete**
-  - [ ] Add/test conservative and time locking **In Progress**
+  - [ ] Add/test conservative time locking, and equal amounts of token minting **In Progress**
   - [ ] Re-test all spec tests
   - [ ] Fork MEV bot repos and testi arbitrage/rebate opportunities with tiny liquidity beginnings…
   - [ ] Emit events; index in Subgraph; spec tests - **In Progress**
