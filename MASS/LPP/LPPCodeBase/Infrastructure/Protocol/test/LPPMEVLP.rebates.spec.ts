@@ -25,6 +25,7 @@ import type {
   LPPMintHook,
   LPPRebateVault,
   LPPTreasury,
+  MockLPPPositionManager
 } from '../typechain-types/protocol'
 
 describe('MEV-as-LP Rebates — mintWithRebate', () => {
@@ -53,6 +54,13 @@ async function rebatesFixture() {
   const HookF = await ethers.getContractFactory('LPPMintHook')
   const hook = (await HookF.deploy(await vault.getAddress(), await treasury.getAddress())) as unknown as LPPMintHook
   await hook.waitForDeployment()
+
+  const ManagerF = await ethers.getContractFactory('MockLPPPositionManager');
+  const manager = await ManagerF.deploy();
+  await manager.waitForDeployment();
+
+  // set into the hook so locks are emitted during mint
+  await (hook as any).setManager(await manager.getAddress());
 
   // Create the pool with the hook baked in
   const pool: MockTimeLPPPool = await fix.createPool(
@@ -709,7 +717,7 @@ describe('canonical payouts match table per tier', () => {
         tickLower: minTick,
         tickUpper: maxTick,
         liquidity: expandTo18Decimals(1),
-      })).to.be.revertedWithCustomError(hook, 'REBATE_BPS_ZERO');
+      })).revertedWith('REBATE_BPS_ZERO')
     });
     it('reverts mint when vault is zero address', async () => {
       const { fix, pool, treasury, minTick, maxTick } = await loadFixture(rebatesFixture);
@@ -723,95 +731,161 @@ describe('canonical payouts match table per tier', () => {
         recipient: await wallet.getAddress(),
         payer: await wallet.getAddress(),
         tickLower: minTick, tickUpper: maxTick, liquidity: expandTo18Decimals(1),
-      })).to.be.revertedWithCustomError(badHook, 'VAULT_ADDR_ZERO');
+      })).revertedWith('VAULT_ADDR_ZERO')
     });
-    it('locks position by tier; early decrease reverts with LOCK_ACTIVE, unlocks after time travel', async () => {
-      const { hook, minTick, maxTick, mintWithRebate } = await loadFixture(rebatesFixture);
-
-      // Set deterministic lock table for the test (use plain numbers in seconds)
-      await (hook as any).setLockSecs([6 * 3600, 24 * 3600, 3 * 24 * 3600, 7 * 24 * 3600]);
-
-      const r = await (await mintWithRebate({
-        hookAddress: await hook.getAddress(),
-        recipient: await wallet.getAddress(),
-        payer: await wallet.getAddress(),
-        tickLower: minTick, tickUpper: maxTick, liquidity: expandTo18Decimals(2),
-      })).wait();
-
-      // Find tokenId from your manager's PositionLocked or Transfer event
-      const tokenId = /* parse from logs */ 1;
-
-      const manager = await ethers.getContractAt('LPPPositionManager', await (hook as any)._manager());
-
-      // Try to decrease immediately → revert
-      await expect((manager as any).decreaseLiquidity({ tokenId, /* ... */ }))
-        .to.be.revertedWithCustomError(manager, 'LOCK_ACTIVE');
-
-      // Travel 6 hours (assume we qualified T1 here – in your suite, parse the Qualified event for tier)
-      await ethers.provider.send('evm_increaseTime', [6 * 3600]);
-      await ethers.provider.send('evm_mine', []);
-
-      // Now it should pass
-      await (manager as any).decreaseLiquidity({ tokenId, /* ... */ });
-    });
-it('conservative mode doubles the lock durations', async () => {
+it('locks position by tier; early decrease reverts with LOCK_ACTIVE, unlocks after time travel', async () => {
   const { hook, minTick, maxTick, mintWithRebate } = await loadFixture(rebatesFixture);
 
-  // Manager address comes from the hook’s public var
-  const mgrAddr = await (hook as any).manager();
-  const manager = await ethers.getContractAt('LPPPositionManager', mgrAddr);
+  // Make lock durations deterministic per tier
+  await (hook as any).setLockSecs([6 * 3600, 24 * 3600, 3 * 24 * 3600, 7 * 24 * 3600]);
 
-  // Turn on conservative mode (2x locks)
-  await (manager as any).setConservativeMode(true);
-
-  // Mint via the hook
+  // Mint via hook (this triggers manager.lockFromHook(...) inside the hook)
   const tx = await mintWithRebate({
     hookAddress: await hook.getAddress(),
-    recipient: await wallet.getAddress(),
-    payer: await wallet.getAddress(),
-    tickLower: minTick,
-    tickUpper: maxTick,
-    liquidity: expandTo18Decimals(2),
+    recipient:   await wallet.getAddress(),
+    payer:       await wallet.getAddress(),
+    tickLower:   minTick,
+    tickUpper:   maxTick,
+    liquidity:   expandTo18Decimals(2),
   });
   const receipt = await tx.wait();
 
+  // Attach the actual manager that the hook points to
+  const mgrAddr: string = await (hook as any).manager();
+  const manager = await ethers.getContractAt('MockLPPPositionManager', mgrAddr);
+
   // Parse tier from hook’s Qualified event
+  const hookAddr = (await hook.getAddress()).toLowerCase();
   const hookIface = (hook as any).interface;
   const qualified = receipt!.logs
+    .filter((l: any) => l.address.toLowerCase() === hookAddr)
     .map((l: any) => { try { return hookIface.parseLog(l) } catch { return null } })
     .find((p: any) => p && p.name === 'Qualified');
   expect(qualified, 'Qualified event missing').to.not.eq(undefined);
   const tier: number = Number(qualified!.args.tier);
 
-  // Parse tokenId + lockUntil from manager’s PositionLocked event
+  // Parse PositionLocked from the MANAGER address
   const mgrIface = (manager as any).interface;
   const locked = receipt!.logs
+    .filter((l: any) => l.address.toLowerCase() === mgrAddr.toLowerCase())
     .map((l: any) => { try { return mgrIface.parseLog(l) } catch { return null } })
     .find((p: any) => p && p.name === 'PositionLocked');
   expect(locked, 'PositionLocked event missing').to.not.eq(undefined);
 
-  const tokenId: bigint = locked!.args.tokenId as bigint;
+  const tokenId: bigint   = locked!.args.tokenId as bigint;
   const lockUntil: bigint = locked!.args.lockUntil as bigint;
 
-  // Assert that conservative mode doubled the base lock
-  const blk = await ethers.provider.getBlock(Number(receipt!.blockNumber));
-  const startTs = BigInt(blk!.timestamp);
+  // Compute base seconds from block timestamp and hook’s table
+  const blk    = await ethers.provider.getBlock(Number(receipt!.blockNumber));
+  const start  = BigInt(blk!.timestamp);
+  const base   = BigInt(await (hook as any).lockSecs(tier));
+  expect(lockUntil - start, 'base lock duration mismatch').to.eq(base);
 
-  // public uint32[4] lockSecs → getter lockSecs(uint256)
-  const base: bigint = BigInt(await (hook as any).lockSecs(tier));
-  expect(lockUntil - startTs, 'expected doubled lock').to.eq(base * 2n);
-
-  // Travel to just before lockUntil → still locked
-  const secondsToNear = Number(lockUntil - startTs - 60n);
-  await ethers.provider.send('evm_increaseTime', [secondsToNear]);
+  // Before expiry → must revert
+  const near = Number(base - 60n);
+  await ethers.provider.send('evm_increaseTime', [near]);
   await ethers.provider.send('evm_mine', []);
   await expect((manager as any).decreaseLiquidity(tokenId))
     .to.be.revertedWithCustomError(manager, 'LOCK_ACTIVE');
 
-  // Travel past lockUntil → unlocks
+  // After expiry → succeeds (NOTE: pass plain uint256, not an object)
   await ethers.provider.send('evm_increaseTime', [120]);
   await ethers.provider.send('evm_mine', []);
   await (manager as any).decreaseLiquidity(tokenId);
+});
+it('conservative mode doubles the lock durations', async () => {
+  const { hook, minTick, maxTick, mintWithRebate } = await loadFixture(rebatesFixture);
+
+  // Attach manager and enable conservative mode (2x durations)
+  const mgrAddr: string = await (hook as any).manager();
+  const manager = await ethers.getContractAt('MockLPPPositionManager', mgrAddr);
+  await (manager as any).setConservativeMode(true);
+
+  // Same deterministic table
+  await (hook as any).setLockSecs([6 * 3600, 24 * 3600, 3 * 24 * 3600, 7 * 24 * 3600]);
+
+  // Mint via hook (triggers manager.lockFromHook(...))
+  const tx = await mintWithRebate({
+    hookAddress: await hook.getAddress(),
+    recipient:   await wallet.getAddress(),
+    payer:       await wallet.getAddress(),
+    tickLower:   minTick,
+    tickUpper:   maxTick,
+    liquidity:   expandTo18Decimals(2),
+  });
+  const receipt = await tx.wait();
+
+  // Parse tier from hook’s Qualified
+  const hookAddr = (await hook.getAddress()).toLowerCase();
+  const hookIface = (hook as any).interface;
+  const qualified = receipt!.logs
+    .filter((l: any) => l.address.toLowerCase() === hookAddr)
+    .map((l: any) => { try { return hookIface.parseLog(l) } catch { return null } })
+    .find((p: any) => p && p.name === 'Qualified');
+  expect(qualified, 'Qualified event missing').to.not.eq(undefined);
+  const tier: number = Number(qualified!.args.tier);
+
+  // Parse PositionLocked from manager
+  const mgrIface = (manager as any).interface;
+  const locked = receipt!.logs
+    .filter((l: any) => l.address.toLowerCase() === mgrAddr.toLowerCase())
+    .map((l: any) => { try { return mgrIface.parseLog(l) } catch { return null } })
+    .find((p: any) => p && p.name === 'PositionLocked');
+  expect(locked, 'PositionLocked event missing').to.not.eq(undefined);
+
+  const tokenId: bigint   = locked!.args.tokenId as bigint;
+  const lockUntil: bigint = locked!.args.lockUntil as bigint;
+
+  // Assert doubled duration
+  const blk    = await ethers.provider.getBlock(Number(receipt!.blockNumber));
+  const start  = BigInt(blk!.timestamp);
+  const base   = BigInt(await (hook as any).lockSecs(tier));
+  expect(lockUntil - start, 'expected doubled lock').to.eq(base * 2n);
+
+  // Still locked just before doubled expiry
+  const near = Number(base * 2n - 60n);
+  await ethers.provider.send('evm_increaseTime', [near]);
+  await ethers.provider.send('evm_mine', []);
+  await expect((manager as any).decreaseLiquidity(tokenId))
+    .to.be.revertedWithCustomError(manager, 'LOCK_ACTIVE');
+
+  // After doubled expiry → succeeds (again, pass plain uint256)
+  await ethers.provider.send('evm_increaseTime', [120]);
+  await ethers.provider.send('evm_mine', []);
+  await (manager as any).decreaseLiquidity(tokenId);
+});
+it('reverts single-sided mints: range must straddle current tick (both tokens > 0)', async () => {
+  const { pool, hook, fix, ts, mintWithRebate } = await loadFixture(rebatesFixture);
+  const hookAddr = await hook.getAddress();
+
+  const lower = +10 * ts;
+  const upper = +20 * ts;
+
+  await expect(mintWithRebate({
+    hookAddress: hookAddr,
+    recipient: await wallet.getAddress(),
+    payer: await wallet.getAddress(),
+    tickLower: lower,
+    tickUpper: upper,
+    liquidity: expandTo18Decimals(1),
+  })).to.be.revertedWith('RANGE_NOT_STRADDLE');
+});
+
+it('reverts imbalanced mints by value (IMBALANCED_MINT)', async () => {
+  const { pool, hook, ts, mintWithRebate } = await loadFixture(rebatesFixture);
+  const hookAddr = await hook.getAddress();
+
+  const lower = -200 * ts;
+  const upper =  +10 * ts;
+
+  await expect(mintWithRebate({
+    hookAddress: hookAddr,
+    recipient: await wallet.getAddress(),
+    payer: await wallet.getAddress(),
+    tickLower: lower,
+    tickUpper: upper,
+    liquidity: expandTo18Decimals(2),
+  })).to.be.revertedWith('IMBALANCED_MINT');
 });
   });
 });
