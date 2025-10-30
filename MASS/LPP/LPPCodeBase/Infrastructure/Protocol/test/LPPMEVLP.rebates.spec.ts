@@ -36,68 +36,68 @@ describe('MEV-as-LP Rebates — mintWithRebate', () => {
     ;[wallet, alice, bob] = (await ethers.getSigners()) as HardhatEthersSigner[]
   })
 
-  async function rebatesFixture() {
-    // Base protocol fixture (tokens, factory, callee, etc.)
-    const fix = await (poolFixture as any)([wallet], ethers.provider)
 
-    // Deploy vault + treasury
-    const RebateVaultF = await ethers.getContractFactory('LPPRebateVault')
-    const vault = (await RebateVaultF.deploy(await wallet.getAddress())) as unknown as LPPRebateVault
-    await vault.waitForDeployment()
+async function rebatesFixture() {
+  const fix = await (poolFixture as any)([wallet], ethers.provider)
 
-    let treasury: LPPTreasury
-    try {
-      const T1 = await ethers.getContractFactory('LPPTreasury')
-      treasury = (await T1.deploy(await wallet.getAddress())) as unknown as LPPTreasury
-      await treasury.waitForDeployment()
-    } catch {
-      const T0 = await ethers.getContractFactory('LPPTreasury')
-      treasury = (await T0.deploy()) as unknown as LPPTreasury
-      await treasury.waitForDeployment()
-    }
+  // Deploy vault + treasury (unchanged)
+  const RebateVaultF = await ethers.getContractFactory('LPPRebateVault')
+  const vault = (await RebateVaultF.deploy(await wallet.getAddress())) as unknown as LPPRebateVault
+  await vault.waitForDeployment()
 
-    // Deploy the canonical hook
-    const HookF = await ethers.getContractFactory('LPPMintHook')
-    const hook = (await HookF.deploy(await vault.getAddress(), await treasury.getAddress())) as unknown as LPPMintHook
-    await hook.waitForDeployment()
+  let treasury = (await (await ethers.getContractFactory('LPPTreasury'))
+    .deploy(await wallet.getAddress())) as unknown as LPPTreasury
+  await treasury.waitForDeployment()
 
-    // NOW create the pool (pass hook in case deployer requires it)
-    const pool: MockTimeLPPPool = await fix.createPool(
-      FeeAmount.ZERO,
-      TICK_SPACINGS[FeeAmount.ZERO],
-      undefined,
-      undefined,
-      await hook.getAddress()            // <-- pass to fixture
-    )
+  // Deploy the canonical hook
+  const HookF = await ethers.getContractFactory('LPPMintHook')
+  const hook = (await HookF.deploy(await vault.getAddress(), await treasury.getAddress())) as unknown as LPPMintHook
+  await hook.waitForDeployment()
 
-    // Initialize @ price = 1.0
-    await pool.initialize(encodePriceSqrt(1n, 1n))
+  // Create the pool with the hook baked in
+  const pool: MockTimeLPPPool = await fix.createPool(
+    FeeAmount.ZERO,
+    TICK_SPACINGS[FeeAmount.ZERO],
+    undefined,
+    undefined,
+    await hook.getAddress()
+  )
 
-    const ts = TICK_SPACINGS[FeeAmount.ZERO]
-    const minTick = getMinTick(ts)
-    const maxTick = getMaxTick(ts)
+  // Initialize @ price = 1.0
+  await pool.initialize(encodePriceSqrt(1n, 1n))
 
-    // Helpers stay the same…
-    const { mintWithRebate } = createRebateFunctions({ pool, token0: fix.token0, token1: fix.token1 })
-    const { attemptDirectMint, mint: legacyCalleeMint } = createPoolFunctions({
-      supplicateTarget: fix.supplicateTargetCallee,
-      token0: fix.token0,
-      token1: fix.token1,
-      pool,
-    })
+  const ts = TICK_SPACINGS[FeeAmount.ZERO]
+  const minTick = getMinTick(ts)
+  const maxTick = getMaxTick(ts)
 
-    // Baseline TVL via HOOK
-    const L0 = expandTo18Decimals(10)
-    await (await mintWithRebate({
-      hookAddress: await hook.getAddress(),
-      recipient: await wallet.getAddress(),
-      tickLower: minTick,
-      tickUpper: maxTick,
-      liquidity: L0,
-    })).wait()
+  // 🔧 NEW: approvals for hook to pull from our wallet (payer)
+  const hookAddr = await hook.getAddress()
+  await fix.token0.approve(hookAddr, ethers.MaxUint256)
+  await fix.token1.approve(hookAddr, ethers.MaxUint256)
 
-    return { fix, pool, hook, vault, treasury, ts, minTick, maxTick, L0, mintWithRebate, attemptDirectMint, legacyCalleeMint }
-  }
+  const { mintWithRebate } = createRebateFunctions({ pool, token0: fix.token0, token1: fix.token1 })
+  const { attemptDirectMint, mint: legacyCalleeMint } = createPoolFunctions({
+    supplicateTarget: fix.supplicateTargetCallee,
+    token0: fix.token0,
+    token1: fix.token1,
+    pool,
+  })
+
+  // Baseline TVL via HOOK
+  const L0 = expandTo18Decimals(10)
+
+  // 🔧 NEW: pass payer explicitly (the wallet) so hook knows who to pull from
+  await (await mintWithRebate({
+    hookAddress: hookAddr,
+    recipient: await wallet.getAddress(),
+    payer:     await wallet.getAddress(),   // <— important
+    tickLower: minTick,
+    tickUpper: maxTick,
+    liquidity: L0,
+  })).wait()
+
+  return { fix, pool, hook, vault, treasury, ts, minTick, maxTick, L0, mintWithRebate, attemptDirectMint, legacyCalleeMint }
+}
 
   // ---------------- Existing tests (unchanged behavior-wise) ----------------
 

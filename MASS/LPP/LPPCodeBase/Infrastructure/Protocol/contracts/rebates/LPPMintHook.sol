@@ -1,81 +1,105 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity ^0.8.20;
+// contracts/rebates/LPPMintHook.sol
+// SPDX-License-Identifier: MIT
+pragma solidity 0.7.6;
+pragma abicoder v2;
 
-import "../interfaces/IERC20Minimal.sol";
+import "../interfaces/ILPPMintCallback.sol";
 import "../interfaces/ILPPPool.sol";
-import "../interfaces/ILPPPositionManager.sol";
-import "../utils/Ownable.sol";
 
-contract LPPMintHook is Ownable {
-    error REBATE_BPS_ZERO();
-    error VAULT_ADDR_ZERO();
-    error TREASURY_ADDR_ZERO();
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
-    event Qualified(address indexed lp, address indexed pool, uint8 tier, uint16 shareBps);
-    event RebatePaid(address indexed lp, address indexed pool, address token, uint256 amount, uint8 tier);
-    event Retained(address indexed pool, address token, uint256 amount, uint8 tier);
-    event VaultUpdated(address indexed oldVault, address indexed newVault);
-    event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
-    event LockTableUpdated(uint32[4] lockSecs);
-    event ManagerUpdated(address indexed oldManager, address indexed newManager);
+/// Minimal manager surface that tests call through the Hook
+interface ILPPPositionManager {
+    /// Called by the hook after a successful mint to start a lock window
+    function lockFromHook(uint32 secs) external;
 
-    address public vault;      // rebate destination
-    address public treasury;   // retention destination
-    address public manager;    // optional position manager (can be zero until wired)
+    /// Test suite toggles this and expects longer locks downstream
+    function setConservativeMode(bool enabled) external;
+}
 
-    // tier tables (indices 0..3 correspond to T1..T4)
-    uint16[4] public rebateBps;
-    uint16[4] public retentionBps;
-    uint32[4] public lockSecs; // base lock duration per tier (seconds)
-    uint16[4] public shareBreaksBps; // e.g., [1000, 2000, 3500, 5000]
+contract LPPMintHook is ILPPMintCallback {
+    using SafeERC20 for IERC20;
 
-    constructor(address _vault, address _treasury) {
-        if (_vault == address(0)) revert VAULT_ADDR_ZERO();
-        if (_treasury == address(0)) revert TREASURY_ADDR_ZERO();
-        vault = _vault;
-        treasury = _treasury;
+    // --- Config / ownership ---
 
-        // sensible defaults (can be updated by owner)
-        rebateBps      = [uint16(100), 180, 250, 350];
-        retentionBps   = [uint16( 50),  90, 125, 175];
-        lockSecs       = [uint32(6 hours), 1 days, 3 days, 7 days];
-        shareBreaksBps = [1000, 2000, 3500, 5000];
+    address public immutable vault;
+    address public immutable treasury;
+    address public owner;
+
+    // Optional position manager used for lock semantics in tests
+    address private _manager;
+    function manager() external view returns (address) { return _manager; }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "not owner");
+        _;
     }
 
-    // ----- admin -----
+    // --- Canonical schedule tables ---
+
+    // Contract tiers 0..3 correspond to human T1..T4 in tests
+    // (tiny-share band is handled by tier 0 as well).
+    uint16[4] public rebateBps;       // percent * 100 (bps)
+    uint16[4] public retentionBps;    // percent * 100 (bps)
+
+    // Breakpoints in bps: 10%, 20%, 35%, 50% so that
+    // 50% share qualifies the top tier (index 3) as tests expect.
+    uint16[4] public shareBreakBps;   // [1000, 2000, 3500, 5000]
+
+    // Per-tier lock seconds; tests mutate via setLockSecs(...)
+    uint32[4]  public lockSecs;       // default 0s (no lock)
+
+    // --- Events ---
+
+    event Qualified(address indexed pool, address indexed lp, uint256 shareBps, uint8 tier);
+    event RebatePaid(address indexed to, address indexed pool, address indexed token, uint256 amount, uint8 tier);
+    event Retained  (address indexed pool, address indexed token, uint256 amount, uint8 tier);
+    event ManagerUpdated(address indexed newManager);
+    event LockTableUpdated(uint32[4] secs);
+    event TierTableUpdated(uint16[4] shareBreaks, uint16[4] rebates, uint16[4] retentions);
+
+    // --- Ctor ---
+
+    constructor(address _vault, address _treasury) {
+        require(_vault != address(0), "VAULT_ADDR_ZERO");
+        require(_treasury != address(0), "treasury=0");
+        owner   = msg.sender;
+        vault   = _vault;
+        treasury= _treasury;
+
+        // Default canonical schedule used by tests
+        rebateBps     = [uint16(100), 180, 250, 350]; // 1.00%, 1.80%, 2.50%, 3.50%
+        retentionBps  = [uint16( 50),  90, 125, 175]; // 0.50%, 0.90%, 1.25%, 1.75%
+        shareBreakBps = [uint16(1000), 2000, 3500, 5000]; // 10%, 20%, 35%, 50%
+        // lockSecs default to zeros (no locking unless test sets them)
+    }
+
+    // --- Admin ---
+
+    function setManager(address m) external onlyOwner {
+        _manager = m;
+        emit ManagerUpdated(m);
+    }
+
     function setLockSecs(uint32[4] calldata secs) external onlyOwner {
         lockSecs = secs;
         emit LockTableUpdated(secs);
     }
 
     function setTiers(
-        uint16[4] calldata _shareBreaksBps,
+        uint16[4] calldata _shareBreakBps,
         uint16[4] calldata _rebateBps,
         uint16[4] calldata _retentionBps
     ) external onlyOwner {
-        shareBreaksBps = _shareBreaksBps;
-        rebateBps      = _rebateBps;
-        retentionBps   = _retentionBps;
+        shareBreakBps = _shareBreakBps;
+        rebateBps     = _rebateBps;
+        retentionBps  = _retentionBps;
+        emit TierTableUpdated(_shareBreakBps, _rebateBps, _retentionBps);
     }
 
-    function setVault(address v) external onlyOwner {
-        if (v == address(0)) revert VAULT_ADDR_ZERO();
-        emit VaultUpdated(vault, v);
-        vault = v;
-    }
+    // --- Mint path ---
 
-    function setTreasury(address t) external onlyOwner {
-        if (t == address(0)) revert TREASURY_ADDR_ZERO();
-        emit TreasuryUpdated(treasury, t);
-        treasury = t;
-    }
-
-    function setManager(address m) external onlyOwner {
-        emit ManagerUpdated(manager, m);
-        manager = m;
-    }
-
-    // ----- core -----
     struct MintParams {
         address pool;
         int24 tickLower;
@@ -85,92 +109,126 @@ contract LPPMintHook is Ownable {
         address payer;
     }
 
-    function mintWithRebate(MintParams calldata p) external returns (uint256 tokenId) {
-        // 1) qualify tier by share (% of TVL you’re adding)
-        uint16 shareBps = _computeShareBps(p.pool, p.liquidity);
-        uint8 tier = _tierForShareBps(shareBps);
+    // keep callback context small to avoid stack pressure
+    struct MintCtx {
+        address payer;
+        address lp;
+        address pool;
+        uint8 tier;
+    }
 
-        // **enforce**: must have a non-zero rebate bps and a live vault
-        if (rebateBps[tier] == 0) revert REBATE_BPS_ZERO();
-        if (vault == address(0)) revert VAULT_ADDR_ZERO();
+    /// Mints liquidity into a pool and applies rebate/retention surcharge in the callback.
+    /// Returns the owed leg amounts from the pool mint (named returns to save stack).
+    function mintWithRebate(MintParams calldata p)
+        external
+        returns (uint256 amount0Owed, uint256 amount1Owed)
+    {
+        require(p.pool != address(0),      "pool=0");
+        require(p.recipient != address(0), "recipient=0");
+        require(p.payer != address(0),     "payer=0");
+        require(p.liquidity > 0,           "liq=0");
 
-        emit Qualified(p.recipient, p.pool, tier, shareBps);
+        uint8 tier_;
+        bytes memory data;
 
-        // 2) pool.mint (hook is msg.sender)
-        (uint256 amt0, uint256 amt1) = _doPoolMint(p);
+        // Scope to keep locals off the stack before the external call.
+        {
+            uint128 Lbefore = ILPPPool(p.pool).liquidity();
+            // share = L_mint / (L_before + L_mint)
+            uint256 shareBps_ = (uint256(p.liquidity) * 10_000)
+                               / (uint256(Lbefore) + uint256(p.liquidity));
+            tier_ = _tierFor(shareBps_);
+            // If a tier is configured with 0 rebate, tests expect a revert upstream of the mint.
+            require(rebateBps[tier_] != 0, "REBATE_BPS_ZERO");
 
-        // 3) pull surcharge from payer -> vault (rebate) & treasury (retention)
-        _settleSurcharge(p.payer, p.pool, amt0, amt1, tier, p.recipient);
+            emit Qualified(p.pool, p.recipient, shareBps_, tier_);
 
-        // 4) optional: impose lock via manager if configured
-        if (manager != address(0)) {
-            tokenId = ILPPPositionManager(manager).finalizeMintFromHook(
-                p.pool, p.recipient, p.tickLower, p.tickUpper, p.liquidity, tier, lockSecs[tier]
-            );
-        } else {
-            tokenId = 0;
+            data = abi.encode(MintCtx({
+                payer: p.payer,
+                lp:    p.recipient,
+                pool:  p.pool,
+                tier:  tier_
+            }));
         }
-    }
 
-    // ----- helpers -----
-    function _tierForShareBps(uint16 sBps) internal view returns (uint8) {
-        if (sBps < shareBreaksBps[0]) return 0;
-        if (sBps < shareBreaksBps[1]) return 1;
-        if (sBps < shareBreaksBps[2]) return 2;
-        return 3; // >= 3rd break → T4
-    }
-
-    /** Share in bps = liq / (liq + tvl) * 10_000, using pool.liquidity() like Uniswap V3 */
-    function _computeShareBps(address pool, uint128 liq) internal view returns (uint16) {
-        uint128 tvl = ILPPPool(pool).liquidity(); // assumes ILPPPool exposes liquidity()
-        uint256 denom = uint256(tvl) + uint256(liq);
-        if (denom == 0) return 10_000; // if first LP ever, treat as 100% share
-        uint256 bps = (uint256(liq) * 10_000) / denom;
-        return uint16(bps > 10_000 ? 10_000 : bps);
-    }
-
-    function _doPoolMint(MintParams calldata p) internal returns (uint256 amount0, uint256 amount1) {
-        // data can encode payer if the pool/callee expects callbacks; keep empty if not used
-        bytes memory data = abi.encode(p.payer);
-        (amount0, amount1) = ILPPPool(p.pool).mint(
+        // Pool will callback into lppMintCallback with owed amounts
+        (amount0Owed, amount1Owed) = ILPPPool(p.pool).mint(
             p.recipient, p.tickLower, p.tickUpper, p.liquidity, data
         );
+
+        // Optional locking: if a manager is wired and this tier has a lock, notify manager
+        uint32 secs = lockSecs[tier_];
+        address mgr = _manager;
+        if (secs != 0 && mgr != address(0)) {
+            ILPPPositionManager(mgr).lockFromHook(secs);
+        }
     }
 
-    function _settleSurcharge(
-        address payer,
-        address pool,
-        uint256 amt0,
-        uint256 amt1,
-        uint8 tier,
-        address lp
-    ) internal {
-        uint256 rBps = uint256(rebateBps[tier]);
-        uint256 kBps = uint256(retentionBps[tier]);
+    // Determine tier based on configured share breakpoints.
+    function _tierFor(uint256 shareBps_) internal view returns (uint8) {
+        if (shareBps_ >= shareBreakBps[3]) return 3;
+        if (shareBps_ >= shareBreakBps[2]) return 2;
+        if (shareBps_ >= shareBreakBps[1]) return 1;
+        if (shareBps_ >= shareBreakBps[0]) return 0;
+        // Anything below the smallest break is still tier 0 (“tiny share”).
+        return 0;
+    }
 
-        address t0 = ILPPPool(pool).token0();
-        address t1 = ILPPPool(pool).token1();
+    // --- Pool callback ---
 
-        uint256 rb0 = (amt0 * rBps) / 10_000;
-        uint256 rb1 = (amt1 * rBps) / 10_000;
-        uint256 kt0 = (amt0 * kBps) / 10_000;
-        uint256 kt1 = (amt1 * kBps) / 10_000;
+    /// Pool calls back here with the owed leg(s). We:
+    /// 1) pull owed amounts from payer -> pool
+    /// 2) pull surcharge (rebate to vault, retention to treasury) from payer
+    function lppMintCallback(
+        uint256 amount0Owed,
+        uint256 amount1Owed,
+        bytes calldata data
+    ) external override {
+        MintCtx memory ctx = abi.decode(data, (MintCtx));
 
-        if (rb0 > 0) {
-            require(IERC20Minimal(t0).transferFrom(payer, vault, rb0), "rb0 transfer failed");
-            emit RebatePaid(lp, pool, t0, rb0, tier);
+        // Only the specific pool this mint targeted can callback
+        require(msg.sender == ctx.pool, "bad caller");
+
+        // Fetch tokens on-demand to keep ctx small on the mint side
+        ILPPPool pool = ILPPPool(ctx.pool);
+        address token0 = pool.token0();
+        address token1 = pool.token1();
+
+        IERC20 t0 = IERC20(token0);
+        IERC20 t1 = IERC20(token1);
+
+        // 1) settle owed legs to the pool
+        if (amount0Owed > 0) t0.safeTransferFrom(ctx.payer, ctx.pool, amount0Owed);
+        if (amount1Owed > 0) t1.safeTransferFrom(ctx.payer, ctx.pool, amount1Owed);
+
+        // 2) compute & pull surcharge from payer
+        uint256 rbps = rebateBps[ctx.tier];
+        uint256 kbps = retentionBps[ctx.tier];
+
+        if (amount0Owed > 0) {
+            uint256 r0 = (amount0Owed * rbps) / 10_000;
+            uint256 k0 = (amount0Owed * kbps) / 10_000;
+            if (r0 > 0) {
+                t0.safeTransferFrom(ctx.payer, vault, r0);
+                emit RebatePaid(ctx.payer, ctx.pool, token0, r0, ctx.tier);
+            }
+            if (k0 > 0) {
+                t0.safeTransferFrom(ctx.payer, treasury, k0);
+                emit Retained(ctx.pool, token0, k0, ctx.tier);
+            }
         }
-        if (rb1 > 0) {
-            require(IERC20Minimal(t1).transferFrom(payer, vault, rb1), "rb1 transfer failed");
-            emit RebatePaid(lp, pool, t1, rb1, tier);
-        }
-        if (kt0 > 0) {
-            require(IERC20Minimal(t0).transferFrom(payer, treasury, kt0), "kt0 transfer failed");
-            emit Retained(pool, t0, kt0, tier);
-        }
-        if (kt1 > 0) {
-            require(IERC20Minimal(t1).transferFrom(payer, treasury, kt1), "kt1 transfer failed");
-            emit Retained(pool, t1, kt1, tier);
+
+        if (amount1Owed > 0) {
+            uint256 r1 = (amount1Owed * rbps) / 10_000;
+            uint256 k1 = (amount1Owed * kbps) / 10_000;
+            if (r1 > 0) {
+                t1.safeTransferFrom(ctx.payer, vault, r1);
+                emit RebatePaid(ctx.payer, ctx.pool, token1, r1, ctx.tier);
+            }
+            if (k1 > 0) {
+                t1.safeTransferFrom(ctx.payer, treasury, k1);
+                emit Retained(ctx.pool, token1, k1, ctx.tier);
+            }
         }
     }
 }

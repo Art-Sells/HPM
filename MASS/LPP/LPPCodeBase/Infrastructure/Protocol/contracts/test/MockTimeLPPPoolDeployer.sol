@@ -29,7 +29,7 @@ contract MockTimeLPPPoolDeployer is ILPPPoolDeployer {
     ) external returns (address pool) {
         parameters = Parameters({factory: factory, token0: token0, token1: token1, fee: fee, tickSpacing: tickSpacing, mintHook: mintHook});
         pool = address(
-            new MockTimeLPPPool{salt: keccak256(abi.encodePacked(token0, token1, fee, tickSpacing))}()
+            new MockTimeLPPPool{salt: keccak256(abi.encodePacked(token0, token1, fee, tickSpacing, mintHook))}()
         );
         emit PoolDeployed(pool);
         delete parameters;
