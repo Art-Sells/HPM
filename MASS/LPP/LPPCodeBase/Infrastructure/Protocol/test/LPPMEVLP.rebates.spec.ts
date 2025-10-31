@@ -38,6 +38,9 @@ describe('MEV-as-LP Rebates — mintWithRebate', () => {
   })
 
 
+
+
+
 async function rebatesFixture() {
   const fix = await (poolFixture as any)([wallet], ethers.provider)
 
@@ -105,6 +108,35 @@ async function rebatesFixture() {
   })).wait()
 
   return { fix, pool, hook, vault, treasury, ts, minTick, maxTick, L0, mintWithRebate, attemptDirectMint, legacyCalleeMint }
+}
+
+function valueDiffBps(
+  amount0: bigint,
+  amount1: bigint,
+  sqrtPriceX96: bigint,
+  dec0: number,
+  dec1: number
+) {
+  // token1 per token0 in Q192
+  const Q192 = (1n << 192n)
+  const pxQ192 = (sqrtPriceX96 * sqrtPriceX96) // Q192
+
+  // adjust for decimals (same as hook)
+  let px = pxQ192
+  if (dec1 >= dec0) {
+    px = px * BigInt(10 ** (dec1 - dec0))
+  } else {
+    px = px / BigInt(10 ** (dec0 - dec1))
+  }
+
+  // value(token0) measured in token1 units
+  const v0 = (amount0 * px) / Q192
+  const v1 = amount1
+
+  const hi = v0 > v1 ? v0 : v1
+  const lo = v0 > v1 ? v1 : v0
+  const diffBps = Number((hi - lo) * 10_000n / hi)
+  return { v0, v1, diffBps }
 }
 
   // ---------------- Existing tests (unchanged behavior-wise) ----------------
@@ -273,41 +305,78 @@ async function rebatesFixture() {
     expect(Number(q!.args.tier)).to.eq(3)
   })
 
-  it('single-sided mint: price below range → only token0 owed (only token0 surcharge)', async () => {
-    const { fix, pool, hook, mintWithRebate, ts } = await loadFixture(rebatesFixture)
-    const lp = await wallet.getAddress()
-    const hookAddr = await hook.getAddress()
+// test/LPPMEVLP.rebates.spec.ts  (replace the two "single-sided mint ..." tests)
 
-    const lower = 10 * ts
-    const upper = 100 * ts
+it('double-sided mint: straddles current tick → both tokens owed and ≈balanced', async () => {
+  const { fix, pool, hook, ts, mintWithRebate } = await loadFixture(rebatesFixture)
+  const lp = await wallet.getAddress()
+  const hookAddr = await hook.getAddress()
 
-    const receipt = await (await mintWithRebate({
-      hookAddress: hookAddr, recipient: lp, tickLower: lower, tickUpper: upper, liquidity: expandTo18Decimals(1),
-    })).wait()
+  // Make a narrow, symmetric range around current tick so both legs are > 0
+  const lower = -10 * ts
+  const upper =  +10 * ts
 
-    const hookIface = (hook as any).interface
-    const logs = receipt!.logs.map((l: any) => { try { return hookIface.parseLog(l) } catch { return null } }).filter(Boolean) as any[]
-    const rebates = logs.filter(l => l.name === 'RebatePaid')
-    expect(rebates.length).to.eq(1)
-  })
+  const receipt = await (await mintWithRebate({
+    hookAddress: hookAddr,
+    recipient: lp,
+    payer: lp,
+    tickLower: lower,
+    tickUpper: upper,
+    liquidity: expandTo18Decimals(1),
+  })).wait()
 
-  it('single-sided mint: price above range → only token1 owed (only token1 surcharge)', async () => {
-    const { fix, pool, hook, mintWithRebate, ts } = await loadFixture(rebatesFixture)
-    const lp = await wallet.getAddress()
-    const hookAddr = await hook.getAddress()
+  const poolIface = (pool as any).interface
+  const mintEvt = receipt!.logs
+    .map((l: any) => { try { return poolIface.parseLog(l) } catch { return null } })
+    .find((p: any) => p && p.name === 'Mint')
+  expect(mintEvt, 'Mint event missing').to.not.eq(undefined)
 
-    const lower = -100 * ts
-    const upper = -10 * ts
+  const amount0: bigint = mintEvt!.args.amount0 as bigint
+  const amount1: bigint = mintEvt!.args.amount1 as bigint
+  expect(amount0).to.be.gt(0n)
+  expect(amount1).to.be.gt(0n)
 
-    const receipt = await (await mintWithRebate({
-      hookAddress: hookAddr, recipient: lp, tickLower: lower, tickUpper: upper, liquidity: expandTo18Decimals(1),
-    })).wait()
+  // Optional: mirror the hook’s ±2% check in the test (defensive)
+  const slot = await pool.slot0()
+  const sqrtPriceX96: bigint = slot.sqrtPriceX96
+  const dec0 = 18, dec1 = 18 // your TestERC20s are 18 by default
+  const { diffBps } = valueDiffBps(amount0, amount1, sqrtPriceX96, dec0, dec1)
+  expect(diffBps).to.be.lte(200) // ≤ balanceTolBps
+})
 
-    const hookIface = (hook as any).interface
-    const logs = receipt!.logs.map((l: any) => { try { return hookIface.parseLog(l) } catch { return null } }).filter(Boolean) as any[]
-    const rebates = logs.filter(l => l.name === 'RebatePaid')
-    expect(rebates.length).to.eq(1)
-  })
+it('reverts single-sided (price below range): RANGE_NOT_STRADDLE', async () => {
+  const { hook, ts, mintWithRebate } = await loadFixture(rebatesFixture)
+  const hookAddr = await hook.getAddress()
+
+  const lower = 10 * ts
+  const upper = 100 * ts
+
+  await expect(mintWithRebate({
+    hookAddress: hookAddr,
+    recipient: await wallet.getAddress(),
+    payer: await wallet.getAddress(),
+    tickLower: lower,
+    tickUpper: upper,
+    liquidity: expandTo18Decimals(1),
+  })).to.be.revertedWith('RANGE_NOT_STRADDLE')
+})
+
+it('reverts single-sided (price above range): RANGE_NOT_STRADDLE', async () => {
+  const { hook, ts, mintWithRebate } = await loadFixture(rebatesFixture)
+  const hookAddr = await hook.getAddress()
+
+  const lower = -100 * ts
+  const upper =  -10 * ts
+
+  await expect(mintWithRebate({
+    hookAddress: hookAddr,
+    recipient: await wallet.getAddress(),
+    payer: await wallet.getAddress(),
+    tickLower: lower,
+    tickUpper: upper,
+    liquidity: expandTo18Decimals(1),
+  })).to.be.revertedWith('RANGE_NOT_STRADDLE')
+})
 
   it('uses a different payer: surcharge pulled from payer balances/approvals, not recipient', async () => {
     const { fix, pool, hook, vault, treasury, minTick, maxTick, mintWithRebate } = await loadFixture(rebatesFixture)

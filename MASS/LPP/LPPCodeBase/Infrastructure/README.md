@@ -11,10 +11,10 @@
   - [x] Delete all **snapshots**, recompile and re‑test Periphery and Protocol — **Complete**
 - [X] **Implement MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention**  - **Complete**
   - [X] Wire periphery mint wrapper (**LPPMintHook**) to compute rebates & retentions - **Complete**
-  - [ ] Add/test conservative time locking, and equal amounts of token minting **In Progress**
-  - [ ] Re-test all spec tests
-  - [ ] Fork MEV bot repos and testi arbitrage/rebate opportunities with tiny liquidity beginnings…
-  - [ ] Emit events; index in Subgraph; spec tests - **In Progress**
+  - [X] Add/test conservative time locking and equal amounts of token minting - **Complete**
+  - [ ] Re-test all spec tests - **In Progress**
+  - [ ] Fork MEV bot repos and testi arbitrage/rebate opportunities with tiny liquidity beginnings and test to see after pool reaches its maximum capacity, what will occur (might have to factor new revenue model in if rebate revenue structure works)…
+  - [ ] Emit events; index in Subgraph; spec tests
 - [ ] Frontend/API: router prefers **A/B/C (0‑fee)**, metrics & drift badge
 - [ ] Tests: zero‑fee invariants, range flips, oracle failure stubs, **rebate logic**
 - [ ] **Create 3 pools** (cbBTC/USDC, fee=0) & **initialize** near reference price

@@ -9,6 +9,15 @@ import "../interfaces/ILPPPool.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
+interface ITokenDecimals { function decimals() external view returns (uint8); }
+
+library Q96Math {
+    uint256 internal constant Q192 = 2**192;
+    function priceX192(uint160 sqrtPriceX96) internal pure returns (uint256) {
+        return uint256(sqrtPriceX96) * uint256(sqrtPriceX96); // token1 per token0 in Q192
+    }
+}
+
 /// Minimal manager surface that tests call through the Hook
 interface ILPPPositionManager {
     /// Called by the hook after a successful mint to start a lock window
@@ -20,6 +29,11 @@ interface ILPPPositionManager {
 
 contract LPPMintHook is ILPPMintCallback {
     using SafeERC20 for IERC20;
+
+    // --- Balanced-mint policy ---
+    uint16 public balanceTolBps = 200;  // ±2% default tolerance
+    bool   public requireBalanced = true;
+    event BalancePolicyUpdated(uint16 tolBps, bool requireBalanced);
 
     // --- Config / ownership ---
     address public owner;
@@ -94,6 +108,13 @@ contract LPPMintHook is ILPPMintCallback {
         emit TierTableUpdated(_shareBreakBps, _rebateBps, _retentionBps);
     }
 
+    function setBalancePolicy(uint16 tolBps, bool require_) external onlyOwner {
+        require(tolBps <= 10_000, "tol>100%");
+        balanceTolBps  = tolBps;
+        requireBalanced = require_;
+        emit BalancePolicyUpdated(tolBps, require_);
+    }
+
     // --- Mint path ---
     struct MintParams {
         address pool;
@@ -129,6 +150,9 @@ contract LPPMintHook is ILPPMintCallback {
         uint8 tier_;
         bytes memory data;
 
+        if (requireBalanced) {
+            _precheckStraddle(p.pool, p.tickLower, p.tickUpper);
+        }
         // Scope to limit stack usage before external call
         {
             uint128 Lbefore = ILPPPool(p.pool).liquidity();
@@ -177,6 +201,46 @@ contract LPPMintHook is ILPPMintCallback {
         return 0;                                    // < 10%
     }
 
+    function _precheckStraddle(address pool, int24 lower, int24 upper) internal view {
+        (, int24 tick,,,,,) = ILPPPool(pool).slot0();
+        require(lower <= tick && tick <= upper, "RANGE_NOT_STRADDLE");
+    }
+
+    function _decimals(address token) internal view returns (uint8) {
+        try ITokenDecimals(token).decimals() returns (uint8 d) { return d; }
+        catch { return 18; }
+    }
+
+    function _enforceNear5050(
+        address pool,
+        uint256 amount0Owed,
+        uint256 amount1Owed
+    ) internal view {
+        require(amount0Owed > 0 && amount1Owed > 0, "BOTH_TOKENS_REQUIRED");
+
+        (uint160 sqrtPriceX96,, ,,,,) = ILPPPool(pool).slot0();
+        address t0 = ILPPPool(pool).token0();
+        address t1 = ILPPPool(pool).token1();
+
+        uint8 d0 = _decimals(t0);
+        uint8 d1 = _decimals(t1);
+
+        // token1 per token0 in Q192, adjust for decimals
+        uint256 px = Q96Math.priceX192(sqrtPriceX96);
+        if (d1 >= d0) px = px * (10 ** (uint256(d1) - uint256(d0)));
+        else          px = px / (10 ** (uint256(d0) - uint256(d1)));
+
+        // value(token0) measured in token1 units (Q192 scaled)
+        uint256 v0 = (amount0Owed * px) / Q96Math.Q192;
+        uint256 v1 = amount1Owed;
+
+        uint256 hi = v0 > v1 ? v0 : v1;
+        uint256 lo = v0 > v1 ? v1 : v0;
+        uint256 diffBps = (hi - lo) * 10_000 / hi;
+
+        require(diffBps <= balanceTolBps, "IMBALANCED_MINT");
+    }
+
     // --- Pool callback ---
     /// Pool calls back here with the owed leg(s). We:
     /// 1) pull owed amounts from payer -> pool
@@ -187,15 +251,17 @@ contract LPPMintHook is ILPPMintCallback {
         bytes calldata data
     ) external override {
         MintCtx memory ctx = abi.decode(data, (MintCtx));
-
-        // Only the specific pool this mint targeted can callback
         require(msg.sender == ctx.pool, "bad caller");
 
-        // Fetch tokens on-demand to keep ctx small on the mint side
+        // Balanced-mint enforcement before any transfers
+        if (requireBalanced) {
+            _enforceNear5050(ctx.pool, amount0Owed, amount1Owed);
+        }
+
+        // Fetch tokens
         ILPPPool pool = ILPPPool(ctx.pool);
         address token0 = pool.token0();
         address token1 = pool.token1();
-
         IERC20 t0 = IERC20(token0);
         IERC20 t1 = IERC20(token1);
 

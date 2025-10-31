@@ -1,0 +1,141 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`MEV-as-LP Rebates — mintWithRebate mints with surcharge, emits events, transfers rebate/retention, and posts snapshots 1`] = `223867`;
+
+exports[`MEV-as-LP Rebates — mintWithRebate mints with surcharge, emits events, transfers rebate/retention, and posts snapshots 2`] = `
+Array [
+  Object {
+    "amount": "27000000000000000",
+    "lp": undefined,
+    "pool": "0x12C339620Aa21Df616042e51430330380f0f6a07",
+    "tier": 1,
+    "token": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+  },
+  Object {
+    "amount": "27000000000000000",
+    "lp": undefined,
+    "pool": "0x12C339620Aa21Df616042e51430330380f0f6a07",
+    "tier": 1,
+    "token": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+  },
+]
+`;
+
+exports[`MEV-as-LP Rebates — mintWithRebate mints with surcharge, emits events, transfers rebate/retention, and posts snapshots 3`] = `
+Object {
+  "event": "Qualified",
+  "lp": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "pool": "0x12C339620Aa21Df616042e51430330380f0f6a07",
+  "shareBps": 1304,
+  "tier": 1,
+}
+`;
+
+exports[`MEV-as-LP Rebates — mintWithRebate mints with surcharge, emits events, transfers rebate/retention, and posts snapshots 4`] = `
+Array [
+  Object {
+    "amount": "27000000000000000",
+    "pool": "0x12C339620Aa21Df616042e51430330380f0f6a07",
+    "tier": 1,
+    "to": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "token": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+  },
+  Object {
+    "amount": "27000000000000000",
+    "pool": "0x12C339620Aa21Df616042e51430330380f0f6a07",
+    "tier": 1,
+    "to": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "token": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+  },
+]
+`;
+
+exports[`MEV-as-LP Rebates — mintWithRebate mints with surcharge, emits events, transfers rebate/retention, and posts snapshots 5`] = `
+Array [
+  Object {
+    "amount": "13500000000000000",
+    "pool": "0x12C339620Aa21Df616042e51430330380f0f6a07",
+    "tier": 1,
+    "token": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+  },
+  Object {
+    "amount": "13500000000000000",
+    "pool": "0x12C339620Aa21Df616042e51430330380f0f6a07",
+    "tier": 1,
+    "token": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+  },
+]
+`;
+
+exports[`MEV-as-LP Rebates — mintWithRebate mints with surcharge, emits events, transfers rebate/retention, and posts snapshots 6`] = `
+Object {
+  "expectedRebate": Object {
+    "token0": "27000000000000000",
+    "token1": "27000000000000000",
+  },
+  "expectedRetention": Object {
+    "token0": "13500000000000000",
+    "token1": "13500000000000000",
+  },
+  "finalTick": 0,
+  "maxLiqPerTick": "191757530477355301479181766273477",
+  "owed": Object {
+    "amount0": "1500000000000000000",
+    "amount1": "1500000000000000000",
+  },
+  "rebateBps": "180",
+  "retentionBps": "90",
+  "tickSpacing": 1,
+  "treasuryDelta": Object {
+    "token0": "13500000000000000",
+    "token1": "13500000000000000",
+  },
+  "vaultDelta": Object {
+    "token0": "27000000000000000",
+    "token1": "27000000000000000",
+  },
+}
+`;
+
+exports[`MEV-as-LP Rebates — mintWithRebate routes retention to treasury (both tokens) and not to vault 1`] = `223657`;
+
+exports[`MEV-as-LP Rebates — mintWithRebate routes retention to treasury (both tokens) and not to vault 2`] = `
+Object {
+  "kBps": "50",
+  "owed": Object {
+    "token0": "1000000000000000000",
+    "token1": "1000000000000000000",
+  },
+  "rBps": "100",
+  "tier": 0,
+  "treasuryDelta": Object {
+    "token0": "5000000000000000",
+    "token1": "5000000000000000",
+  },
+  "vaultDelta": Object {
+    "token0": "10000000000000000",
+    "token1": "10000000000000000",
+  },
+}
+`;
+
+exports[`MEV-as-LP Rebates — mintWithRebate treasury transfer funds 1`] = `59039`;
+
+exports[`MEV-as-LP Rebates — mintWithRebate treasury transfer funds 2`] = `54889`;
+
+exports[`MEV-as-LP Rebates — mintWithRebate treasury transfer funds 3`] = `35055`;
+
+exports[`MEV-as-LP Rebates — mintWithRebate treasury transfer funds 4`] = `
+Object {
+  "ethSwept": "1000000000000000",
+  "otherEthGte": true,
+  "t0Other": "96500000000000000",
+  "t0Swept": "96500000000000000",
+  "t0TreasAfter": "96500000000000000",
+  "t0TreasBefore": "193000000000000000",
+  "t1Other": "193000000000000000",
+  "t1SweptAll": "193000000000000000",
+  "t1TreasAfter": "0",
+  "t1TreasBefore": "193000000000000000",
+}
+`;
