@@ -56,9 +56,8 @@ describe('NonfungiblePositionManager', () => {
 
   async function nftFixture() {
     const signers = await ethers.getSigners()
-    const { weth9, factory, tokens, nft, router } = await completeFixture(signers as any, ethers.provider)
-
-    try { await (factory as any).setDefaultMintHook(ethers.ZeroAddress) } catch {}
+    const { weth9, factory, tokens, nft, router, hook } = await completeFixture(signers as any, ethers.provider)
+    try { await (hook as any).setManager(await nft.getAddress()) } catch {}
 
     // Approve & fund wallets
     const nftAddr = await nft.getAddress()

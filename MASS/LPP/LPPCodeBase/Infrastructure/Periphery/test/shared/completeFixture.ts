@@ -15,19 +15,21 @@ import type {
   TestERC20,
 } from '../../typechain-types/periphery'
 
-// Keep using the periphery’s ILPPFactory TypeChain (this one exists)
-import type { ILPPFactory } from '../../typechain-types/protocol'
+// Optional TypeChain types if you generated them locally; safe to keep the casts.
+import type {
+  ILPPFactory,
+  LPPRebateVault,
+  LPPTreasury,
+  LPPMintHook,
+} from '../../typechain-types/protocol'
 
-/** Load JSON artifacts via createRequire (robust in Hardhat/TS) */
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 
-// ── Protocol artifacts (NOTE: paths include /rebates/ in your tree)
 const VAULT_ART  = require('@lpp/lpp-protocol/artifacts/contracts/rebates/LPPRebateVault.sol/LPPRebateVault.json')
 const TREAS_ART  = require('@lpp/lpp-protocol/artifacts/contracts/rebates/LPPTreasury.sol/LPPTreasury.json')
 const HOOK_ART   = require('@lpp/lpp-protocol/artifacts/contracts/rebates/LPPMintHook.sol/LPPMintHook.json')
 
-// Small helper to deploy from a JSON artifact
 async function deployFromArtifact<T extends Contract = Contract>(
   artifact: { abi: any; bytecode: string },
   signer: any,
@@ -39,6 +41,11 @@ async function deployFromArtifact<T extends Contract = Contract>(
   return contract as T
 }
 
+// Reattach helper that avoids Hardhat artifact lookup
+function reattach<T = Contract>(abi: any, address: string, signer: any): T {
+  return new ethers.Contract(address, abi, signer) as unknown as T
+}
+
 type CompleteFixture = {
   weth9: IWETH9
   factory: ILPPFactory
@@ -46,9 +53,9 @@ type CompleteFixture = {
   tokens: [TestERC20, TestERC20, TestERC20]
   nftDescriptor: NonfungibleTokenPositionDescriptor
   nft: MockTimeNonfungiblePositionManager
-  vault: Contract
-  treasury: Contract
-  hook: Contract
+  vault: LPPRebateVault
+  treasury: LPPTreasury
+  hook: LPPMintHook
 }
 
 export default async function completeFixture(
@@ -66,7 +73,7 @@ export default async function completeFixture(
   }
 
   // ────────────────────────────────────────────────────────────────────────────
-  // Test tokens (cast each deploy to TestERC20 to satisfy TS)
+  // Test tokens
   // ────────────────────────────────────────────────────────────────────────────
   const tokenFactory = await ethers.getContractFactory('TestERC20')
   const half = MaxUint256 / 2n
@@ -104,23 +111,31 @@ export default async function completeFixture(
   await nft.waitForDeployment()
 
   // ────────────────────────────────────────────────────────────────────────────
-  // Deploy LPP Vault / Treasury / Hook via require() artifacts
+  // Deploy LPP Vault / Treasury / Hook via external artifacts (no getContractAt)
   // ────────────────────────────────────────────────────────────────────────────
-  const vault = await deployFromArtifact<Contract>(VAULT_ART, wallet, [await wallet.getAddress()])
-  const treasury = await deployFromArtifact<Contract>(TREAS_ART, wallet, [await wallet.getAddress()])
-  const hook = await deployFromArtifact<Contract>(HOOK_ART, wallet, [
-    await vault.getAddress(),
-    await treasury.getAddress(),
+  const vaultDep = await deployFromArtifact(VAULT_ART, wallet, [await wallet.getAddress()])
+  const treasuryDep = await deployFromArtifact(TREAS_ART, wallet, [await wallet.getAddress()])
+
+  const hookDep = await deployFromArtifact(HOOK_ART, wallet, [
+    await vaultDep.getAddress(),
+    await treasuryDep.getAddress(),
   ])
 
-  // Try wiring hook to factory (ignore if factory doesn’t expose it)
+  // Reattach with external ABIs to get a nice typed surface without HH artifacts
+  const vault   = reattach<LPPRebateVault>(VAULT_ART.abi,   await vaultDep.getAddress(),   wallet)
+  const treasury= reattach<LPPTreasury>(TREAS_ART.abi,      await treasuryDep.getAddress(),wallet)
+  const hook    = reattach<LPPMintHook>(HOOK_ART.abi,       await hookDep.getAddress(),    wallet)
+
+  // Wire hook to factory if supported
   try {
     await (factory as any).setDefaultMintHook(await hook.getAddress())
   } catch {
-    // ignore
+    // factory may not expose it in some builds
   }
 
+  // ────────────────────────────────────────────────────────────────────────────
   // Approvals for NPM + Hook
+  // ────────────────────────────────────────────────────────────────────────────
   const nftAddr = await nft.getAddress()
   const hookAddr = await hook.getAddress()
   const [, other] = await ethers.getSigners()

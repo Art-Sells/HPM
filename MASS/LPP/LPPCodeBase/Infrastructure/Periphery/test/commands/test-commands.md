@@ -4,8 +4,9 @@ yarn hardhat test test/LiquidityAmounts.spec.ts
 yarn hardhat test test/Multicall.spec.ts
 yarn hardhat test test/NFTDescriptor.spec.ts
 yarn hardhat test test/NonfungiblePositionManager.spec.ts
-^ run yarn hardhat run scripts/printPoolInitCodeHash.mjs
-^ and copy/paste code into both spec and contract before running
+^ yarn hardhat run scripts/printPoolInitCodeHash.mjs
+^ and copy/paste code into both spec and contract after 
+^ re-running NFTDescriptor
 yarn hardhat test test/NonFungibleTokenPositionDescriptor.spec.ts
 yarn hardhat test test/OracleLibrary.spec.ts
 yarn hardhat test test/PairFlash.spec.ts
