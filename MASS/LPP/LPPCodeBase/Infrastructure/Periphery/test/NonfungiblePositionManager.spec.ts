@@ -21,7 +21,7 @@ import type {
 import type { ILPPFactory } from '../typechain-types/protocol'
 
 import completeFixture from './shared/completeFixture.ts'
-import { computePoolAddress } from './shared/computePoolAddress.ts'
+import { computeExpectedPool, getInitHash } from './shared/poolAddressLib.ts'
 import { encodePriceSqrt } from './shared/encodePriceSqrt.ts'
 import { expandTo18Decimals } from './shared/expandTo18Decimals.ts'
 import { expect } from './shared/expect.ts'
@@ -97,7 +97,7 @@ describe('NonfungiblePositionManager', () => {
       const factoryAddr = await factory.getAddress()
       const token0Addr = await tokens[0].getAddress()
       const token1Addr = await tokens[1].getAddress()
-      const expectedAddress = computePoolAddress(factoryAddr, [token0Addr, token1Addr], FEE)
+      const expectedAddress = await computeExpectedPool(factoryAddr, token0Addr, token1Addr, FEE)
 
       const code = await ethers.provider.getCode(expectedAddress)
       expect(code).to.eq('0x')
@@ -118,7 +118,7 @@ describe('NonfungiblePositionManager', () => {
       const factoryAddr = await factory.getAddress()
       const token0Addr = await tokens[0].getAddress()
       const token1Addr = await tokens[1].getAddress()
-      const expectedAddress = computePoolAddress(factoryAddr, [token0Addr, token1Addr], FEE)
+const expectedAddress = await computeExpectedPool(factoryAddr, token0Addr, token1Addr, FEE)
 
       await factory.createPool(token0Addr, token1Addr, FEE)
       const code = await ethers.provider.getCode(expectedAddress)
@@ -131,7 +131,7 @@ describe('NonfungiblePositionManager', () => {
       const factoryAddr = await factory.getAddress()
       const token0Addr = await tokens[0].getAddress()
       const token1Addr = await tokens[1].getAddress()
-      const expectedAddress = computePoolAddress(factoryAddr, [token0Addr, token1Addr], FEE)
+const expectedAddress = await computeExpectedPool(factoryAddr, token0Addr, token1Addr, FEE)
 
       await factory.createPool(token0Addr, token1Addr, FEE)
       const pool = new Contract(expectedAddress, ILPPPoolABI, wallet)
@@ -726,7 +726,7 @@ describe('NonfungiblePositionManager', () => {
       const factoryAddr = await factory.getAddress()
       const token0Addr = await tokens[0].getAddress()
       const token1Addr = await tokens[1].getAddress()
-      const poolAddress = computePoolAddress(factoryAddr, [token0Addr, token1Addr], FEE)
+      const poolAddress = await computeExpectedPool(factoryAddr, token0Addr, token1Addr, FEE)
 
       const recipient = await wallet.getAddress();
       await expect(
@@ -1093,7 +1093,8 @@ describe('NonfungiblePositionManager', () => {
       const factoryAddr = await factory.getAddress()
       const token0Addr = await tokens[0].getAddress()
       const token1Addr = await tokens[1].getAddress()
-      const pool = poolAtAddress(computePoolAddress(factoryAddr, [token0Addr, token1Addr], FEE), wallet)
+const expected = await computeExpectedPool(factoryAddr, token0Addr, token1Addr, FEE)
+const pool = poolAtAddress(expected, wallet) // pass the signer
 
       await expect(
         exit({
