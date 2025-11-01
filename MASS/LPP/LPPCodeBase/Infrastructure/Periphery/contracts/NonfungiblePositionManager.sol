@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity =0.7.6;
+pragma solidity ^0.7.6;
 pragma abicoder v2;
 
 import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
@@ -168,28 +168,70 @@ contract NonfungiblePositionManager is
     }
 
     // save bytecode by removing implementation of unused method
-    function baseURI() public pure override returns (string memory) {}
+    function baseURI() public pure override returns (string memory) { return ""; }
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Internal helpers (hook resolution / pool key cache / pool resolution)
     // ─────────────────────────────────────────────────────────────────────────────
 
     /// @dev Resolve the pool’s configured mint hook via staticcall to `mintHook()`
-function _isContract(address a) private view returns (bool) {
-    uint256 size;
-    assembly { size := extcodesize(a) } // solhint-disable-line no-inline-assembly
-    return size > 0;
-}
+    function _isContract(address a) private view returns (bool) {
+        uint256 size;
+        assembly { size := extcodesize(a) } // solhint-disable-line no-inline-assembly
+        return size > 0;
+    }
 
-function _hookOf(address pool) internal view returns (address h) {
-    (bool ok, bytes memory data) = pool.staticcall(abi.encodeWithSignature("mintHook()"));
-    require(ok && data.length == 32, "ONLY_HOOKED_POOL");
-    h = abi.decode(data, (address));
-    require(h != address(0) && _isContract(h), "ONLY_HOOKED_POOL");
+    /// @dev Try to resolve a mint hook on the pool; returns address(0) if none.
+// ===== PATCH 1: replace your _getHook with this robust version =====
+function _getHook(address pool) internal view returns (address h) {
+    if (pool == address(0)) return address(0);
+
+    bool ok; bytes memory data;
+
+    // 1) mintHook()
+    (ok, data) = pool.staticcall(abi.encodeWithSignature("mintHook()"));
+    if (ok && data.length >= 32) {
+        assembly { h := mload(add(data, 32)) }
+        if (h != address(0) && _isContract(h)) return h;
+    }
+
+    // 2) hook()
+    h = address(0);
+    (ok, data) = pool.staticcall(abi.encodeWithSignature("hook()"));
+    if (ok && data.length >= 32) {
+        assembly { h := mload(add(data, 32)) }
+        if (h != address(0) && _isContract(h)) return h;
+    }
+
+    // 3) getHook()
+    h = address(0);
+    (ok, data) = pool.staticcall(abi.encodeWithSignature("getHook()"));
+    if (ok && data.length >= 32) {
+        assembly { h := mload(add(data, 32)) }
+        if (h != address(0) && _isContract(h)) return h;
+    }
+
+    // 4) hookConfig() -> (address mintHook, ...)
+    h = address(0);
+    (ok, data) = pool.staticcall(abi.encodeWithSignature("hookConfig()"));
+    if (ok && data.length >= 32) {
+        assembly { h := mload(add(data, 32)) }
+        if (h != address(0) && _isContract(h)) return h;
+    }
+
+    // 5) factory-level helper (best-effort): getHook(address pool)
+    h = address(0);
+    (ok, data) = factory.staticcall(abi.encodeWithSignature("getHook(address)", pool));
+    if (ok && data.length >= 32) {
+        assembly { h := mload(add(data, 32)) }
+        if (h != address(0) && _isContract(h)) return h;
+    }
+
+    return address(0);
 }
 
     function _onlyPoolHook(address pool) internal view {
-        require(msg.sender == _hookOf(pool), "ONLY_MINT_HOOK");
+        require(msg.sender == _getHook(pool), "ONLY_MINT_HOOK");
     }
 
     /// @dev Caches a pool key
@@ -335,108 +377,217 @@ function _hookOf(address pool) internal view returns (address h) {
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
+    // Internal: legacy (no-hook) paths to reduce stack pressure
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    function _legacyMintPath(
+        MintParams calldata params,
+        PoolAddress.PoolKey memory key
+    ) private returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
+    {
+        ILPPPool pool;
+        {
+            // scope to drop locals after the call
+            AddLiquidityParams memory alp = AddLiquidityParams({
+                token0: params.token0,
+                token1: params.token1,
+                fee:    params.fee,
+                tickLower: params.tickLower,
+                tickUpper: params.tickUpper,
+                amount0Desired: params.amount0Desired,
+                amount1Desired: params.amount1Desired,
+                amount0Min: params.amount0Min,
+                amount1Min: params.amount1Min,
+                recipient: address(this)
+            });
+            (liquidity, amount0, amount1, pool) = addLiquidity(alp);
+        }
+
+        // Mint NFT to recipient and snapshot fee growth
+        _mint(params.recipient, (tokenId = _nextId++));
+        uint80 poolId = cachePoolKey(address(pool), key);
+
+        bytes32 positionKey = PositionKey.compute(address(this), params.tickLower, params.tickUpper);
+        (, uint256 fee0, uint256 fee1, , ) = pool.positions(positionKey);
+
+        _positions[tokenId] = Position({
+            nonce: 0,
+            operator: address(0),
+            poolId: poolId,
+            tickLower: params.tickLower,
+            tickUpper: params.tickUpper,
+            liquidity: liquidity,
+            feeGrowthInside0LastX128: fee0,
+            feeGrowthInside1LastX128: fee1,
+            tokensOwed0: 0,
+            tokensOwed1: 0
+        });
+
+        emit IncreaseLiquidity(tokenId, liquidity, amount0, amount1);
+    }
+
+    function _legacyIncreasePath(
+        IncreaseLiquidityParams calldata params,
+        Position storage position,
+        PoolAddress.PoolKey memory key,
+        address poolAddr
+    ) private returns (uint128 added, uint256 amount0, uint256 amount1)
+    {
+        // Accrue fees on current liquidity
+        bytes32 pKey = PositionKey.compute(address(this), position.tickLower, position.tickUpper);
+        (, uint256 fee0, uint256 fee1, , ) = ILPPPool(poolAddr).positions(pKey);
+
+        position.tokensOwed0 += uint128(FullMath.mulDiv(
+            fee0 - position.feeGrowthInside0LastX128,
+            position.liquidity,
+            FixedPoint128.Q128
+        ));
+        position.tokensOwed1 += uint128(FullMath.mulDiv(
+            fee1 - position.feeGrowthInside1LastX128,
+            position.liquidity,
+            FixedPoint128.Q128
+        ));
+
+        position.feeGrowthInside0LastX128 = fee0;
+        position.feeGrowthInside1LastX128 = fee1;
+
+        {
+            // scope to drop locals after the call
+            AddLiquidityParams memory alp = AddLiquidityParams({
+                token0: key.token0,
+                token1: key.token1,
+                fee:    key.fee,
+                tickLower: position.tickLower,
+                tickUpper: position.tickUpper,
+                amount0Desired: params.amount0Desired,
+                amount1Desired: params.amount1Desired,
+                amount0Min: params.amount0Min,
+                amount1Min: params.amount1Min,
+                recipient: address(this)
+            });
+
+            (added, amount0, amount1, ) = addLiquidity(alp);
+        }
+
+        position.liquidity += added;
+        emit IncreaseLiquidity(params.tokenId, added, amount0, amount1);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
     // Public: mint / increase (hook-routed; pool resolved via factory)
     // ─────────────────────────────────────────────────────────────────────────────
 
     /// @inheritdoc INonfungiblePositionManager
-function mint(MintParams calldata params)
-    external
-    payable
-    override
-    checkDeadline(params.deadline)
-    returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
-{
-    require(!_pending.active, "PENDING");
+    function mint(MintParams calldata params)
+        external
+        payable
+        override
+        checkDeadline(params.deadline)
+        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
+    {
+        require(!_pending.active, "PENDING");
 
-    PoolAddress.PoolKey memory key = PoolAddress.PoolKey({
-        token0: params.token0,
-        token1: params.token1,
-        fee:    params.fee
-    });
+        PoolAddress.PoolKey memory key = PoolAddress.PoolKey({
+            token0: params.token0,
+            token1: params.token1,
+            fee:    params.fee
+        });
 
-    address pool = PoolAddress.computeAddress(factory, key);
-    address hook = _hookOf(pool); // <-- MUST exist & have code
+        address poolAddr = PoolAddress.computeAddress(factory, key);
+        address hook = _getHook(poolAddr);
 
-    _pending = PendingMintCtx({
-        active: true,
-        pool: pool,
-        payer: msg.sender,      // approvals must target the MANAGER (see tests note)
-        token0: params.token0,
-        token1: params.token1,
-        fee: params.fee,
-        recipient: params.recipient,
-        tickLower: params.tickLower,
-        tickUpper: params.tickUpper,
-        amount0Min: params.amount0Min,
-        amount1Min: params.amount1Min
-    });
+        if (hook == address(0)) {
+            // ── LEGACY (no hook): do a direct addLiquidity, then mint the NFT ──
+            return _legacyMintPath(params, key);
+        }
 
-    IHookMint(hook).mintViaHook(IHookMint.MintViaHookParams({
-        pool: pool,
-        payer: msg.sender,
-        recipient: params.recipient,
-        tickLower: params.tickLower,
-        tickUpper: params.tickUpper,
-        amount0Desired: params.amount0Desired,
-        amount1Desired: params.amount1Desired
-    }));
+        // ── Hooked path ──
+        _pending = PendingMintCtx({
+            active: true,
+            pool: poolAddr,
+            payer: msg.sender,
+            token0: params.token0,
+            token1: params.token1,
+            fee: params.fee,
+            recipient: params.recipient,
+            tickLower: params.tickLower,
+            tickUpper: params.tickUpper,
+            amount0Min: params.amount0Min,
+            amount1Min: params.amount1Min
+        });
 
-    // values filled in finalizeMintFromHook
-    tokenId   = _mintResult.tokenId;
-    liquidity = _mintResult.liquidity;
-    amount0   = _mintResult.amount0;
-    amount1   = _mintResult.amount1;
+        IHookMint(hook).mintViaHook(IHookMint.MintViaHookParams({
+            pool: poolAddr,
+            payer: msg.sender,
+            recipient: params.recipient,
+            tickLower: params.tickLower,
+            tickUpper: params.tickUpper,
+            amount0Desired: params.amount0Desired,
+            amount1Desired: params.amount1Desired
+        }));
 
-    delete _mintResult;
-}
+        tokenId   = _mintResult.tokenId;
+        liquidity = _mintResult.liquidity;
+        amount0   = _mintResult.amount0;
+        amount1   = _mintResult.amount1;
+
+        delete _mintResult;
+    }
 
     /// @inheritdoc INonfungiblePositionManager
-function increaseLiquidity(IncreaseLiquidityParams calldata params)
-    external
-    payable
-    override
-    checkDeadline(params.deadline)
-    returns (uint128 liquidity, uint256 amount0, uint256 amount1)
-{
-    require(!_pending.active, "PENDING");
+    function increaseLiquidity(IncreaseLiquidityParams calldata params)
+        external
+        payable
+        override
+        checkDeadline(params.deadline)
+        returns (uint128 liquidity, uint256 amount0, uint256 amount1)
+    {
+        require(!_pending.active, "PENDING");
 
-    Position storage position = _positions[params.tokenId];
-    require(position.poolId != 0, "Invalid token ID");
+        Position storage position = _positions[params.tokenId];
+        require(position.poolId != 0, "Invalid token ID");
 
-    PoolAddress.PoolKey memory key = _poolIdToPoolKey[position.poolId];
-    address pool = PoolAddress.computeAddress(factory, key);
-    address hook = _hookOf(pool); // <-- MUST exist & have code
+        PoolAddress.PoolKey memory key = _poolIdToPoolKey[position.poolId];
+        address poolAddr = PoolAddress.computeAddress(factory, key);
+        address hook = _getHook(poolAddr);
 
-    _pending = PendingMintCtx({
-        active: true,
-        pool: pool,
-        payer: msg.sender,  // approvals must target the MANAGER (see tests note)
-        token0: key.token0,
-        token1: key.token1,
-        fee: key.fee,
-        recipient: address(0),
-        tickLower: position.tickLower,
-        tickUpper: position.tickUpper,
-        amount0Min: params.amount0Min,
-        amount1Min: params.amount1Min
-    });
+        if (hook == address(0)) {
+            // ── LEGACY (no hook): accrue fees on current liquidity, then add ──
+            (liquidity, amount0, amount1) = _legacyIncreasePath(params, position, key, poolAddr);
+            return (liquidity, amount0, amount1);
+        }
 
-    IHookMint(hook).increaseViaHook(IHookMint.IncreaseViaHookParams({
-        pool: pool,
-        payer: msg.sender,
-        tokenId: params.tokenId,
-        tickLower: position.tickLower,
-        tickUpper: position.tickUpper,
-        amount0Desired: params.amount0Desired,
-        amount1Desired: params.amount1Desired
-    }));
+        // ── Hooked path ──
+        _pending = PendingMintCtx({
+            active: true,
+            pool: poolAddr,
+            payer: msg.sender,
+            token0: key.token0,
+            token1: key.token1,
+            fee: key.fee,
+            recipient: address(0),
+            tickLower: position.tickLower,
+            tickUpper: position.tickUpper,
+            amount0Min: params.amount0Min,
+            amount1Min: params.amount1Min
+        });
 
-    liquidity = _incResult.addedLiquidity;
-    amount0   = _incResult.amount0;
-    amount1   = _incResult.amount1;
+        IHookMint(hook).increaseViaHook(IHookMint.IncreaseViaHookParams({
+            pool: poolAddr,
+            payer: msg.sender,
+            tokenId: params.tokenId,
+            tickLower: position.tickLower,
+            tickUpper: position.tickUpper,
+            amount0Desired: params.amount0Desired,
+            amount1Desired: params.amount1Desired
+        }));
 
-    delete _incResult;
-}
+        liquidity = _incResult.addedLiquidity;
+        amount0   = _incResult.amount0;
+        amount1   = _incResult.amount1;
+
+        delete _incResult;
+    }
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Public: decrease / collect / burn (pool resolved via factory)
