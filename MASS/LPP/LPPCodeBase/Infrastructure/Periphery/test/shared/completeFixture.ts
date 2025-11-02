@@ -62,7 +62,28 @@ export default async function completeFixture(
   [wallet]: SignerWithAddress[],
   provider: any
 ): Promise<CompleteFixture> {
-  const { weth9, factory, router } = await lppRouterFixture([wallet], provider)
+  // ────────────────────────────────────────────────────────────────────────────
+  // Deploy LPP Vault / Treasury / Hook FIRST (so we can pass mintHook to Factory ctor)
+  // ────────────────────────────────────────────────────────────────────────────
+  const vaultDep = await deployFromArtifact(VAULT_ART, wallet, [await wallet.getAddress()])
+  const treasuryDep = await deployFromArtifact(TREAS_ART, wallet, [await wallet.getAddress()])
+
+  const hookDep = await deployFromArtifact(HOOK_ART, wallet, [
+    await vaultDep.getAddress(),
+    await treasuryDep.getAddress(),
+  ])
+
+  const hookAddr = await hookDep.getAddress()
+
+  // Reattach with external ABIs to get a nice typed surface without HH artifacts
+  const vault    = reattach<LPPRebateVault>(VAULT_ART.abi,   await vaultDep.getAddress(),   wallet)
+  const treasury = reattach<LPPTreasury>(TREAS_ART.abi,      await treasuryDep.getAddress(),wallet)
+  const hook     = reattach<LPPMintHook>(HOOK_ART.abi,       hookAddr,                       wallet)
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Now deploy WETH + LPPFactory(mintHook) + Router
+  // ────────────────────────────────────────────────────────────────────────────
+  const { weth9, factory, router } = await lppRouterFixture([wallet], provider, { mintHook: hookAddr })
 
   // Ensure the fee tier used by tests is enabled (fee=0, spacing=60)
   const ZERO_FEE = 0
@@ -111,33 +132,9 @@ export default async function completeFixture(
   await nft.waitForDeployment()
 
   // ────────────────────────────────────────────────────────────────────────────
-  // Deploy LPP Vault / Treasury / Hook via external artifacts (no getContractAt)
-  // ────────────────────────────────────────────────────────────────────────────
-  const vaultDep = await deployFromArtifact(VAULT_ART, wallet, [await wallet.getAddress()])
-  const treasuryDep = await deployFromArtifact(TREAS_ART, wallet, [await wallet.getAddress()])
-
-  const hookDep = await deployFromArtifact(HOOK_ART, wallet, [
-    await vaultDep.getAddress(),
-    await treasuryDep.getAddress(),
-  ])
-
-  // Reattach with external ABIs to get a nice typed surface without HH artifacts
-  const vault   = reattach<LPPRebateVault>(VAULT_ART.abi,   await vaultDep.getAddress(),   wallet)
-  const treasury= reattach<LPPTreasury>(TREAS_ART.abi,      await treasuryDep.getAddress(),wallet)
-  const hook    = reattach<LPPMintHook>(HOOK_ART.abi,       await hookDep.getAddress(),    wallet)
-
-  // Wire hook to factory if supported
-  try {
-    await (factory as any).setDefaultMintHook(await hook.getAddress())
-  } catch {
-    // factory may not expose it in some builds
-  }
-
-  // ────────────────────────────────────────────────────────────────────────────
   // Approvals for NPM + Hook
   // ────────────────────────────────────────────────────────────────────────────
   const nftAddr = await nft.getAddress()
-  const hookAddr = await hook.getAddress()
   const [, other] = await ethers.getSigners()
 
   for (const t of tokens) {

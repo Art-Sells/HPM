@@ -1,5 +1,4 @@
 // test/NonfungiblePositionManager.spec.ts
-
 import type { BigNumberish, Signer } from 'ethers'
 import { MaxUint256, Contract } from 'ethers'
 import hre from 'hardhat'
@@ -69,10 +68,8 @@ let _ILPPPoolABI: any | null = null
 async function ILPPPoolABI(): Promise<any> {
   if (_ILPPPoolABI) return _ILPPPoolABI
   try {
-    // If your artifact is named plainly:
     _ILPPPoolABI = (await artifacts.readArtifact('ILPPPool')).abi
   } catch {
-    // FQN fallback if Hardhat needs the fully-qualified name:
     _ILPPPoolABI = (await artifacts.readArtifact('contracts/interfaces/ILPPPool.sol:ILPPPool')).abi
   }
   return _ILPPPoolABI
@@ -98,11 +95,20 @@ function hasFn(c: { interface: any }, name: string): boolean {
   }
 }
 
-async function callIfExists(c: any, name: string, args: any[] = []) {
-  if (!hasFn(c, name)) return false
-  const tx = await c[name](...args)
-  await tx.wait()
-  return true
+async function hasFnIface(obj: any, name: string) {
+  try { obj.interface.getFunction(name); return true } catch { return false }
+}
+async function tryCallAny(target: any, calls: Array<[string, any[]]>) {
+  for (const [fn, args] of calls) {
+    try {
+      if (await hasFnIface(target, fn)) {
+        const tx = await target[fn](...args)
+        if (tx?.wait) await tx.wait()
+        return true
+      }
+    } catch {}
+  }
+  return false
 }
 
 async function isHooked(poolAddr: string, factory: any): Promise<boolean> {
@@ -112,12 +118,21 @@ async function isHooked(poolAddr: string, factory: any): Promise<boolean> {
       const h: string = await (pool as any).hook()
       if (h && h !== '0x0000000000000000000000000000000000000000') return true
     }
+    if (hasFn(pool as any, 'isHooked')) {
+      const v: boolean = await (pool as any).isHooked()
+      if (v) return true
+    }
   } catch {}
 
   try {
     const fac = new Contract(await factory.getAddress(), (factory as any).interface.fragments, factory.runner ?? factory.signer)
-    if (hasFn(fac as any, 'isHookedPool')) return await (fac as any).isHookedPool(poolAddr)
-    if (hasFn(fac as any, 'hookedPools')) return await (fac as any).hookedPools(poolAddr)
+    const boolMaps = ['isHookedPool', 'hookedPools', 'allowedPools', 'whitelistedPools', 'isPoolAllowed']
+    for (const name of boolMaps) {
+      if (await hasFnIface(fac as any, name)) {
+        const v: boolean = await (fac as any)[name](poolAddr)
+        if (v) return true
+      }
+    }
   } catch {}
   return false
 }
@@ -127,40 +142,58 @@ async function ensureHookedPool(factory: ILPPFactory, hook: LPPMintHook, token0:
   const factoryAddr = await factory.getAddress()
   const fac = new Contract(factoryAddr, (factory as any).interface.fragments, signer)
 
-  const poolAddr: string = await (factory as any).getPool(token0, token1, FEE)
+  // Ensure pool exists
+  let poolAddr: string = await (factory as any).getPool(token0, token1, FEE)
   if ((await ethers.provider.getCode(poolAddr)) === '0x') {
-    if (hasFn(fac as any, 'createPool')) {
-      const frag = (fac as any).interface.getFunction('createPool')
-      if (frag.inputs.length === 3) {
-        await (fac as any).createPool(token0, token1, FEE).then((tx: any) => tx.wait())
-      } else if (frag.inputs.length === 4) {
-        await (fac as any).createPool(token0, token1, FEE, await hook.getAddress()).then((tx: any) => tx.wait())
-      }
-    }
+    const hookAddr = await hook.getAddress()
+    const created =
+      (await tryCallAny(fac as any, [['createPool', [token0, token1, FEE, hookAddr]]])) ||
+      (await tryCallAny(fac as any, [['createPool', [token0, token1, FEE]]]))
+    if (!created) throw new Error('createPool failed')
+    poolAddr = await (factory as any).getPool(token0, token1, FEE)
   }
 
+  // Initialize if needed
   try {
     const pool = new Contract(poolAddr, await ILPPPoolABI(), signer)
-    if (hasFn(pool as any, 'initialize')) {
-      await (pool as any).initialize(encodePriceSqrt(1, 1)).then((tx: any) => tx.wait()).catch(() => {})
+    if (await hasFnIface(pool as any, 'initialize')) {
+      await (pool as any).initialize(encodePriceSqrt(1, 1)).catch(() => {})
     }
   } catch {}
 
+  // If already hooked, done
   if (await isHooked(poolAddr, factory)) return
 
-  try {
-    await callIfExists(fac as any, 'setPoolHook', [poolAddr, await hook.getAddress()]) ||
-      await callIfExists(fac as any, 'setHookForPool', [poolAddr, await hook.getAddress()]) ||
-      await callIfExists(fac as any, 'attachHook', [poolAddr, await hook.getAddress()]) ||
-      await callIfExists(fac as any, 'enableHook', [poolAddr, await hook.getAddress()]) ||
-      await callIfExists(fac as any, 'whitelistPool', [poolAddr, true])
-  } catch {}
+  const hookAddr = await hook.getAddress()
+  const pool = new Contract(poolAddr, await ILPPPoolABI(), signer)
 
+  // Try pool-level set
+  await tryCallAny(pool as any, [
+    ['setHook', [hookAddr]],
+    ['setMintHook', [hookAddr]],
+    ['setHooks', [hookAddr]],
+    ['enableHook', [hookAddr]],
+    ['setHooked', [true]],
+  ])
+
+  // Try factory-level allow/attach
+  await tryCallAny(fac as any, [
+    ['setHookForPool', [poolAddr, hookAddr, true]],
+    ['setHookForPool', [poolAddr, hookAddr]],
+    ['setPoolHook',   [poolAddr, hookAddr]],
+    ['whitelistPool', [poolAddr, true]],
+    ['allowPool',     [poolAddr, true]],
+    ['enablePool',    [poolAddr, true]],
+  ])
+
+  // Try hook contract registration
   try {
-    const hookCtr = new Contract(await hook.getAddress(), (hook as any).interface.fragments, signer)
-    await callIfExists(hookCtr as any, 'registerPool', [poolAddr]) ||
-      await callIfExists(hookCtr as any, 'attachPool', [poolAddr]) ||
-      await callIfExists(hookCtr as any, 'setPoolHook', [poolAddr, await hook.getAddress()])
+    const hookCtr = new Contract(hookAddr, (hook as any).interface.fragments, signer)
+    await tryCallAny(hookCtr as any, [
+      ['registerPool',  [poolAddr]],
+      ['attachPool',    [poolAddr]],
+      ['onPoolCreated', [poolAddr, await fac.getAddress()]],
+    ])
   } catch {}
 
   if (!(await isHooked(poolAddr, factory))) {
@@ -342,6 +375,10 @@ describe('NonfungiblePositionManager', () => {
       const token0Addr = await addr(t0)
       const token1Addr = await addr(t1)
 
+      // Pre-create & hook (hooking cannot happen inside this multicall)
+      await (nft as any).createAndInitializePoolIfNecessary(token0Addr, token1Addr, FEE, encodePriceSqrt(1, 1))
+      await ensureHookedPool(factory, hook, token0Addr, token1Addr)
+
       const createAndInitializePoolIfNecessaryData = (nft.interface as any).encodeFunctionData(
         'createAndInitializePoolIfNecessary',
         [token0Addr, token1Addr, FEE, encodePriceSqrt(1, 1)]
@@ -461,6 +498,10 @@ describe('NonfungiblePositionManager', () => {
       const token1Addr = await addr(t1)
       const otherAddr = await (other as any).getAddress()
 
+      // Pre-create & hook (hooking cannot happen inside this multicall)
+      await (nft as any).createAndInitializePoolIfNecessary(token0Addr, token1Addr, FEE, encodePriceSqrt(1, 1))
+      await ensureHookedPool(factory, hook, token0Addr, token1Addr)
+
       const nftAddr = await (nft as any).getAddress()
       await weth9.approve(nftAddr, 0)
 
@@ -529,6 +570,10 @@ describe('NonfungiblePositionManager', () => {
       const [t0, t1] = sortedTokens(weth9, tokens[0])
       const token0Addr = await addr(t0)
       const token1Addr = await addr(t1)
+
+      // Pre-create & hook so rebate path + mint can work
+      await (nft as any).createAndInitializePoolIfNecessary(token0Addr, token1Addr, FEE, encodePriceSqrt(1, 1))
+      await ensureHookedPool(factory, hook, token0Addr, token1Addr)
 
       const mintParams: MintParams = {
         token0: token0Addr,

@@ -35,32 +35,38 @@ export async function wethFixture([wallet]: Signer[], _provider?: unknown): Prom
 }
 
 // -------------------- LPP Core Factory --------------------
-// Supports both constructor() and constructor(address owner)
-export async function lppFactoryFixture([wallet]: Signer[], _provider?: unknown): Promise<LPPFactory> {
+// We REQUIRE constructor(address _mintHook). If your artifact differs, this will throw.
+export async function lppFactoryFixture(
+  [wallet]: Signer[],
+  _provider: unknown,
+  opts: { mintHook: string }
+): Promise<LPPFactory> {
+  if (!opts?.mintHook) throw new Error('lppFactoryFixture: opts.mintHook is required')
+
   const ctorInputs =
     (Array.isArray(LPP_FACTORY_ARTIFACT.abi)
       ? LPP_FACTORY_ARTIFACT.abi.find((x: any) => x && x.type === 'constructor')?.inputs
       : null) || []
 
-  let args: unknown[] = []
-  if (ctorInputs.length === 1) {
-    // assume constructor(address owner)
-    args = [await wallet.getAddress()]
-  } else if (ctorInputs.length > 1) {
-    throw new Error(`Unexpected LPPFactory constructor arity: ${ctorInputs.length}`)
+  if (ctorInputs.length !== 1) {
+    throw new Error(
+      `LPPFactory constructor must accept exactly one arg (mintHook). Found ${ctorInputs.length}. ` +
+      `Please ensure your LPPFactory has constructor(address _mintHook).`
+    )
   }
 
-  const factory = await deployFromArtifact<LPPFactory>(LPP_FACTORY_ARTIFACT, wallet, args)
+  const factory = await deployFromArtifact<LPPFactory>(LPP_FACTORY_ARTIFACT, wallet, [opts.mintHook])
   return factory
 }
 
 // -------------------- LPP Router Fixture --------------------
 export async function lppRouterFixture(
   [wallet]: Signer[],
-  provider?: unknown
+  provider: unknown,
+  opts: { mintHook: string }
 ): Promise<{ weth9: IWETH9; factory: LPPFactory; router: MockTimeSupplicateRouter }> {
   const { weth9 } = await wethFixture([wallet], provider)
-  const factory = await lppFactoryFixture([wallet], provider)
+  const factory = await lppFactoryFixture([wallet], provider, { mintHook: opts.mintHook })
 
   const router = await deployFromArtifact<MockTimeSupplicateRouter>(
     ROUTER_ARTIFACT,
