@@ -4,7 +4,9 @@ pragma abicoder v2;
 
 import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
 import '@lpp/lpp-protocol/contracts/libraries/FixedPoint128.sol';
+import '@lpp/lpp-protocol/contracts/libraries/TransferHelper.sol';
 import '@lpp/lpp-protocol/contracts/libraries/FullMath.sol';
+import '@lpp/lpp-protocol/contracts/interfaces/IERC20Minimal.sol';
 
 import './interfaces/INonfungiblePositionManager.sol';
 import './interfaces/IHookEntrypoints.sol';
@@ -21,6 +23,7 @@ import './base/ERC721Permit.sol';
 import './base/PeripheryValidation.sol';
 import './base/SelfPermit.sol';
 import './base/PoolInitializer.sol';
+import './interfaces/external/IWETH9.sol';
 
 /// @dev Minimal factory interface (replace with your concrete one if you have it)
 interface ILPPFactoryMinimal {
@@ -119,6 +122,8 @@ contract NonfungiblePositionManager is
         _tokenDescriptor = _tokenDescriptor_;
     }
 
+    receive() external payable {}
+
     // ─────────────────────────────────────────────────────────────────────────────
     // Views
     // ─────────────────────────────────────────────────────────────────────────────
@@ -172,69 +177,60 @@ contract NonfungiblePositionManager is
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Internal helpers (hook resolution / pool key cache / pool resolution)
-    // ─────────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
 
-    /// @dev Resolve the pool’s configured mint hook via staticcall to `mintHook()`
     function _isContract(address a) private view returns (bool) {
         uint256 size;
-        assembly { size := extcodesize(a) } // solhint-disable-line no-inline-assembly
+        assembly { size := extcodesize(a) }
         return size > 0;
     }
 
-    /// @dev Try to resolve a mint hook on the pool; returns address(0) if none.
-// ===== PATCH 1: replace your _getHook with this robust version =====
-function _getHook(address pool) internal view returns (address h) {
-    if (pool == address(0)) return address(0);
+    // ===== robust hook resolver =====
+    function _getHook(address pool) internal view returns (address h) {
+        if (pool == address(0)) return address(0);
+        bool ok; bytes memory data;
 
-    bool ok; bytes memory data;
+        (ok, data) = pool.staticcall(abi.encodeWithSignature("mintHook()"));
+        if (ok && data.length >= 32) {
+            assembly { h := mload(add(data, 32)) }
+            if (h != address(0) && _isContract(h)) return h;
+        }
 
-    // 1) mintHook()
-    (ok, data) = pool.staticcall(abi.encodeWithSignature("mintHook()"));
-    if (ok && data.length >= 32) {
-        assembly { h := mload(add(data, 32)) }
-        if (h != address(0) && _isContract(h)) return h;
+        h = address(0);
+        (ok, data) = pool.staticcall(abi.encodeWithSignature("hook()"));
+        if (ok && data.length >= 32) {
+            assembly { h := mload(add(data, 32)) }
+            if (h != address(0) && _isContract(h)) return h;
+        }
+
+        h = address(0);
+        (ok, data) = pool.staticcall(abi.encodeWithSignature("getHook()"));
+        if (ok && data.length >= 32) {
+            assembly { h := mload(add(data, 32)) }
+            if (h != address(0) && _isContract(h)) return h;
+        }
+
+        h = address(0);
+        (ok, data) = pool.staticcall(abi.encodeWithSignature("hookConfig()"));
+        if (ok && data.length >= 32) {
+            assembly { h := mload(add(data, 32)) }
+            if (h != address(0) && _isContract(h)) return h;
+        }
+
+        h = address(0);
+        (ok, data) = factory.staticcall(abi.encodeWithSignature("getHook(address)", pool));
+        if (ok && data.length >= 32) {
+            assembly { h := mload(add(data, 32)) }
+            if (h != address(0) && _isContract(h)) return h;
+        }
+
+        return address(0);
     }
-
-    // 2) hook()
-    h = address(0);
-    (ok, data) = pool.staticcall(abi.encodeWithSignature("hook()"));
-    if (ok && data.length >= 32) {
-        assembly { h := mload(add(data, 32)) }
-        if (h != address(0) && _isContract(h)) return h;
-    }
-
-    // 3) getHook()
-    h = address(0);
-    (ok, data) = pool.staticcall(abi.encodeWithSignature("getHook()"));
-    if (ok && data.length >= 32) {
-        assembly { h := mload(add(data, 32)) }
-        if (h != address(0) && _isContract(h)) return h;
-    }
-
-    // 4) hookConfig() -> (address mintHook, ...)
-    h = address(0);
-    (ok, data) = pool.staticcall(abi.encodeWithSignature("hookConfig()"));
-    if (ok && data.length >= 32) {
-        assembly { h := mload(add(data, 32)) }
-        if (h != address(0) && _isContract(h)) return h;
-    }
-
-    // 5) factory-level helper (best-effort): getHook(address pool)
-    h = address(0);
-    (ok, data) = factory.staticcall(abi.encodeWithSignature("getHook(address)", pool));
-    if (ok && data.length >= 32) {
-        assembly { h := mload(add(data, 32)) }
-        if (h != address(0) && _isContract(h)) return h;
-    }
-
-    return address(0);
-}
 
     function _onlyPoolHook(address pool) internal view {
         require(msg.sender == _getHook(pool), "ONLY_MINT_HOOK");
     }
 
-    /// @dev Caches a pool key
     function cachePoolKey(address pool, PoolAddress.PoolKey memory poolKey) private returns (uint80 poolId) {
         poolId = _poolIds[pool];
         if (poolId == 0) {
@@ -243,7 +239,6 @@ function _getHook(address pool) internal view returns (address h) {
         }
     }
 
-    /// @dev Resolve the pool address from the factory and ensure code exists.
     function _resolvePoolAddress(PoolAddress.PoolKey memory key) internal view returns (address p) {
         p = ILPPFactoryMinimal(factory).getPool(key.token0, key.token1, key.fee);
         require(p != address(0), "LPP: pool not deployed");
@@ -261,14 +256,11 @@ function _getHook(address pool) internal view returns (address h) {
         _onlyPoolHook(pool);
         if (amount == 0) return;
 
-        // Ensure we are in the middle of a pending flow for this pool
         require(_pending.active && _pending.pool == pool, "NO_PENDING");
 
-        // If paying WETH9 and we have ETH balance, prefer using ETH path (deposit then transfer)
         if (token == WETH9 && address(this).balance >= amount) {
             pay(token, address(this), pool, amount);
         } else {
-            // Otherwise pull from the original payer (must have approved this manager)
             address payer = _pending.payer;
             if (payer == address(0)) payer = address(this);
             pay(token, payer, pool, amount);
@@ -291,10 +283,8 @@ function _getHook(address pool) internal view returns (address h) {
         require(_pending.tickLower == tickLower && _pending.tickUpper == tickUpper, "CTX_TICKS");
         require(amount0 >= _pending.amount0Min && amount1 >= _pending.amount1Min, "SLIPPAGE");
 
-        // Mint the NFT
         _mint(recipient, (tokenId = _nextId++));
 
-        // Cache pool key and snapshot fee growth
         uint80 poolId = cachePoolKey(
             pool,
             PoolAddress.PoolKey({ token0: _pending.token0, token1: _pending.token1, fee: _pending.fee })
@@ -316,7 +306,6 @@ function _getHook(address pool) internal view returns (address h) {
             tokensOwed1: 0
         });
 
-        // Prepare return payload for mint()
         _mintResult = PendingMintResult({
             tokenId: tokenId,
             liquidity: liquidity,
@@ -346,7 +335,6 @@ function _getHook(address pool) internal view returns (address h) {
         require(position.poolId != 0, "Invalid token ID");
         require(position.tickLower == tickLower && position.tickUpper == tickUpper, "CTX_TICKS");
 
-        // Snapshot fee growth and accrue fees on prior liquidity
         bytes32 positionKey = PositionKey.compute(address(this), position.tickLower, position.tickUpper);
         (, uint256 fee0, uint256 fee1, , ) = ILPPPool(pool).positions(positionKey);
 
@@ -387,23 +375,23 @@ function _getHook(address pool) internal view returns (address h) {
     {
         ILPPPool pool;
         {
-            // scope to drop locals after the call
-            AddLiquidityParams memory alp = AddLiquidityParams({
-                token0: params.token0,
-                token1: params.token1,
-                fee:    params.fee,
-                tickLower: params.tickLower,
-                tickUpper: params.tickUpper,
-                amount0Desired: params.amount0Desired,
-                amount1Desired: params.amount1Desired,
-                amount0Min: params.amount0Min,
-                amount1Min: params.amount1Min,
-                recipient: address(this)
-            });
+        AddLiquidityParams memory alp = AddLiquidityParams({
+            token0: params.token0,
+            token1: params.token1,
+            fee:    params.fee,
+            tickLower: params.tickLower,
+            tickUpper: params.tickUpper,
+            amount0Desired: params.amount0Desired,
+            amount1Desired: params.amount1Desired,
+            amount0Min: params.amount0Min,
+            amount1Min: params.amount1Min,
+            recipient: address(this),
+            payer: msg.sender,
+            hook: address(0)
+        });
             (liquidity, amount0, amount1, pool) = addLiquidity(alp);
         }
 
-        // Mint NFT to recipient and snapshot fee growth
         _mint(params.recipient, (tokenId = _nextId++));
         uint80 poolId = cachePoolKey(address(pool), key);
 
@@ -433,7 +421,6 @@ function _getHook(address pool) internal view returns (address h) {
         address poolAddr
     ) private returns (uint128 added, uint256 amount0, uint256 amount1)
     {
-        // Accrue fees on current liquidity
         bytes32 pKey = PositionKey.compute(address(this), position.tickLower, position.tickUpper);
         (, uint256 fee0, uint256 fee1, , ) = ILPPPool(poolAddr).positions(pKey);
 
@@ -452,7 +439,6 @@ function _getHook(address pool) internal view returns (address h) {
         position.feeGrowthInside1LastX128 = fee1;
 
         {
-            // scope to drop locals after the call
             AddLiquidityParams memory alp = AddLiquidityParams({
                 token0: key.token0,
                 token1: key.token1,
@@ -463,7 +449,9 @@ function _getHook(address pool) internal view returns (address h) {
                 amount1Desired: params.amount1Desired,
                 amount0Min: params.amount0Min,
                 amount1Min: params.amount1Min,
-                recipient: address(this)
+                recipient: address(this),
+                payer: msg.sender,
+                hook: address(0)
             });
 
             (added, amount0, amount1, ) = addLiquidity(alp);
@@ -493,15 +481,13 @@ function _getHook(address pool) internal view returns (address h) {
             fee:    params.fee
         });
 
-        address poolAddr = _resolvePoolAddress(key); 
+        address poolAddr = _resolvePoolAddress(key);
         address hook = _getHook(poolAddr);
 
         if (hook == address(0)) {
-            // ── LEGACY (no hook): do a direct addLiquidity, then mint the NFT ──
             return _legacyMintPath(params, key);
         }
 
-        // ── Hooked path ──
         _pending = PendingMintCtx({
             active: true,
             pool: poolAddr,
@@ -548,16 +534,14 @@ function _getHook(address pool) internal view returns (address h) {
         require(position.poolId != 0, "Invalid token ID");
 
         PoolAddress.PoolKey memory key = _poolIdToPoolKey[position.poolId];
-        address poolAddr = _resolvePoolAddress(key); 
+        address poolAddr = _resolvePoolAddress(key);
         address hook = _getHook(poolAddr);
 
         if (hook == address(0)) {
-            // ── LEGACY (no hook): accrue fees on current liquidity, then add ──
             (liquidity, amount0, amount1) = _legacyIncreasePath(params, position, key, poolAddr);
             return (liquidity, amount0, amount1);
         }
 
-        // ── Hooked path ──
         _pending = PendingMintCtx({
             active: true,
             pool: poolAddr,
@@ -716,7 +700,6 @@ function _getHook(address pool) internal view returns (address h) {
         return uint256(_positions[tokenId].nonce++);
     }
 
-    /// @inheritdoc IERC721
     function getApproved(uint256 tokenId) public view override(ERC721, IERC721) returns (address) {
         require(_exists(tokenId), 'ERC721: approved query for nonexistent token');
         return _positions[tokenId].operator;
@@ -726,4 +709,69 @@ function _getHook(address pool) internal view returns (address h) {
         _positions[tokenId].operator = to;
         emit Approval(ownerOf(tokenId), to, tokenId);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+// IPeripheryPayments (required by INonfungiblePositionManager)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// @notice Unwrap all WETH9 held by this contract to ETH and send to recipient
+function unwrapWETH9(uint256 amountMinimum, address recipient) external payable override {
+    uint256 balance = IERC20Minimal(WETH9).balanceOf(address(this));
+    require(balance >= amountMinimum, "Insufficient WETH9");
+
+    if (balance > 0) {
+        IWETH9(WETH9).withdraw(balance);
+        address to = recipient == address(0) ? msg.sender : recipient;
+        (bool s, ) = to.call{value: balance}("");
+        require(s, "ETH_TRANSFER_FAILED");
+    }
+}
+
+/// @notice Refund any ETH held by this contract to msg.sender
+function refundETH() external payable override {
+    uint256 bal = address(this).balance;
+    if (bal > 0) {
+        (bool s, ) = msg.sender.call{value: bal}("");
+        require(s, "ETH_REFUND_FAILED");
+    }
+}
+
+/// @notice Sweep any ERC20 token balance to recipient
+function sweepToken(address token, uint256 amountMinimum, address recipient) external payable override {
+    uint256 balance = IERC20Minimal(token).balanceOf(address(this));
+    require(balance >= amountMinimum, "Insufficient token");
+
+    if (balance > 0) {
+        address to = recipient == address(0) ? msg.sender : recipient;
+        TransferHelper.safeTransfer(token, to, balance);
+    }
+}
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Payments helper (ETH/WETH9 or ERC20)
+    // ─────────────────────────────────────────────────────────────────────────────
+function pay(address token, address payer, address recipient, uint256 value) internal {
+    if (value == 0) return;
+
+    // If we can pay with ETH -> wrap into WETH9, then transfer
+    if (token == WETH9 && address(this).balance >= value) {
+        IWETH9(WETH9).deposit{value: value}();
+        // still use the protocol helper for simple ERC20 transfer
+        TransferHelper.safeTransfer(WETH9, recipient, value);
+        return;
+    }
+
+    // Otherwise ERC20 path
+    if (payer == address(this)) {
+        TransferHelper.safeTransfer(token, recipient, value);
+    } else {
+        _safeTransferFrom(token, payer, recipient, value); // <— inline helper below
+    }
+}
+function _safeTransferFrom(address token, address from, address to, uint256 value) internal {
+    (bool success, bytes memory data) =
+        token.call(abi.encodeWithSelector(IERC20Minimal.transferFrom.selector, from, to, value));
+    require(success && (data.length == 0 || abi.decode(data, (bool))), "STF");
+}
+
 }

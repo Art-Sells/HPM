@@ -1,26 +1,36 @@
-// poolAddressLib.ts
+// Periphery/test/shared/poolAddressLib.ts
+// Periphery/test/shared/poolAddressLib.ts
 import hre from 'hardhat'
-import type { ILPPFactory } from '../../typechain-types/protocol'
-const { ethers } = hre
+import { createRequire } from 'module'
+const require = createRequire(import.meta.url)
+const { ethers, artifacts } = hre
 
+// IMPORTANT: hash the impl artifact that your Factory will actually deploy
+const implPath = require.resolve(
+  '@lpp/lpp-protocol/artifacts/contracts/LPPPool.sol/LPPPool.json'
+)
+console.log('Using LPPPool artifact at:', implPath) // <-- keep for debugging
+
+const LPPPoolImplJson = require(implPath)
+
+export async function getInitHash(): Promise<string> {
+  const bytecode: string = LPPPoolImplJson.bytecode
+  if (!bytecode || bytecode === '0x') {
+    throw new Error('Impl bytecode missing—check artifact path')
+  }
+  return ethers.keccak256(bytecode)
+}
+
+// (Optional helper if you need it in tests)
 export async function computeExpectedPool(
   factoryAddr: string,
   token0: string,
   token1: string,
   fee: number
 ): Promise<string> {
-  // Use the artifact you actually have
-  const factory = (await ethers.getContractAt(
-    'ILPPFactory',
-    factoryAddr
-  )) as unknown as ILPPFactory
-
-  // ethers v6: static call through the method object
-  try {
-    return await (factory as any).getFunction('createPool').staticCall(token0, token1, fee)
-  } catch {
-    if ((factory as any).getPool)  return await (factory as any).getPool(token0, token1, fee)
-    if ((factory as any).pools)    return await (factory as any).pools(token0, token1, fee)
-    throw new Error('Factory cannot compute or read pool address')
-  }
+  const initCodeHash = await getInitHash()
+  const salt = ethers.keccak256(
+    ethers.AbiCoder.defaultAbiCoder().encode(['address','address','uint24'], [token0, token1, fee])
+  )
+  return ethers.getCreate2Address(factoryAddr, salt, initCodeHash)
 }
