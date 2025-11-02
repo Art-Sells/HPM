@@ -57,26 +57,27 @@ describe('NonfungiblePositionManager', () => {
 async function nftFixture() {
   const signers = await ethers.getSigners()
   const { weth9, factory, tokens, nft, router, hook } = await completeFixture(signers as any, ethers.provider)
-// inside nftFixture(), after deploying/returning nft & hook, before approvals
-const caller = await (await ethers.getSigners())[0].getAddress()
 
-try {
-  if ((nft as any).setMintHook) {
-    await (nft as any).setMintHook(caller)        // allow the EOA to call mint paths
-  } else if ((nft as any).setHook) {
-    await (nft as any).setHook(caller)
-  } else if (hook && (hook as any).setMintHook) {
-    await (hook as any).setMintHook(caller)
-  } else if (hook && (hook as any).authorize) {
-    await (hook as any).authorize(caller, true)
+  // ── NEW: allow the EOA test caller to traverse the mint path that’s otherwise hook-gated
+  const caller = await (await ethers.getSigners())[0].getAddress()
+  try {
+    if ((nft as any).setMintHook) {
+      await (nft as any).setMintHook(caller)        // if NFT proxies hook access
+    } else if ((nft as any).setHook) {
+      await (nft as any).setHook(caller)
+    } else if (hook && (hook as any).setMintHook) {
+      await (hook as any).setMintHook(caller)       // if hook enforces an allowlist
+    } else if (hook && (hook as any).authorize) {
+      await (hook as any).authorize(caller, true)   // generic authorization path
+    }
+  } catch (e) {
+    console.warn('Could not configure mint hook for tests:', e)
   }
-} catch (e) {
-  console.warn('Could not configure mint hook for tests:', e)
-}
-  // optional: keep your hook manager line if you need it for other tests
+
+  // Optional: wire manager if your hook emits lock events consumed by tests
   try { await (hook as any).setManager(await nft.getAddress()) } catch {}
 
-  // Approve & fund wallets
+  // Approvals & seeding
   const nftAddr = await nft.getAddress()
   const otherAddr = await signers[1].getAddress()
 

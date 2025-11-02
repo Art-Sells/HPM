@@ -4,8 +4,7 @@ yarn hardhat test test/LiquidityAmounts.spec.ts
 yarn hardhat test test/Multicall.spec.ts
 yarn hardhat test test/NFTDescriptor.spec.ts
 yarn hardhat test test/NonfungiblePoolAddress.hash.spec.ts
-- and copy/paste code into both spec and contract after 
-- re-running NFTDescriptor
+- and copy/paste code into both PoolAddress.sol after new .sols
 yarn hardhat test test/NonfungiblePositionManager.spec.ts
 yarn hardhat test test/NonFungibleTokenPositionDescriptor.spec.ts
 yarn hardhat test test/OracleLibrary.spec.ts
