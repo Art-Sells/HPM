@@ -20,8 +20,6 @@ interface ILPPMintHook {
 contract MockMintRebateHook is ILPPMintHook {
     uint256 public rebateWei;
 
-    constructor(uint256 _rebateWei) public { rebateWei = _rebateWei; }
-
     function setRebateWei(uint256 _rebateWei) external { rebateWei = _rebateWei; }
 
     function rebateRequired(address) external view override returns (uint256) {
