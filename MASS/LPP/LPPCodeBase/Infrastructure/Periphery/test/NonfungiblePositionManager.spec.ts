@@ -21,7 +21,7 @@ import type {
 import type { ILPPFactory } from '../typechain-types/protocol'
 
 import completeFixture from './shared/completeFixture.ts'
-import { computeExpectedPool, getInitHash } from './shared/poolAddressLib.ts'
+import { computeExpectedPool } from './shared/poolAddressLib.ts'
 import { encodePriceSqrt } from './shared/encodePriceSqrt.ts'
 import { expandTo18Decimals } from './shared/expandTo18Decimals.ts'
 import { expect } from './shared/expect.ts'
@@ -54,23 +54,40 @@ describe('NonfungiblePositionManager', () => {
   let wallet: Signer
   let other: Signer
 
-  async function nftFixture() {
-    const signers = await ethers.getSigners()
-    const { weth9, factory, tokens, nft, router, hook } = await completeFixture(signers as any, ethers.provider)
-    try { await (hook as any).setManager(await nft.getAddress()) } catch {}
+async function nftFixture() {
+  const signers = await ethers.getSigners()
+  const { weth9, factory, tokens, nft, router, hook } = await completeFixture(signers as any, ethers.provider)
+// inside nftFixture(), after deploying/returning nft & hook, before approvals
+const caller = await (await ethers.getSigners())[0].getAddress()
 
-    // Approve & fund wallets
-    const nftAddr = await nft.getAddress()
-    const otherAddr = await signers[1].getAddress()
-
-    for (const token of tokens) {
-      await token.approve(nftAddr, MaxUint256)
-      await token.connect(signers[1]).approve(nftAddr, MaxUint256)
-      await token.transfer(otherAddr, expandTo18Decimals(1_000_000))
-    }
-
-    return { nft, factory, tokens, weth9, router }
+try {
+  if ((nft as any).setMintHook) {
+    await (nft as any).setMintHook(caller)        // allow the EOA to call mint paths
+  } else if ((nft as any).setHook) {
+    await (nft as any).setHook(caller)
+  } else if (hook && (hook as any).setMintHook) {
+    await (hook as any).setMintHook(caller)
+  } else if (hook && (hook as any).authorize) {
+    await (hook as any).authorize(caller, true)
   }
+} catch (e) {
+  console.warn('Could not configure mint hook for tests:', e)
+}
+  // optional: keep your hook manager line if you need it for other tests
+  try { await (hook as any).setManager(await nft.getAddress()) } catch {}
+
+  // Approve & fund wallets
+  const nftAddr = await nft.getAddress()
+  const otherAddr = await signers[1].getAddress()
+
+  for (const token of tokens) {
+    await token.approve(nftAddr, MaxUint256)
+    await token.connect(signers[1]).approve(nftAddr, MaxUint256)
+    await token.transfer(otherAddr, expandTo18Decimals(1_000_000))
+  }
+
+  return { nft, factory, tokens, weth9, router }
+}
 
   before(async () => {
     wallets = await ethers.getSigners()

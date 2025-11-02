@@ -3,6 +3,7 @@ pragma solidity =0.7.6;
 pragma abicoder v2;
 
 import '@lpp/lpp-protocol/contracts/interfaces/ILPPFactory.sol';
+import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
 import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPMintCallback.sol';
 import '@lpp/lpp-protocol/contracts/libraries/TickMath.sol';
 
@@ -28,6 +29,7 @@ abstract contract LiquidityManagement is ILPPMintCallback, PeripheryImmutableSta
         bytes calldata data
     ) external override {
         MintCallbackData memory decoded = abi.decode(data, (MintCallbackData));
+        // Verifies that msg.sender == PoolAddress.computeAddress(factory, decoded.poolKey)
         CallbackValidation.verifyCallback(factory, decoded.poolKey);
 
         if (amount0Owed > 0) pay(decoded.poolKey.token0, decoded.payer, msg.sender, amount0Owed);
@@ -57,12 +59,21 @@ abstract contract LiquidityManagement is ILPPMintCallback, PeripheryImmutableSta
             ILPPPool pool
         )
     {
-        PoolAddress.PoolKey memory poolKey =
-            PoolAddress.PoolKey({token0: params.token0, token1: params.token1, fee: params.fee});
+        // Build the PoolKey (fee included)
+        PoolAddress.PoolKey memory poolKey = PoolAddress.PoolKey({
+            token0: params.token0,
+            token1: params.token1,
+            fee:    params.fee
+        });
 
-        pool = ILPPPool(PoolAddress.computeAddress(factory, poolKey));
+        // Resolve the pool via the factory (safer than computing and calling a blank address)
+        address poolAddr = ILPPFactory(factory).getPool(poolKey.token0, poolKey.token1, poolKey.fee);
+        require(poolAddr != address(0), "LPP: pool not deployed");
+        uint256 size; assembly { size := extcodesize(poolAddr) }
+        require(size > 0, "LPP: pool code missing");
+        pool = ILPPPool(poolAddr);
 
-        // compute the liquidity amount
+        // Compute the liquidity amount against current price
         {
             (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
             uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(params.tickLower);
@@ -77,14 +88,15 @@ abstract contract LiquidityManagement is ILPPMintCallback, PeripheryImmutableSta
             );
         }
 
+        // Mint on the pool (hook will call back into lppMintCallback for funds)
         (amount0, amount1) = pool.mint(
             params.recipient,
             params.tickLower,
             params.tickUpper,
             liquidity,
-            abi.encode(MintCallbackData({poolKey: poolKey, payer: msg.sender}))
+            abi.encode(MintCallbackData({ poolKey: poolKey, payer: msg.sender }))
         );
 
-        require(amount0 >= params.amount0Min && amount1 >= params.amount1Min, 'Price slippage check');
+        require(amount0 >= params.amount0Min && amount1 >= params.amount1Min, "Price slippage check");
     }
 }
