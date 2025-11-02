@@ -15,15 +15,17 @@ library PoolAddress {
     /// @notice Returns PoolKey: the ordered tokens with the matched fee levels
     /// @param tokenA The first token of a pool, unsorted
     /// @param tokenB The second token of a pool, unsorted
-    /// @param fee The fee level of the pool
     /// @return Poolkey The pool details with ordered token0 and token1 assignments
     function getPoolKey(
         address tokenA,
         address tokenB,
         uint24 fee
     ) internal pure returns (PoolKey memory) {
-        if (tokenA > tokenB) (tokenA, tokenB) = (tokenB, tokenA);
-        return PoolKey({token0: tokenA, token1: tokenB, fee: fee});
+        if (tokenA < tokenB) {
+            return PoolKey({token0: tokenA, token1: tokenB, fee: fee});
+        } else {
+            return PoolKey({token0: tokenB, token1: tokenA, fee: fee});
+        }
     }
 
     /// @notice Deterministically computes the pool address given the factory and PoolKey

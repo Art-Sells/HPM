@@ -493,7 +493,7 @@ function _getHook(address pool) internal view returns (address h) {
             fee:    params.fee
         });
 
-        address poolAddr = PoolAddress.computeAddress(factory, key);
+        address poolAddr = _resolvePoolAddress(key); 
         address hook = _getHook(poolAddr);
 
         if (hook == address(0)) {
@@ -548,7 +548,7 @@ function _getHook(address pool) internal view returns (address h) {
         require(position.poolId != 0, "Invalid token ID");
 
         PoolAddress.PoolKey memory key = _poolIdToPoolKey[position.poolId];
-        address poolAddr = PoolAddress.computeAddress(factory, key);
+        address poolAddr = _resolvePoolAddress(key); 
         address hook = _getHook(poolAddr);
 
         if (hook == address(0)) {
