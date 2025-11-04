@@ -1,7 +1,6 @@
 yarn hardhat test test/Base64.spec.ts
 yarn hardhat test test/CallbackValidation.spec.ts
 yarn hardhat test test/LiquidityAmounts.spec.ts
-yarn hardhat test test/Mint.STF.spec.ts
 yarn hardhat test test/Multicall.spec.ts
 yarn hardhat test test/NFTDescriptor.spec.ts
 yarn hardhat test test/NonfungiblePoolAddress.hash.spec.ts
