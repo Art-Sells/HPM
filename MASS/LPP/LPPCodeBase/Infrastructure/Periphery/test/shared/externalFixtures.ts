@@ -35,28 +35,36 @@ export async function wethFixture([wallet]: Signer[], _provider?: unknown): Prom
 }
 
 // -------------------- LPP Core Factory --------------------
-// We REQUIRE constructor(address _mintHook). If your artifact differs, this will throw.
+// Works with LPPFactory constructors that have either 0 args or 1 arg (mintHook)
 export async function lppFactoryFixture(
   [wallet]: Signer[],
   _provider: unknown,
-  opts: { mintHook: string }
+  opts: { mintHook?: string } // optional now
 ): Promise<LPPFactory> {
-  if (!opts?.mintHook) throw new Error('lppFactoryFixture: opts.mintHook is required')
-
-  const ctorInputs =
+  const ctor =
     (Array.isArray(LPP_FACTORY_ARTIFACT.abi)
-      ? LPP_FACTORY_ARTIFACT.abi.find((x: any) => x && x.type === 'constructor')?.inputs
-      : null) || []
+      ? LPP_FACTORY_ARTIFACT.abi.find((x: any) => x && x.type === 'constructor')
+      : undefined) || { inputs: [] as any[] }
 
-  if (ctorInputs.length !== 1) {
-    throw new Error(
-      `LPPFactory constructor must accept exactly one arg (mintHook). Found ${ctorInputs.length}. ` +
-      `Please ensure your LPPFactory has constructor(address _mintHook).`
-    )
+  const argc = (ctor.inputs || []).length
+
+  if (argc === 0) {
+    // Current protocol build: no ctor args
+    return await deployFromArtifact<LPPFactory>(LPP_FACTORY_ARTIFACT, wallet, [])
   }
 
-  const factory = await deployFromArtifact<LPPFactory>(LPP_FACTORY_ARTIFACT, wallet, [opts.mintHook])
-  return factory
+  if (argc === 1) {
+    // Older/alternate build: 1 address arg (mintHook)
+    const arg =
+      opts?.mintHook ??
+      '0x0000000000000000000000000000000000000000' // safe default if not supplied
+    return await deployFromArtifact<LPPFactory>(LPP_FACTORY_ARTIFACT, wallet, [arg])
+  }
+
+  throw new Error(
+    `Unsupported LPPFactory constructor arity: ${argc}. ` +
+      `Expected 0 or 1 arg(s). Update test fixture if protocol changes.`
+  )
 }
 
 // -------------------- LPP Router Fixture --------------------

@@ -322,10 +322,11 @@ try {
     ;({ nft, factory, tokens, weth9, router, hook } = await loadFixture(nftFixture))
   })
 
-  it('bytecode size', async () => {
-    const code = await ethers.provider.getCode(await (nft as any).getAddress())
-    expect((code.length - 2) / 2).to.matchSnapshot()
-  })
+    it('bytecode size', async () => {
+      const code = await ethers.provider.getCode(await (nft as any).getAddress())
+      const size = (code.length - 2) / 2
+      ;(expect(size) as any).to.matchSnapshot() // TS: plugin method exists at runtime
+    })
 
   describe('#createAndInitializePoolIfNecessary', () => {
     it('creates the pool at the expected address', async () => {
@@ -457,58 +458,58 @@ try {
           recipient: await (wallet as any).getAddress(),
           deadline: 1,
         } as MintParams)
-      ).to.be.revertedWith('STF')
+      ).to.be.revertedWith('ONLY_HOOKED_POOLS')
     })
 
-    // it('creates a token', async () => {
-    //   const token0Addr = await tokens[0].getAddress()
-    //   const token1Addr = await tokens[1].getAddress()
-    //   const otherAddr = await (other as any).getAddress()
+    it('creates a token', async () => {
+      const token0Addr = await tokens[0].getAddress()
+      const token1Addr = await tokens[1].getAddress()
+      const otherAddr = await (other as any).getAddress()
 
-    //   await (nft as any).createAndInitializePoolIfNecessary(token0Addr, token1Addr, FEE, encodePriceSqrt(1, 1))
-    //   await ensureHookedPool(factory, hook, token0Addr, token1Addr)
+      await (nft as any).createAndInitializePoolIfNecessary(token0Addr, token1Addr, FEE, encodePriceSqrt(1, 1))
+      await ensureHookedPool(factory, hook, token0Addr, token1Addr)
 
-    //   await mintWithRebate({
-    //     token0: token0Addr,
-    //     token1: token1Addr,
-    //     tickLower: getMinTick(TICK_SPACING),
-    //     tickUpper: getMaxTick(TICK_SPACING),
-    //     fee: FEE,
-    //     recipient: otherAddr,
-    //     amount0Desired: 15,
-    //     amount1Desired: 15,
-    //     amount0Min: 0,
-    //     amount1Min: 0,
-    //     deadline: 10,
-    //   } as MintParams)
+      await mintWithRebate({
+        token0: token0Addr,
+        token1: token1Addr,
+        tickLower: getMinTick(TICK_SPACING),
+        tickUpper: getMaxTick(TICK_SPACING),
+        fee: FEE,
+        recipient: otherAddr,
+        amount0Desired: 15,
+        amount1Desired: 15,
+        amount0Min: 0,
+        amount1Min: 0,
+        deadline: 10,
+      } as MintParams)
 
-    //   expect(await (nft as any).balanceOf(otherAddr)).to.eq(1)
-    //   expect(await (nft as any).tokenOfOwnerByIndex(otherAddr, 0)).to.eq(1)
+      expect(await (nft as any).balanceOf(otherAddr)).to.eq(1)
+      expect(await (nft as any).tokenOfOwnerByIndex(otherAddr, 0)).to.eq(1)
 
-    //   const {
-    //     fee,
-    //     token0,
-    //     token1,
-    //     tickLower,
-    //     tickUpper,
-    //     liquidity,
-    //     tokensOwed0,
-    //     tokensOwed1,
-    //     feeGrowthInside0LastX128,
-    //     feeGrowthInside1LastX128,
-    //   } = await (nft as any).positions(1)
+      const {
+        fee,
+        token0,
+        token1,
+        tickLower,
+        tickUpper,
+        liquidity,
+        tokensOwed0,
+        tokensOwed1,
+        feeGrowthInside0LastX128,
+        feeGrowthInside1LastX128,
+      } = await (nft as any).positions(1)
 
-    //   expect(token0).to.eq(token0Addr)
-    //   expect(token1).to.eq(token1Addr)
-    //   expect(fee).to.eq(FEE)
-    //   expect(tickLower).to.eq(getMinTick(TICK_SPACING))
-    //   expect(tickUpper).to.eq(getMaxTick(TICK_SPACING))
-    //   expect(liquidity).to.be.gt(0n)                // real-liquidity math compatible
-    //   expect(tokensOwed0).to.eq(0)
-    //   expect(tokensOwed1).to.eq(0)
-    //   expect(feeGrowthInside0LastX128).to.eq(0)
-    //   expect(feeGrowthInside1LastX128).to.eq(0)
-    // })
+      expect(token0).to.eq(token0Addr)
+      expect(token1).to.eq(token1Addr)
+      expect(fee).to.eq(FEE)
+      expect(tickLower).to.eq(getMinTick(TICK_SPACING))
+      expect(tickUpper).to.eq(getMaxTick(TICK_SPACING))
+      expect(liquidity).to.be.gt(0n)                // real-liquidity math compatible
+      expect(tokensOwed0).to.eq(0)
+      expect(tokensOwed1).to.eq(0)
+      expect(feeGrowthInside0LastX128).to.eq(0)
+      expect(feeGrowthInside1LastX128).to.eq(0)
+    })
 
     // it('can use eth via multicall', async () => {
     //   const [t0, t1] = sortedTokens(weth9, tokens[0])

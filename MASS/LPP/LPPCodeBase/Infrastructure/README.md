@@ -12,7 +12,7 @@
 - [X] **Implement MEV‑as‑LP rebates** (in‑kind, diminishing returns) with **LPP retention**  - **Complete**
   - [X] Wire periphery mint wrapper (**LPPMintHook**) to compute rebates & retentions - **Complete**
   - [X] Add/test conservative time locking and equal amounts of token minting - **Complete**
-  - [ ] Re-test all spec tests - **In Progress**
+  - [ ] Re-test all spec tests (debug major specs (if all fail, one it by one it)) - **In Progress**
   - [ ] Fork MEV bot repos and testi arbitrage/rebate opportunities with tiny liquidity beginnings and test to see after pool reaches its maximum capacity, what will occur (might have to factor new revenue model in if rebate revenue structure works)…
   - [ ] Emit events; index in Subgraph; spec tests
 - [ ] Frontend/API: router prefers **A/B/C (0‑fee)**, metrics & drift badge
@@ -24,8 +24,8 @@
 ### Deferred (Optional, not required to ship rebates)
 - [ ] **LPPOracleAdapter** (USD oracle with staleness & deviation guards) — *deferred*
 - [ ] **LPPRouter.recenterAndMint()** (atomic re‑center + mint) — *deferred*
-– [ ] Test edge cases if anyone else (other than minters/treasury-address) can burn/withdraw funds from Rebate Vault, Treasury, Pool more than they minted… (test callbacks as well)... 
-– [ ] Find all possible exploits (architectural weaknesses, ie if a pool can re-enter and mutate the Vault balances mid-operation using anything, callbacks/etc)... Then, go through each code and delete “y.|_|”
+– [ ] Test edge cases if anyone else (other than minters/treasury-address) can burn/withdraw funds from Rebate Vault, Treasury, Pool more than they minted… (test callbacks as well) (debug major specs (if all fail, one it by one it))... 
+– [ ] Find all possible exploits (architectural weaknesses, ie if a pool can re-enter and mutate the Vault balances mid-operation using anything, callbacks/etc) (debug major specs (if all fail, one it by one it))... Then, go through each code and delete “y.|_|”
 
 ---
 

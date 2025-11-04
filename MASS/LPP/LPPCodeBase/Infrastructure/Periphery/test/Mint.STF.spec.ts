@@ -42,7 +42,7 @@ describe('NonfungiblePositionManager::mint (STF path)', () => {
     const now = (await ethers.provider.getBlock('latest'))!.timestamp
 
     await expect(
-      nft.mint({
+    nft.mint({
         token0: token0Addr,
         token1: token1Addr,
         fee,
@@ -54,7 +54,7 @@ describe('NonfungiblePositionManager::mint (STF path)', () => {
         amount1Min: 0,
         recipient: await wallet.getAddress(),
         deadline: now + 10_000,
-      })
-    ).to.be.revertedWithoutReason() // ← this is the robust assertion in your 0.7 build
+    })
+    ).to.be.revertedWith('ONLY_HOOKED_POOLS')
   })
 })
