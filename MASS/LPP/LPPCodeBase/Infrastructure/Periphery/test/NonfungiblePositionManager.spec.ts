@@ -411,7 +411,7 @@ try {
     })
   })
 
-  describe('#mint', () => {
+  describe('#mintWithRebate', () => {
     it('fails if pool does not exist', async () => {
       const token0Addr = await tokens[0].getAddress()
       const token1Addr = await tokens[1].getAddress()

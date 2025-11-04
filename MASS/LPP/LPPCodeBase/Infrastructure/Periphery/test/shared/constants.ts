@@ -10,5 +10,5 @@ export const FeeAmount = {
 } as const
 
 export const TICK_SPACINGS: Record<number, number> = {
-  [FeeAmount.ZERO]: 10,
+  [FeeAmount.ZERO]: 60,
 }
