@@ -2,45 +2,72 @@
 pragma solidity =0.7.6;
 pragma abicoder v2;
 
-import '@lpp/lpp-protocol/contracts/libraries/SafeCast.sol';
-import '@lpp/lpp-protocol/contracts/libraries/TickMath.sol';
-import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
-import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPSupplicateCallback.sol';
+import "../interfaces/IQuoter.sol";
+import "../base/PeripheryImmutableState.sol";
+import "../libraries/Path.sol";
+import "../libraries/PoolAddress.sol";
+import "../libraries/CallbackValidation.sol";
+import "@lpp/lpp-protocol/contracts/interfaces/callback/ILPPSupplicateCallback.sol";
 
-import '../interfaces/IQuoter.sol';
-import '../base/PeripheryImmutableState.sol';
-import '../libraries/Path.sol';
-import '../libraries/PoolAddress.sol';
-import '../libraries/CallbackValidation.sol';
+/// ─────────────────────────────────────────────────────────────────────────────
+/// Local minimal helpers (no protocol edits / no extra protocol libs compiled)
+/// ─────────────────────────────────────────────────────────────────────────────
+library SafeCastMini {
+    function toInt256(uint256 x) internal pure returns (int256 y) {
+        require(x < 2**255, "SafeCast: overflow");
+        y = int256(x);
+    }
+}
+
+library TickMathMini {
+    uint160 internal constant MIN_SQRT_RATIO = 4295128739;
+    uint160 internal constant MAX_SQRT_RATIO =
+        1461446703485210103287273052203988822378723970342;
+}
+
+interface ILPPPoolSupplicate {
+    function supplicate(
+        address recipient,
+        bool zeroForOne,
+        int256 amountSpecified,
+        uint160 sqrtPriceLimitX96,
+        bytes calldata data
+    ) external returns (int256 amount0, int256 amount1);
+}
 
 /// @title Provides quotes for supplicates
-/// @notice Allows getting the expected amount out or amount in for a given supplicate without executing the supplicate
-/// @dev These functions are not gas efficient and should _not_ be called on chain. Instead, optimistically execute
-/// the supplicate and check the amounts in the callback.
+/// @notice Get expected amount out/in for a supplicate by catching the callback revert payload
+/// @dev Not gas-efficient; off-chain use.
 contract SupplicateQuoter is ISupplicateQuoter, ILPPSupplicateCallback, PeripheryImmutableState {
     using Path for bytes;
-    using SafeCast for uint256;
+    using SafeCastMini for uint256;
 
-    /// @dev Transient storage variable used to check a safety condition in exact output supplicates.
     uint256 private amountOutCached;
 
     constructor(address _factory, address _WETH9) PeripheryImmutableState(_factory, _WETH9) {}
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Pool resolver (no protocol edits)
+    // ─────────────────────────────────────────────────────────────────────────
     function getPool(
         address tokenA,
         address tokenB,
         uint24 fee
-    ) private view returns (ILPPPool) {
-        return ILPPPool(PoolAddress.computeAddress(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee)));
+    ) private view returns (ILPPPoolSupplicate) {
+        return ILPPPoolSupplicate(
+            PoolAddress.computeAddress(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee))
+        );
     }
 
-    /// @inheritdoc ILPPSupplicateCallback
+    // ─────────────────────────────────────────────────────────────────────────
+    // Callback: revert with the numeric quote
+    // ─────────────────────────────────────────────────────────────────────────
     function lppSupplicateCallback(
         int256 amount0Delta,
         int256 amount1Delta,
-        bytes memory path
+        bytes calldata path
     ) external view override {
-        require(amount0Delta > 0 || amount1Delta > 0); // supplicates entirely within 0-liquidity regions are not supported
+        require(amount0Delta > 0 || amount1Delta > 0, "NO_DELTA");
         (address tokenIn, address tokenOut, uint24 fee) = path.decodeFirstPool();
         CallbackValidation.verifyCallback(factory, tokenIn, tokenOut, fee);
 
@@ -48,36 +75,38 @@ contract SupplicateQuoter is ISupplicateQuoter, ILPPSupplicateCallback, Peripher
             amount0Delta > 0
                 ? (tokenIn < tokenOut, uint256(amount0Delta), uint256(-amount1Delta))
                 : (tokenOut < tokenIn, uint256(amount1Delta), uint256(-amount0Delta));
+
         if (isExactInput) {
             assembly {
-                let ptr := mload(0x40)
-                mstore(ptr, amountReceived)
-                revert(ptr, 32)
+                let p := mload(0x40)
+                mstore(p, amountReceived)
+                revert(p, 32)
             }
         } else {
-            // if the cache has been populated, ensure that the full output amount has been received
-            if (amountOutCached != 0) require(amountReceived == amountOutCached);
+            if (amountOutCached != 0) require(amountReceived == amountOutCached, "BAD_OUT");
             assembly {
-                let ptr := mload(0x40)
-                mstore(ptr, amountToPay)
-                revert(ptr, 32)
+                let p := mload(0x40)
+                mstore(p, amountToPay)
+                revert(p, 32)
             }
         }
     }
 
-    /// @dev Parses a revert reason that should contain the numeric quote
+    // ─────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────────────
     function parseRevertReason(bytes memory reason) private pure returns (uint256) {
         if (reason.length != 32) {
-            if (reason.length < 68) revert('Unexpected error');
-            assembly {
-                reason := add(reason, 0x04)
-            }
+            if (reason.length < 68) revert("Unexpected error");
+            assembly { reason := add(reason, 0x04) }
             revert(abi.decode(reason, (string)));
         }
         return abi.decode(reason, (uint256));
     }
 
-    /// @inheritdoc ISupplicateQuoter
+    // ─────────────────────────────────────────────────────────────────────────
+    // Quoting
+    // ─────────────────────────────────────────────────────────────────────────
     function quoteExactInputSingle(
         address tokenIn,
         address tokenOut,
@@ -89,11 +118,11 @@ contract SupplicateQuoter is ISupplicateQuoter, ILPPSupplicateCallback, Peripher
 
         try
             getPool(tokenIn, tokenOut, fee).supplicate(
-                address(this), // address(0) might cause issues with some tokens
+                address(this),
                 zeroForOne,
                 amountIn.toInt256(),
                 sqrtPriceLimitX96 == 0
-                    ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
+                    ? (zeroForOne ? TickMathMini.MIN_SQRT_RATIO + 1 : TickMathMini.MAX_SQRT_RATIO - 1)
                     : sqrtPriceLimitX96,
                 abi.encodePacked(tokenIn, fee, tokenOut)
             )
@@ -102,18 +131,16 @@ contract SupplicateQuoter is ISupplicateQuoter, ILPPSupplicateCallback, Peripher
         }
     }
 
-    /// @inheritdoc ISupplicateQuoter
-    function quoteExactInput(bytes memory path, uint256 amountIn) external override returns (uint256 amountOut) {
+    function quoteExactInput(bytes memory path, uint256 amountIn)
+        external
+        override
+        returns (uint256 amountOut)
+    {
         while (true) {
-            bool hasMultiplePools = path.hasMultiplePools();
-
+            bool hasMultiple = path.hasMultiplePools();
             (address tokenIn, address tokenOut, uint24 fee) = path.decodeFirstPool();
-
-            // the outputs of prior supplicates become the inputs to subsequent ones
             amountIn = quoteExactInputSingle(tokenIn, tokenOut, fee, amountIn, 0);
-
-            // decide whether to continue or terminate
-            if (hasMultiplePools) {
+            if (hasMultiple) {
                 path = path.skipToken();
             } else {
                 return amountIn;
@@ -121,7 +148,6 @@ contract SupplicateQuoter is ISupplicateQuoter, ILPPSupplicateCallback, Peripher
         }
     }
 
-    /// @inheritdoc ISupplicateQuoter
     function quoteExactOutputSingle(
         address tokenIn,
         address tokenOut,
@@ -131,36 +157,33 @@ contract SupplicateQuoter is ISupplicateQuoter, ILPPSupplicateCallback, Peripher
     ) public override returns (uint256 amountIn) {
         bool zeroForOne = tokenIn < tokenOut;
 
-        // if no price limit has been specified, cache the output amount for comparison in the supplicate callback
         if (sqrtPriceLimitX96 == 0) amountOutCached = amountOut;
         try
             getPool(tokenIn, tokenOut, fee).supplicate(
-                address(this), // address(0) might cause issues with some tokens
+                address(this),
                 zeroForOne,
                 -amountOut.toInt256(),
                 sqrtPriceLimitX96 == 0
-                    ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
+                    ? (zeroForOne ? TickMathMini.MIN_SQRT_RATIO + 1 : TickMathMini.MAX_SQRT_RATIO - 1)
                     : sqrtPriceLimitX96,
                 abi.encodePacked(tokenOut, fee, tokenIn)
             )
         {} catch (bytes memory reason) {
-            if (sqrtPriceLimitX96 == 0) delete amountOutCached; // clear cache
+            if (sqrtPriceLimitX96 == 0) delete amountOutCached;
             return parseRevertReason(reason);
         }
     }
 
-    /// @inheritdoc ISupplicateQuoter
-    function quoteExactOutput(bytes memory path, uint256 amountOut) external override returns (uint256 amountIn) {
+    function quoteExactOutput(bytes memory path, uint256 amountOut)
+        external
+        override
+        returns (uint256 amountIn)
+    {
         while (true) {
-            bool hasMultiplePools = path.hasMultiplePools();
-
+            bool hasMultiple = path.hasMultiplePools();
             (address tokenOut, address tokenIn, uint24 fee) = path.decodeFirstPool();
-
-            // the inputs of prior supplicates become the outputs of subsequent ones
             amountOut = quoteExactOutputSingle(tokenIn, tokenOut, fee, amountOut, 0);
-
-            // decide whether to continue or terminate
-            if (hasMultiplePools) {
+            if (hasMultiple) {
                 path = path.skipToken();
             } else {
                 return amountOut;

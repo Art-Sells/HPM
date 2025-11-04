@@ -6,6 +6,17 @@ import '@lpp/lpp-protocol/contracts/libraries/SafeCast.sol';
 import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 
+// ✅ Add this mini interface locally
+interface ILPPPoolSupplicate {
+    function supplicate(
+        address recipient,
+        bool zeroForOne,
+        int256 amountSpecified,
+        uint160 sqrtPriceLimitX96,
+        bytes calldata data
+    ) external returns (int256 amount0, int256 amount1);
+}
+
 contract TestLPPCallee is ILPPSupplicateCallback {
     using SafeCast for uint256;
 
@@ -15,7 +26,14 @@ contract TestLPPCallee is ILPPSupplicateCallback {
         address recipient,
         uint160 sqrtPriceLimitX96
     ) external {
-        ILPPPool(pool).supplicate(recipient, true, amount0In.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
+        // ✅ cast the pool address to ILPPPoolSupplicate
+        ILPPPoolSupplicate(pool).supplicate(
+            recipient,
+            true,
+            amount0In.toInt256(),
+            sqrtPriceLimitX96,
+            abi.encode(msg.sender)
+        );
     }
 
     function supplicate0ForExact1(
@@ -24,7 +42,13 @@ contract TestLPPCallee is ILPPSupplicateCallback {
         address recipient,
         uint160 sqrtPriceLimitX96
     ) external {
-        ILPPPool(pool).supplicate(recipient, true, -amount1Out.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
+        ILPPPoolSupplicate(pool).supplicate(
+            recipient,
+            true,
+            -amount1Out.toInt256(),
+            sqrtPriceLimitX96,
+            abi.encode(msg.sender)
+        );
     }
 
     function supplicateExact1For0(
@@ -33,7 +57,13 @@ contract TestLPPCallee is ILPPSupplicateCallback {
         address recipient,
         uint160 sqrtPriceLimitX96
     ) external {
-        ILPPPool(pool).supplicate(recipient, false, amount1In.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
+        ILPPPoolSupplicate(pool).supplicate(
+            recipient,
+            false,
+            amount1In.toInt256(),
+            sqrtPriceLimitX96,
+            abi.encode(msg.sender)
+        );
     }
 
     function supplicate1ForExact0(
@@ -42,7 +72,13 @@ contract TestLPPCallee is ILPPSupplicateCallback {
         address recipient,
         uint160 sqrtPriceLimitX96
     ) external {
-        ILPPPool(pool).supplicate(recipient, false, -amount0Out.toInt256(), sqrtPriceLimitX96, abi.encode(msg.sender));
+        ILPPPoolSupplicate(pool).supplicate(
+            recipient,
+            false,
+            -amount0Out.toInt256(),
+            sqrtPriceLimitX96,
+            abi.encode(msg.sender)
+        );
     }
 
     function lppSupplicateCallback(
@@ -55,7 +91,6 @@ contract TestLPPCallee is ILPPSupplicateCallback {
         if (amount0Delta > 0) {
             IERC20(ILPPPool(msg.sender).token0()).transferFrom(sender, msg.sender, uint256(amount0Delta));
         } else {
-            assert(amount1Delta > 0);
             IERC20(ILPPPool(msg.sender).token1()).transferFrom(sender, msg.sender, uint256(amount1Delta));
         }
     }

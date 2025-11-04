@@ -4,7 +4,6 @@ pragma abicoder v2;
 
 import '@lpp/lpp-protocol/contracts/libraries/SafeCast.sol';
 import '@lpp/lpp-protocol/contracts/libraries/TickMath.sol';
-import '@lpp/lpp-protocol/contracts/libraries/TickBitmap.sol';
 import '@lpp/lpp-protocol/contracts/interfaces/ILPPPool.sol';
 import '@lpp/lpp-protocol/contracts/interfaces/callback/ILPPSupplicateCallback.sol';
 
@@ -13,37 +12,55 @@ import '../base/PeripheryImmutableState.sol';
 import '../libraries/Path.sol';
 import '../libraries/PoolAddress.sol';
 import '../libraries/CallbackValidation.sol';
-import '../libraries/PoolTicksCounter.sol';
 
-/// @title Provides quotes for supplicates
-/// @notice Allows getting the expected amount out or amount in for a given supplicate without executing the supplicate
-/// @dev These functions are not gas efficient and should _not_ be called on chain. Instead, optimistically execute
-/// the supplicate and check the amounts in the callback.
-contract SupplicateSupplicateQuoterV2 is ISupplicateQuoterV2, ILPPSupplicateCallback, PeripheryImmutableState {
+/// Minimal local alias to invoke `supplicate` without touching protocol files
+interface ILPPPoolSupplicate {
+    function supplicate(
+        address recipient,
+        bool zeroForOne,
+        int256 amountSpecified,
+        uint160 sqrtPriceLimitX96,
+        bytes calldata data
+    ) external returns (int256 amount0, int256 amount1);
+}
+
+/// Quoter V2 for LPP supplicates (off-chain quoting via revert data)
+contract SupplicateQuoterV2 is ISupplicateQuoterV2, ILPPSupplicateCallback, PeripheryImmutableState {
     using Path for bytes;
     using SafeCast for uint256;
-    using PoolTicksCounter for ILPPPool;
 
-    /// @dev Transient storage variable used to check a safety condition in exact output supplicates.
+    // Safety cache for exact-output (matches Uniswap quoter pattern)
     uint256 private amountOutCached;
+
+    // Per-hop output caches to avoid stack bloat in callers
+    uint160 private _lastSqrtAfter;
+    uint32  private _lastTicksCrossed; // kept for signature parity (we return 0)
+    uint256 private _lastGasUsed;
 
     constructor(address _factory, address _WETH9) PeripheryImmutableState(_factory, _WETH9) {}
 
-    function getPool(
-        address tokenA,
-        address tokenB,
-        uint24 fee
-    ) private view returns (ILPPPool) {
-        return ILPPPool(PoolAddress.computeAddress(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee)));
+    // ───────── helpers ─────────
+
+    function _poolAddress(address a, address b, uint24 f) private view returns (address) {
+        return PoolAddress.computeAddress(factory, PoolAddress.getPoolKey(a, b, f));
     }
 
-    /// @inheritdoc ILPPSupplicateCallback
+    function _poolView(address a, address b, uint24 f) private view returns (ILPPPool) {
+        return ILPPPool(_poolAddress(a, b, f));
+    }
+
+    function _packPath(address a, uint24 f, address b) private pure returns (bytes memory) {
+        return abi.encodePacked(a, f, b);
+    }
+
+    // ───────── callback ─────────
+
     function lppSupplicateCallback(
         int256 amount0Delta,
         int256 amount1Delta,
         bytes memory path
     ) external view override {
-        require(amount0Delta > 0 || amount1Delta > 0); // supplicates entirely within 0-liquidity regions are not supported
+        require(amount0Delta > 0 || amount1Delta > 0, 'NO_DELTA');
         (address tokenIn, address tokenOut, uint24 fee) = path.decodeFirstPool();
         CallbackValidation.verifyCallback(factory, tokenIn, tokenOut, fee);
 
@@ -52,222 +69,195 @@ contract SupplicateSupplicateQuoterV2 is ISupplicateQuoterV2, ILPPSupplicateCall
                 ? (tokenIn < tokenOut, uint256(amount0Delta), uint256(-amount1Delta))
                 : (tokenOut < tokenIn, uint256(amount1Delta), uint256(-amount0Delta));
 
-        ILPPPool pool = getPool(tokenIn, tokenOut, fee);
-        (uint160 sqrtPriceX96After, int24 tickAfter, , , , , ) = pool.slot0();
+        ILPPPool poolV = _poolView(tokenIn, tokenOut, fee);
+        (uint160 sqrtPriceX96After, int24 tickAfter, , , , , ) = poolV.slot0();
 
         if (isExactInput) {
             assembly {
-                let ptr := mload(0x40)
-                mstore(ptr, amountReceived)
-                mstore(add(ptr, 0x20), sqrtPriceX96After)
-                mstore(add(ptr, 0x40), tickAfter)
-                revert(ptr, 96)
+                let p := mload(0x40)
+                mstore(p, amountReceived)
+                mstore(add(p, 0x20), sqrtPriceX96After)
+                mstore(add(p, 0x40), tickAfter)
+                revert(p, 96)
             }
         } else {
-            // if the cache has been populated, ensure that the full output amount has been received
-            if (amountOutCached != 0) require(amountReceived == amountOutCached);
+            if (amountOutCached != 0) require(amountReceived == amountOutCached, 'BAD_OUT');
             assembly {
-                let ptr := mload(0x40)
-                mstore(ptr, amountToPay)
-                mstore(add(ptr, 0x20), sqrtPriceX96After)
-                mstore(add(ptr, 0x40), tickAfter)
-                revert(ptr, 96)
+                let p := mload(0x40)
+                mstore(p, amountToPay)
+                mstore(add(p, 0x20), sqrtPriceX96After)
+                mstore(add(p, 0x40), tickAfter)
+                revert(p, 96)
             }
         }
     }
 
-    /// @dev Parses a revert reason that should contain the numeric quote
-    function parseRevertReason(bytes memory reason)
+    // ───────── revert parsing ─────────
+
+    function _parseRevert(bytes memory reason)
         private
         pure
-        returns (
-            uint256 amount,
-            uint160 sqrtPriceX96After,
-            int24 tickAfter
-        )
+        returns (uint256 amount, uint160 sqrtPriceX96After, int24 tickAfter)
     {
         if (reason.length != 96) {
             if (reason.length < 68) revert('Unexpected error');
-            assembly {
-                reason := add(reason, 0x04)
-            }
+            assembly { reason := add(reason, 0x04) }
             revert(abi.decode(reason, (string)));
         }
         return abi.decode(reason, (uint256, uint160, int24));
     }
 
-    function handleRevert(
-        bytes memory reason,
-        ILPPPool pool,
-        uint256 gasEstimate
-    )
-        private
-        view
-        returns (
-            uint256 amount,
-            uint160 sqrtPriceX96After,
-            uint32 initializedTicksCrossed,
-            uint256
-        )
-    {
-        int24 tickBefore;
-        int24 tickAfter;
-        (, tickBefore, , , , , ) = pool.slot0();
-        (amount, sqrtPriceX96After, tickAfter) = parseRevertReason(reason);
-
-        initializedTicksCrossed = pool.countInitializedTicksCrossed(tickBefore, tickAfter);
-
-        return (amount, sqrtPriceX96After, initializedTicksCrossed, gasEstimate);
+    // Store hop outputs into caches and return only primary amount
+    function _storeHopOutputs(uint256 gasBefore, bytes memory reason) private returns (uint256 amount) {
+        _lastGasUsed = gasBefore - gasleft();
+        uint160 sa; int24 tickAfter;
+        (amount, sa, tickAfter) = _parseRevert(reason);
+        _lastSqrtAfter = sa;
+        _lastTicksCrossed = 0; // no TickBitmap counting in this lightweight build
     }
+
+    // ───────── single-hop helpers (keep caller stacks tiny) ─────────
+
+    // returns: amountOut; side-effects: sets _lastSqrtAfter/_lastGasUsed/_lastTicksCrossed
+    function _exactInputHop(
+        address tokenIn,
+        address tokenOut,
+        uint24 fee,
+        uint256 amountIn
+    ) private returns (uint256) {
+        bool zeroForOne = tokenIn < tokenOut;
+        address poolAddr = _poolAddress(tokenIn, tokenOut, fee);
+
+        uint256 gasBefore = gasleft();
+        try
+            ILPPPoolSupplicate(poolAddr).supplicate(
+                address(this),
+                zeroForOne,
+                amountIn.toInt256(),
+                zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1,
+                _packPath(tokenIn, fee, tokenOut)
+            )
+        {} catch (bytes memory reason) {
+            return _storeHopOutputs(gasBefore, reason);
+        }
+        // Should never reach here (quoter relies on revert). If it does, make it fail deterministically.
+        revert('NO_REVERT_INPUT');
+    }
+
+    // returns: amountIn; side-effects: sets _lastSqrtAfter/_lastGasUsed/_lastTicksCrossed
+    function _exactOutputHop(
+        address tokenIn,
+        address tokenOut,
+        uint24 fee,
+        uint256 amountOut
+    ) private returns (uint256) {
+        bool zeroForOne = tokenIn < tokenOut;
+        address poolAddr = _poolAddress(tokenIn, tokenOut, fee);
+        amountOutCached = amountOut;
+
+        uint256 gasBefore = gasleft();
+
+        // cache arguments to shrink stack
+        int256 amt = -amountOut.toInt256();
+        uint160 limit = zeroForOne
+            ? TickMath.MIN_SQRT_RATIO + 1
+            : TickMath.MAX_SQRT_RATIO - 1;
+        bytes memory payload = _packPath(tokenOut, fee, tokenIn);
+
+        try ILPPPoolSupplicate(poolAddr).supplicate(
+            address(this),
+            zeroForOne,
+            amt,
+            limit,
+            payload
+        )
+        {} catch (bytes memory reason) {
+            delete amountOutCached;
+            return _storeHopOutputs(gasBefore, reason);
+        }
+        revert('NO_REVERT_OUTPUT');
+    }
+
+    // ───────── exact input ─────────
 
     function quoteExactInputSingle(QuoteExactInputSingleParams memory params)
         public
         override
-        returns (
-            uint256 amountOut,
-            uint160 sqrtPriceX96After,
-            uint32 initializedTicksCrossed,
-            uint256 gasEstimate
-        )
+        returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)
     {
-        bool zeroForOne = params.tokenIn < params.tokenOut;
-        ILPPPool pool = getPool(params.tokenIn, params.tokenOut, params.fee);
-
-        uint256 gasBefore = gasleft();
-        try
-            pool.supplicate(
-                address(this), // address(0) might cause issues with some tokens
-                zeroForOne,
-                params.amountIn.toInt256(),
-                params.sqrtPriceLimitX96 == 0
-                    ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
-                    : params.sqrtPriceLimitX96,
-                abi.encodePacked(params.tokenIn, params.fee, params.tokenOut)
-            )
-        {} catch (bytes memory reason) {
-            gasEstimate = gasBefore - gasleft();
-            return handleRevert(reason, pool, gasEstimate);
-        }
+        amountOut = _exactInputHop(params.tokenIn, params.tokenOut, params.fee, params.amountIn);
+        sqrtPriceX96After = _lastSqrtAfter;
+        initializedTicksCrossed = _lastTicksCrossed; // 0
+        gasEstimate = _lastGasUsed;
     }
 
     function quoteExactInput(bytes memory path, uint256 amountIn)
         public
         override
-        returns (
-            uint256 amountOut,
-            uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList,
-            uint256 gasEstimate
-        )
+        returns (uint256 amountOut, uint160[] memory sqrtAfterList, uint32[] memory initializedTicksCrossedList, uint256 gasEstimate)
     {
-        sqrtPriceX96AfterList = new uint160[](path.numPools());
-        initializedTicksCrossedList = new uint32[](path.numPools());
+        uint256 pools = path.numPools();
+        sqrtAfterList = new uint160[](pools);
+        initializedTicksCrossedList = new uint32[](pools); // left zeroed
 
         uint256 i = 0;
         while (true) {
             (address tokenIn, address tokenOut, uint24 fee) = path.decodeFirstPool();
 
-            // the outputs of prior supplicates become the inputs to subsequent ones
-            (uint256 _amountOut, uint160 _sqrtPriceX96After, uint32 _initializedTicksCrossed, uint256 _gasEstimate) =
-                quoteExactInputSingle(
-                    QuoteExactInputSingleParams({
-                        tokenIn: tokenIn,
-                        tokenOut: tokenOut,
-                        fee: fee,
-                        amountIn: amountIn,
-                        sqrtPriceLimitX96: 0
-                    })
-                );
+            // call hop (only one return value; other outputs via caches)
+            uint256 ao = _exactInputHop(tokenIn, tokenOut, fee, amountIn);
+            sqrtAfterList[i] = _lastSqrtAfter;
+            // initializedTicksCrossedList[i] stays 0
+            gasEstimate += _lastGasUsed;
 
-            sqrtPriceX96AfterList[i] = _sqrtPriceX96After;
-            initializedTicksCrossedList[i] = _initializedTicksCrossed;
-            amountIn = _amountOut;
-            gasEstimate += _gasEstimate;
+            amountIn = ao;
             i++;
 
-            // decide whether to continue or terminate
-            if (path.hasMultiplePools()) {
-                path = path.skipToken();
-            } else {
-                return (amountIn, sqrtPriceX96AfterList, initializedTicksCrossedList, gasEstimate);
+            if (!path.hasMultiplePools()) {
+                return (amountIn, sqrtAfterList, initializedTicksCrossedList, gasEstimate);
             }
+            path = path.skipToken();
         }
     }
+
+    // ───────── exact output ─────────
 
     function quoteExactOutputSingle(QuoteExactOutputSingleParams memory params)
         public
         override
-        returns (
-            uint256 amountIn,
-            uint160 sqrtPriceX96After,
-            uint32 initializedTicksCrossed,
-            uint256 gasEstimate
-        )
+        returns (uint256 amountIn, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)
     {
-        bool zeroForOne = params.tokenIn < params.tokenOut;
-        ILPPPool pool = getPool(params.tokenIn, params.tokenOut, params.fee);
-
-        // if no price limit has been specified, cache the output amount for comparison in the supplicate callback
-        if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.amount;
-        uint256 gasBefore = gasleft();
-        try
-            pool.supplicate(
-                address(this), // address(0) might cause issues with some tokens
-                zeroForOne,
-                -params.amount.toInt256(),
-                params.sqrtPriceLimitX96 == 0
-                    ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
-                    : params.sqrtPriceLimitX96,
-                abi.encodePacked(params.tokenOut, params.fee, params.tokenIn)
-            )
-        {} catch (bytes memory reason) {
-            gasEstimate = gasBefore - gasleft();
-            if (params.sqrtPriceLimitX96 == 0) delete amountOutCached; // clear cache
-            return handleRevert(reason, pool, gasEstimate);
-        }
+        amountIn = _exactOutputHop(params.tokenIn, params.tokenOut, params.fee, params.amount);
+        sqrtPriceX96After = _lastSqrtAfter;
+        initializedTicksCrossed = _lastTicksCrossed; // 0
+        gasEstimate = _lastGasUsed;
     }
 
     function quoteExactOutput(bytes memory path, uint256 amountOut)
         public
         override
-        returns (
-            uint256 amountIn,
-            uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList,
-            uint256 gasEstimate
-        )
+        returns (uint256 amountIn, uint160[] memory sqrtAfterList, uint32[] memory initializedTicksCrossedList, uint256 gasEstimate)
     {
-        sqrtPriceX96AfterList = new uint160[](path.numPools());
-        initializedTicksCrossedList = new uint32[](path.numPools());
+        uint256 pools = path.numPools();
+        sqrtAfterList = new uint160[](pools);
+        initializedTicksCrossedList = new uint32[](pools); // left zeroed
 
         uint256 i = 0;
         while (true) {
             (address tokenOut, address tokenIn, uint24 fee) = path.decodeFirstPool();
 
-            // the inputs of prior supplicates become the outputs of subsequent ones
-            (uint256 _amountIn, uint160 _sqrtPriceX96After, uint32 _initializedTicksCrossed, uint256 _gasEstimate) =
-                quoteExactOutputSingle(
-                    QuoteExactOutputSingleParams({
-                        tokenIn: tokenIn,
-                        tokenOut: tokenOut,
-                        amount: amountOut,
-                        fee: fee,
-                        sqrtPriceLimitX96: 0
-                    })
-                );
+            uint256 ai = _exactOutputHop(tokenIn, tokenOut, fee, amountOut);
+            sqrtAfterList[i] = _lastSqrtAfter;
+            gasEstimate += _lastGasUsed;
+            // initializedTicksCrossedList[i] stays 0
 
-            sqrtPriceX96AfterList[i] = _sqrtPriceX96After;
-            initializedTicksCrossedList[i] = _initializedTicksCrossed;
-            amountOut = _amountIn;
-            gasEstimate += _gasEstimate;
+            amountOut = ai;
             i++;
 
-            // decide whether to continue or terminate
-            if (path.hasMultiplePools()) {
-                path = path.skipToken();
-            } else {
-                return (amountOut, sqrtPriceX96AfterList, initializedTicksCrossedList, gasEstimate);
+            if (!path.hasMultiplePools()) {
+                return (amountOut, sqrtAfterList, initializedTicksCrossedList, gasEstimate);
             }
+            path = path.skipToken();
         }
     }
 }

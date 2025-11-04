@@ -25,7 +25,7 @@
 - [ ] **LPPOracleAdapter** (USD oracle with staleness & deviation guards) — *deferred*
 - [ ] **LPPRouter.recenterAndMint()** (atomic re‑center + mint) — *deferred*
 – [ ] Test edge cases if anyone else (other than minters/treasury-address) can burn/withdraw funds from Rebate Vault, Treasury, Pool more than they minted… (test callbacks as well)... 
-– [ ] Find all possible exploits (callbacks/etc) (from forking code, etc)… Then, go through each code and delete “y.|_|”
+– [ ] Find all possible exploits (architectural weaknesses, ie if a pool can re-enter and mutate the Vault balances mid-operation using anything, callbacks/etc)... Then, go through each code and delete “y.|_|”
 
 ---
 

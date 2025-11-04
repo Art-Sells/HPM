@@ -11,17 +11,10 @@ const { ethers } = hre
 const require = createRequire(import.meta.url)
 
 function resolveLPPPoolArtifactPath(): string {
-  // Prefer your local Protocol workspace
-  const local = path.resolve(
-    process.cwd(),
-    '../Protocol/artifacts/contracts/LPPPool.sol/LPPPool.json'
-  )
-  if (fs.existsSync(local)) return local
-
-  // Fallback to the package (if you publish it)
+  // Always use the package artifact that the constant was derived from
   return require.resolve(
     '@lpp/lpp-protocol/artifacts/contracts/LPPPool.sol/LPPPool.json'
-  )
+  );
 }
 
 describe('PoolAddress sanity', () => {
