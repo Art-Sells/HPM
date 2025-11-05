@@ -2,4 +2,4 @@
 
 exports[`NonfungiblePositionManager #createAndInitializePoolIfNecessary gas 1`] = `4600855`;
 
-exports[`NonfungiblePositionManager bytecode size 1`] = `30519`;
+exports[`NonfungiblePositionManager bytecode size 1`] = `31208`;

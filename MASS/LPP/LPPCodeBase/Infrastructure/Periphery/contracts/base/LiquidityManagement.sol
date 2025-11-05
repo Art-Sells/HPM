@@ -95,23 +95,48 @@ abstract contract LiquidityManagement is PeripheryImmutableState {
         );
     }
 
-    function _resolveHookMaybe(address poolAddr, address provided)
-        private view returns (address h, bool ok)
-    {
-        // Explicit override provided → must be a contract
-        if (provided != address(0)) {
-            uint256 s; assembly { s := extcodesize(provided) }
-            require(s > 0, "ONLY_HOOKED_POOLS");
-            return (provided, true);
-        }
-
-        // Discover via optional pool view `mintHook()`
-        (bool success, bytes memory ret) = poolAddr.staticcall(abi.encodeWithSignature("mintHook()"));
-        if (success && ret.length == 32) {
-            address candidate = abi.decode(ret, (address));
-            uint256 s; assembly { s := extcodesize(candidate) }
-            if (s > 0) return (candidate, true);
-        }
-        return (address(0), false);
+function _resolveHookMaybe(address poolAddr, address provided)
+    private view returns (address h, bool ok)
+{
+    // 1) Explicit override provided → must be a contract
+    if (provided != address(0)) {
+        uint256 s; assembly { s := extcodesize(provided) }
+        require(s > 0, "ONLY_HOOKED_POOLS");
+        return (provided, true);
     }
+
+    // 2) Discover via optional pool view `mintHook()`
+    (bool success, bytes memory ret) = poolAddr.staticcall(abi.encodeWithSignature("mintHook()"));
+    if (success && ret.length == 32) {
+        address candidate = abi.decode(ret, (address));
+        uint256 s; assembly { s := extcodesize(candidate) }
+        if (s > 0) return (candidate, true);
+    }
+
+    // 3) Try factory.getHook(pool) if it exists
+    (success, ret) = factory.staticcall(abi.encodeWithSignature("getHook(address)", poolAddr));
+    if (success && ret.length == 32) {
+        address candidate = abi.decode(ret, (address));
+        uint256 s; assembly { s := extcodesize(candidate) }
+        if (s > 0) return (candidate, true);
+    }
+
+    // 4) Manager-authorized fallback to factory.mintHook():
+    //    only accept if hook.manager() == address(this)
+    (success, ret) = factory.staticcall(abi.encodeWithSignature("mintHook()"));
+    if (success && ret.length == 32) {
+        address candidate2 = abi.decode(ret, (address));
+        uint256 s2; assembly { s2 := extcodesize(candidate2) }
+        if (s2 > 0) {
+            // most hooks with setManager(address) expose a public `manager()`
+            (bool okMgr, bytes memory rMgr) = candidate2.staticcall(abi.encodeWithSignature("manager()"));
+            if (okMgr && rMgr.length == 32) {
+                address m = abi.decode(rMgr, (address));
+                if (m == address(this)) return (candidate2, true);
+            }
+        }
+    }
+
+    return (address(0), false);
+}
 }
