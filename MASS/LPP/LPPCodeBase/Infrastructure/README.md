@@ -60,17 +60,17 @@
 
 ### 1. Core Contracts to Build
 
-- [ ] **`LPPFactory`**  
+- [X] **`LPPFactory`**  
   - Creates & registers new `LPPPool` instances.  
   - Stores configuration metadata (tick range spacing, asset types, etc.).  
   - Exposes registry lookups for Router and MintHook.
 
-- [ ] **`LPPPool`**  
+- [X] **`LPPPool`**  
   - Core liquidity container holding USDC and asset reserves.  
   - Tracks liquidity positions, pricing function, and pool math (independent of fee growth).  
   - Interface for mint / burn / quote / supplicate operations.
 
-- [ ] **`LPPMintHook`**  
+- [X] **`LPPMintHook`**  
   - Validates **equal-value deposits** (USDC : asset within 0.10 % tolerance).  
   - Calculates total TVL share → selects tier → applies in-kind skim:  
     - `rebate` → to LP-MCV  
@@ -79,28 +79,28 @@
     - `MCVQualified(lp, pool, tier, shareBps)`  
     - `MCVRebatePaid(to, pool, token, amount, tier)`
 
-- [ ] **`LPPAccessManager`**  
+- [X] **`LPPAccessManager`**  
   - Registry of Treasury-approved Supplicators.  
     - `approvedSupplicator[address] → bool`  
   - Emits `SupplicatorApproved(address who, bool approved)`
 
-- [ ] **`LPPTreasury`**  
+- [X] **`LPPTreasury`**  
   - Owns AccessManager.  
   - Receives retention slices from MintHook.  
   - Manages epoch caps, vest periods, and distribution policies.
 
-- [ ] **`LPPRebateVault`**  
+- [X] **`LPPRebateVault`**  
   - Holds in-kind rebates for LP-MCVs.  
   - Handles vesting, unlocking, and distribution.
 
-- [ ] **`LPPSupplicationQuoter`**  
+- [X] **`LPPSupplicationQuoter`**  
   - Simulates a supplication (rebalance) **without execution**.  
   - Inputs: `pool`, `amountIn`, `direction (asset→USDC or USDC→asset)`  
   - Outputs: `expectedAmountOut`, `impactRatio`, `liquidityBefore/After`, and `priceDrift`.  
   - Used by Router, Frontend, and off-chain solvers to estimate outcomes.  
   - Emits no state change; pure view logic.  
 
-- [ ] **`LPPRouter`**  
+- [X] **`LPPRouter`**  
   - Executes verified `supplicate(SupplicateParams)` transactions.  
   - Checks:  
     - Caller is LP-MCV **or** Approved Supplicator.  
@@ -147,6 +147,7 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
   - Start with micro-liquidity and gradually scale to full capacity.  
   - Observe how rebates and retentions interact with price stabilization.  
   - Derive potential **new revenue model** if rebate structure sustains arbitrage cycles.
+  - if works, keep and delete all "y.|_|", if not, reconfigure.
 
 ---
 
