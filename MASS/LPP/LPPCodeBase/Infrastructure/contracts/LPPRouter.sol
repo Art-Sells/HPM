@@ -12,9 +12,12 @@ contract LPPRouter is ILPPRouter {
         access = ILPPAccessManager(accessManager);
     }
 
-    function _isLPMCV(address /*pool*/, address /*caller*/) internal view returns (bool) {
-        // TODO: hook to a position manager or check pool.liquidityOf(caller) > 0 (needs interface)
-        return false;
+    function _isLPMCV(address pool, address caller) internal view returns (bool) {
+        try ILPPPool(pool).liquidityOf(caller) returns (uint256 liq) {
+            return liq > 0;
+        } catch {
+            return false;
+        }
     }
 
     function supplicate(SupplicateParams calldata p) external returns (uint256 amountOut) {

@@ -58,7 +58,7 @@
 
 ## Progress Checklist
 
-### 1. Core Contracts to Build
+### 1. Core Contracts to Build: ***completed and being refactored***
 
 - [X] **`LPPFactory`**  
   - Creates & registers new `LPPPool` instances.  
@@ -107,7 +107,7 @@
   - Optionally calls `LPPSupplicationQuoter` for pre-validation.  
   - Emits `SupplicateExecuted(caller, pool, assetIn, amountIn, assetOut, amountOut, reason)`.
 
-### 2. Testing Plan (with Snapshots)
+### 2. Testing Plan (with Snapshots): ***in progress***
 
 #### Unit Tests
 - [ ] Rebate / retention math precision.  

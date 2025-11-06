@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import { ILPPFactory } from "./interfaces/ILPPFactory.sol";
+import { LPPPool } from "./LPPPool.sol";
 
 contract LPPFactory is ILPPFactory {
     address[] private _pools;
@@ -10,10 +11,7 @@ contract LPPFactory is ILPPFactory {
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     address public owner;
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "not owner");
-        _;
-    }
+    modifier onlyOwner() { require(msg.sender == owner, "not owner"); _; }
 
     constructor() {
         owner = msg.sender;
@@ -28,9 +26,8 @@ contract LPPFactory is ILPPFactory {
 
     function createPool(address asset, address usdc) external onlyOwner returns (address pool) {
         require(asset != address(0) && usdc != address(0), "zero token");
-        // NOTE: In a real implementation we'd deploy a minimal proxy / clone with init.
-        // For scaffold, just emit and track. Replace with real deployment later.
-        pool = address(uint160(uint256(keccak256(abi.encode(block.timestamp, asset, usdc, _pools.length)))));
+        LPPPool p = new LPPPool(asset, usdc);
+        pool = address(p);
         _pools.push(pool);
         _isPool[pool] = true;
         emit PoolCreated(pool, asset, usdc);

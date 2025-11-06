@@ -15,5 +15,5 @@
       "@nomicfoundation/hardhat-chai-matchers"
     ]
   },
-  "include": ["hardhat.config.cjs", "scripts", "test", "typechain-types"]
+  "include": ["hardhat.config.ts", "scripts", "test", "typechain-types"]
 }
