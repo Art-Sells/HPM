@@ -1,9 +1,67 @@
 {
-  "private": true,
-  "workspaces": [
-    "Protocol",
-    "Periphery"
-  ],
+  "name": "@lpp-infrastructure-v1",
+  "version": "0.1.0",
+  "license": "GPL-2.0-or-later",
+  "type": "module",
+  "description": "v1 Infrastructure for LPP",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Art-Sells/HPM/tree/main/MASS/LPP/LPPCodeBase/Infrastructure"
+  },
+  "engines": {
+    "node": ">=10"
+  },
+  "dependencies": {
+    "@lpp/lpp-periphery": "file:../Periphery",
+    "@openzeppelin/contracts": "3.4.2-solc-0.7",
+    "base64-sol": "1.0.1",
+    "is-svg": "^6.1.0"
+  },
+  "devDependencies": {
+    "@ethersproject/bignumber": "^5.8.0",
+    "@nomicfoundation/hardhat-chai-matchers": "^2",
+    "@nomicfoundation/hardhat-ethers": "^3.1.0",
+    "@nomicfoundation/hardhat-ignition": "^0.15.13",
+    "@nomicfoundation/hardhat-ignition-ethers": "^0.15",
+    "@nomicfoundation/hardhat-network-helpers": "^1",
+    "@nomicfoundation/hardhat-toolbox": "^6",
+    "@nomicfoundation/hardhat-verify": "^2",
+    "@nomicfoundation/ignition-core": "^0.15.13",
+    "@nomiclabs/hardhat-etherscan": "^2.1.8",
+    "@nomiclabs/hardhat-waffle": "^2.0.1",
+    "@typechain/ethers-v5": "^4.0.0",
+    "@typechain/ethers-v6": "^0.5.1",
+    "@typechain/hardhat": "^9.1.0",
+    "@types/chai": "^5.2.2",
+    "@types/is-svg": "^4.0.1",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20",
+    "chai": "^4.2.0",
+    "cross-env": "^10.1.0",
+    "decimal.js": "^10.2.1",
+    "ethereum-waffle": "^3.0.2",
+    "ethers": "^6",
+    "hardhat": "^2.22.8",
+    "hardhat-gas-reporter": "^2",
+    "mocha": "^6.2.2",
+    "mocha-chai-jest-snapshot": "^1.1.0",
+    "prettier": "^2.0.5",
+    "prettier-plugin-solidity": "^1.0.0-alpha.59",
+    "solhint": "^3.2.1",
+    "solhint-plugin-prettier": "^0.0.5",
+    "solidity-coverage": "^0.8",
+    "ts-generator": "^0.1.1",
+    "ts-node": "^10",
+    "tsx": "^4",
+    "typechain": "^8.3.2",
+    "typescript": "^5.4"
+  },
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "test:update-snapshots": "UPDATE_SNAPSHOTS=1 hardhat test",
+    "tc": "node scripts/typechain.mjs"
+  },
   "volta": {
     "node": "22.20.0",
     "yarn": "1.22.22"
