@@ -7,14 +7,16 @@ import { ILPPPool } from "./interfaces/ILPPPool.sol";
 contract LPPSupplicationQuoter is ILPPSupplicationQuoter {
     function quoteSupplication(address pool, bool assetToUsdc, uint256 amountIn) external view override returns (Quote memory q) {
         (uint256 amountOut, int256 drift) = ILPPPool(pool).quoteSupplication(assetToUsdc, amountIn);
-        // For scaffold, liquidityBefore/After are approximated by reserves sum via public view (not provided fully here).
-        // Replace with real pool getters as pool matures.
-        q = Quote({
-            expectedAmountOut: amountOut,
-            impactRatioBps: drift,
-            liquidityBefore: 0,
-            liquidityAfter: 0,
-            priceDriftBps: drift
-        });
+        uint256 rA = ILPPPool(pool).reserveAsset();
+        uint256 rU = ILPPPool(pool).reserveUsdc();
+        q.expectedAmountOut = amountOut;
+        q.impactRatioBps    = drift;
+        q.liquidityBefore   = rA + rU;
+        if (assetToUsdc) {
+            q.liquidityAfter = (rA + amountIn) + (rU > amountOut ? (rU - amountOut) : 0);
+        } else {
+            q.liquidityAfter = (rU + amountIn) + (rA > amountOut ? (rA - amountOut) : 0);
+        }
+        q.priceDriftBps     = drift;
     }
 }

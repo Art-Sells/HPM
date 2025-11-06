@@ -10,7 +10,7 @@ interface ILPPMintHook {
         address to;
         uint256 amountAssetDesired;
         uint256 amountUsdcDesired;
-        bytes data; // future use (vesting hints, proofs, etc.)
+        bytes data;
     }
 
     function mintWithRebate(MintParams calldata params) external returns (uint256 liquidityOut);
