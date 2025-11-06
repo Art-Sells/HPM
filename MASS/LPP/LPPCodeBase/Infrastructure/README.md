@@ -1,6 +1,6 @@
 # LPP Infrastructure v1 Blueprint
 
-## A) Scope & Principles
+## Scope & Principles:
 
 - **MCV (Maximum Contributing Value)** applies **only** to LPs who mint liquidity in equal proportions of **USDC + asset**.  
 - **Approved Supplicators** are external actors authorized by Treasury to rebalance pools but **earn no rebate**.  
@@ -9,14 +9,12 @@
 
 ---
 
-## B) Progress Checklist
-
-### 1. Roles & Permissions (Crystal Clear)
-- [ ] **LP-MCV (MCV)**  
+### A) Roles & Permissions
+- **LP-MCV (MCV)**  
   - Mints liquidity via LPP periphery with equal USDC & asset.  
   - Eligible for **rebate + retention** skim during mint.  
   - Automatically allowed to call `supplicate`.  
-- [ ] **Approved Supplicator**  
+- **Approved Supplicator**  
   - Explicitly authorized by Treasury to call `supplicate` without LP position.  
   - No MCV status, no rebates.  
 
@@ -25,7 +23,42 @@
 
 ---
 
-### 2. Core Contracts to Build
+### B) Rebate & Retention Tiers (for LP-MCVs only)
+
+| Tier | Share of TVL S | Rebate (%) | Retention (%) |
+|:----:|:---------------:|:-----------:|:--------------:|
+| T1 | 5 – < 10 | 1.0 | 0.5 |
+| T2 | 10 – < 20 | 1.8 | 0.9 |
+| T3 | 20 – < 35 | 2.5 | 1.25 |
+| T4 | ≥ 50 (cap) | 3.5 | 1.75 |
+
+**Guards**  
+- Centered mint window (± δ%), vest / hold periods, per-epoch caps, tier clamp.
+
+---
+
+### C) Core Flows
+
+#### LP-MCV Mint
+1. Caller executes `mintWithRebate(equal USDC, equal asset)`  
+2. MintHook computes tier, applies rebate + retention skim, mints remainder.  
+3. Rebate sent to LP-MCV, retention to Treasury.  
+4. Caller becomes LP-MCV (eligible to supplicate).  
+
+#### Supplication (Rebalance)
+- Callable only by LP-MCV or Approved Supplicator.  
+- Router fetches live quote from `LPPSupplicationQuoter` → executes atomic rebalance using `LPPPool`.  
+- Emits `SupplicateExecuted`.
+
+#### Quoting (View-Only Flow)
+- Any address (frontend, solver, or analytics) can call `LPPSupplicationQuoter.quoteSupplication(pool, direction, amountIn)`  
+- Returns potential output, price impact, and drift metrics before committing capital.  
+
+---
+
+## Progress Checklist
+
+### 1. Core Contracts to Build
 
 - [ ] **`LPPFactory`**  
   - Creates & registers new `LPPPool` instances.  
@@ -74,42 +107,7 @@
   - Optionally calls `LPPSupplicationQuoter` for pre-validation.  
   - Emits `SupplicateExecuted(caller, pool, assetIn, amountIn, assetOut, amountOut, reason)`.
 
----
-
-### 3. Rebate & Retention Tiers (for LP-MCVs only)
-
-| Tier | Share of TVL S | Rebate (%) | Retention (%) |
-|:----:|:---------------:|:-----------:|:--------------:|
-| T1 | 5 – < 10 | 1.0 | 0.5 |
-| T2 | 10 – < 20 | 1.8 | 0.9 |
-| T3 | 20 – < 35 | 2.5 | 1.25 |
-| T4 | ≥ 50 (cap) | 3.5 | 1.75 |
-
-**Guards**  
-- Centered mint window (± δ%), vest / hold periods, per-epoch caps, tier clamp.
-
----
-
-### 4. Core Flows
-
-#### LP-MCV Mint
-1. Caller executes `mintWithRebate(equal USDC, equal asset)`  
-2. MintHook computes tier, applies rebate + retention skim, mints remainder.  
-3. Rebate sent to LP-MCV, retention to Treasury.  
-4. Caller becomes LP-MCV (eligible to supplicate).  
-
-#### Supplication (Rebalance)
-- Callable only by LP-MCV or Approved Supplicator.  
-- Router fetches live quote from `LPPSupplicationQuoter` → executes atomic rebalance using `LPPPool`.  
-- Emits `SupplicateExecuted`.
-
-#### Quoting (View-Only Flow)
-- Any address (frontend, solver, or analytics) can call `LPPSupplicationQuoter.quoteSupplication(pool, direction, amountIn)`  
-- Returns potential output, price impact, and drift metrics before committing capital.  
-
----
-
-### 5. Testing Plan (with Snapshots)
+### 2. Testing Plan (with Snapshots)
 
 #### Unit Tests
 - [ ] Rebate / retention math precision.  
@@ -143,7 +141,7 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
 
 ---
 
-### 6. Simulation & Bot Testing
+### 3. Simulation & Bot Testing
 - [ ] **Fork MEV bot repos** and repurpose for MCV analysis:  
   - Simulate arbitrage / rebate opportunities under LPP rules.  
   - Start with micro-liquidity and gradually scale to full capacity.  
@@ -152,7 +150,7 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
 
 ---
 
-### 7. Subgraph & Events
+### 4. Subgraph & Events
 - [ ] Index:  
   - `MCVQualified`, `MCVRebatePaid`, `SupplicatorApproved`, `SupplicateExecuted`, `RebalanceNeeded`.  
 - [ ] Add Quoter view calls for external analytics (no event emission).  
@@ -160,7 +158,7 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
 
 ---
 
-### 8. Frontend / API
+### 5. Frontend / API
 - [ ] Router auto-selects optimal LPP pools.  
 - [ ] Badge system: LP-MCV / Approved Supplicator / Unauthorized.  
 - [ ] Live **Quoter** integration: pre-display expected output + drift metrics.  
@@ -168,7 +166,7 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
 
 ---
 
-### 9. Deployment Plan
+### 6. Deployment Plan
 - [ ] Deploy Factory → register pool templates.  
 - [ ] Deploy Treasury + AccessManager + RebateVault (wire roles).  
 - [ ] Deploy Periphery: MintHook, Router, Quoter.  
