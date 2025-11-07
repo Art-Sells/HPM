@@ -112,7 +112,7 @@
 #### Unit Tests
 - [ ] Rebate / retention math precision.  
 - [ ] Equal-value enforcement thresholds.  
-- [ ] Access gating: LP-MCV ✅, Approved ✅, Unauthorized ❌.  
+- [ ] Access gating: LP-MCV ✅, Approved ✅, Unauthorized ❌... Only using Private Key from LP Treasury
 - [ ] Revocation enforcement.  
 - [ ] Vesting and epoch cap logic.  
 - [ ] Pool math integrity (price and reserve correctness).  
@@ -168,9 +168,7 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
 ---
 
 ### 6. Deployment Plan
-- [ ] Deploy Factory → register pool templates.  
-- [ ] Deploy Treasury + AccessManager + RebateVault (wire roles).  
-- [ ] Deploy Periphery: MintHook, Router, Quoter.  
+- [ ] Deploy on Testnet first, test USDC/ASSET using LPP first... if it works... Deploy on Mainnet
 - [ ] Create asset/USDC pools A, B, C → initialize at reference price.  
 - [ ] Seed equal USDC & asset liquidity.  
 - [ ] Verify contracts, index Subgraph, launch dashboards, publish docs.  
