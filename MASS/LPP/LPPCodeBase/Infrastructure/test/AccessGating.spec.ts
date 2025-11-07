@@ -56,9 +56,8 @@ describe("Access gating", () => {
   //
 
   it("Treasury-only: createPool + setPoolHook", async () => {
-    const { deployer, factory, hook } = await deployCore();
+    const { deployer, factory, hook, treasury } = await deployCore();
 
-    // fresh tokens for a new pool
     const Token = await ethers.getContractFactory("TestToken");
     const asset2 = await Token.deploy("Asset2", "A2");
     const usdc2  = await Token.deploy("USD Coin 2", "USDC2");
@@ -67,33 +66,53 @@ describe("Access gating", () => {
 
     const [, stranger] = await ethers.getSigners();
 
-    // stranger cannot create
     await expect(
       factory.connect(stranger).createPool(await asset2.getAddress(), await usdc2.getAddress())
     ).to.be.revertedWith("only treasury");
 
-    // treasury can create
     await expect(
-      factory.connect(deployer).createPool(await asset2.getAddress(), await usdc2.getAddress())
+      treasury.connect(stranger).createPoolViaTreasury(
+        await factory.getAddress(),
+        await asset2.getAddress(),
+        await usdc2.getAddress()
+      )
+    ).to.be.revertedWith("not owner");
+
+    await expect(
+      treasury.connect(deployer).createPoolViaTreasury(
+        await factory.getAddress(),
+        await asset2.getAddress(),
+        await usdc2.getAddress()
+      )
     ).to.not.be.reverted;
 
     const poolAddr = (await factory.getPools())[1];
 
-    // stranger cannot wire hook
     await expect(
       factory.connect(stranger).setPoolHook(poolAddr, await hook.getAddress())
     ).to.be.revertedWith("only treasury");
 
-    // treasury wires hook
     await expect(
-      factory.connect(deployer).setPoolHook(poolAddr, await hook.getAddress())
+      treasury.connect(stranger).setPoolHookViaTreasury(
+        await factory.getAddress(),
+        poolAddr,
+        await hook.getAddress()
+      )
+    ).to.be.revertedWith("not owner");
+
+    await expect(
+      treasury.connect(deployer).setPoolHookViaTreasury(
+        await factory.getAddress(),
+        poolAddr,
+        await hook.getAddress()
+      )
     ).to.not.be.reverted;
   });
 
   it("Treasury-only: bootstrap via Hook; non-treasury reverts", async () => {
-    const { deployer, other, hook, pool } = await deployCore();
+    const { deployer, other, hook, pool, treasury } = await deployCore();
 
-    // non-treasury cannot bootstrap
+    // non-treasury cannot bootstrap (direct call to hook)
     await expect(
       hook.connect(other).bootstrap(
         await pool.getAddress(),
@@ -102,9 +121,10 @@ describe("Access gating", () => {
       )
     ).to.be.revertedWith("only treasury");
 
-    // treasury can bootstrap (idempotency: deployCore bootstrapped once already)
+    // treasury call again should hit 'already init' (use forwarder so msg.sender == Treasury)
     await expect(
-      hook.connect(deployer).bootstrap(
+      treasury.connect(deployer).bootstrapViaTreasury(
+        await hook.getAddress(),
         await pool.getAddress(),
         ethers.parseEther("1"),
         ethers.parseEther("1"),
@@ -131,7 +151,6 @@ describe("Access gating", () => {
   it("Any address can become LP-MCV via mintWithRebate (open LP-MCV), then supplicate", async () => {
     const { other, asset, usdc, hook, router, pool } = await deployCore();
 
-    // fund 'other' to mint equal-value
     await asset.mint(other.address, ethers.parseEther("100"));
     await usdc.mint(other.address,  ethers.parseEther("100"));
 
@@ -145,7 +164,6 @@ describe("Access gating", () => {
       })
     ).to.not.be.reverted;
 
-    // now 'other' is LP-MCV and may supplicate
     await expect(
       router.connect(other).supplicate({
         pool: await pool.getAddress(),
@@ -168,7 +186,7 @@ describe("Access gating", () => {
         pool: await pool.getAddress(),
         to: other.address,
         amountAssetDesired: ethers.parseEther("10"),
-        amountUsdcDesired:  ethers.parseEther("12"), // > 10 bps drift
+        amountUsdcDesired:  ethers.parseEther("12"),
         data: "0x",
       })
     ).to.be.revertedWith("unequal value");
