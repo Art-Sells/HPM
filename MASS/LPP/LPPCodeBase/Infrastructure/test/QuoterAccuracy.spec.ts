@@ -1,6 +1,6 @@
 import { expect } from "./shared/expect";
 import { ethers } from "hardhat";
-import { deployCore } from "./helpers";
+import { deployCore } from "./helpers.ts";
 
 describe("Quoter accuracy", () => {
   it("quote aligns with execution within tolerance", async () => {

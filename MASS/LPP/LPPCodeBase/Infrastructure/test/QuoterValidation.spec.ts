@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
-import { expect } from "./shared/expect";
-import { deployCore } from "./helpers";
+import { expect } from "./shared/expect.ts";
+import { deployCore } from "./helpers.ts";
 
 describe("S6 — Quoter Validation", () => {
   it("Compare quoter output vs. execution", async () => {

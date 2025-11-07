@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
-import { expect } from "./shared/expect";
-import { deployCore } from "./helpers";
+import { expect } from "./shared/expect.ts";
+import { deployCore } from "./helpers.ts";
 
 describe("S3 — First Supplicate (MCV)", () => {
   it("LP-MCV executes rebalance", async () => {

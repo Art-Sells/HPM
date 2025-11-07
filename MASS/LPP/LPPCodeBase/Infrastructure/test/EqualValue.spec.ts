@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
-import { expect } from "./shared/expect";
-import { deployCore } from "./helpers";
+import { expect } from "./shared/expect.ts";
+import { deployCore } from "./helpers.ts";
 
 describe("Equal-value enforcement", () => {
   it("passes within 10 bps tolerance", async () => {

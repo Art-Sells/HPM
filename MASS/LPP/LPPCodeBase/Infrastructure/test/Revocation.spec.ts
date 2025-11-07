@@ -1,6 +1,6 @@
 import { expect } from "./shared/expect";
 import { ethers } from "hardhat";
-import { deployCore } from "./helpers";
+import { deployCore } from "./helpers.ts";
 
 describe("Revocation enforcement", () => {
   it("revoked approved supplicator cannot call", async () => {

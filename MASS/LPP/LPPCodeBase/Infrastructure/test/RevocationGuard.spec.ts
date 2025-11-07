@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
 import { expect } from "./shared/expect";
-import { deployCore } from "./helpers";
+import { deployCore } from "./helpers.ts";
 
 describe("S5 — Revocation Guard", () => {
   it("Revoked Supplicator reverted", async () => {

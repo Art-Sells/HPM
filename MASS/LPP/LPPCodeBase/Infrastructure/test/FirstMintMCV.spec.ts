@@ -1,7 +1,7 @@
 import { ethers } from "hardhat";
-import { expect } from "./shared/expect";
-import snapshotGasCost from "./shared/snapshotGasCost";
-import { deployCore } from "./helpers";
+import { expect } from "./shared/expect.ts";
+import snapshotGasCost from "./shared/snapshotGasCost.ts";
+import { deployCore } from "./helpers.ts";
 
 describe("S2 — First Mint (MCV)", () => {
   it("Equal-value mint with Tier-1 rebate", async () => {

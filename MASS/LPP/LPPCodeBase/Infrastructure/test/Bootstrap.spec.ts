@@ -1,6 +1,6 @@
-import { expect } from "./shared/expect";
-import snapshotGasCost from "./shared/snapshotGasCost";
-import { deployCore } from "./helpers";
+import { expect } from "./shared/expect.ts";
+import snapshotGasCost from "./shared/snapshotGasCost.ts";
+import { deployCore } from "./helpers.ts";
 
 describe("S1 — Bootstrap", () => {
   it("Factory + pools deployed & initialized", async () => {

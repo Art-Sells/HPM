@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
 import { expect } from "./shared/expect";
-import { deployCore } from "./helpers";
+import { deployCore } from "./helpers.ts";
 
 describe("S4 — First Supplicate (Approved)", () => {
   it("Treasury-approved address executes rebalance", async () => {

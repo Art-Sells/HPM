@@ -1,6 +1,6 @@
-import { expect } from "./shared/expect";
+import { expect } from "./shared/expect.ts";
 import { ethers } from "hardhat";
-import { deployCore } from "./helpers";
+import { deployCore } from "./helpers.ts"; 
 
 describe("Access gating", () => {
   it("LP-MCV can supplicate", async () => {
