@@ -1,6 +1,9 @@
+// test/AccessGating.spec.ts
+import hre from "hardhat";
+const { ethers } = hre;
+
 import { expect } from "./shared/expect.ts";
-import { ethers } from "hardhat";
-import { deployCore } from "./helpers.ts"; 
+import { deployCore } from "./helpers.ts";
 
 describe("Access gating", () => {
   it("LP-MCV can supplicate", async () => {
@@ -11,7 +14,7 @@ describe("Access gating", () => {
       to: deployer.address,
       amountAssetDesired: ethers.parseEther("5"),
       amountUsdcDesired:  ethers.parseEther("5"),
-      data: "0x"
+      data: "0x",
     })).wait();
 
     await expect(router.supplicate({
@@ -19,7 +22,7 @@ describe("Access gating", () => {
       assetToUsdc: true,
       amountIn: ethers.parseEther("1"),
       minAmountOut: 0,
-      to: deployer.address
+      to: deployer.address,
     })).not.to.be.reverted;
   });
 
@@ -32,7 +35,7 @@ describe("Access gating", () => {
       assetToUsdc: true,
       amountIn: ethers.parseEther("1"),
       minAmountOut: 0,
-      to: other.address
+      to: other.address,
     })).not.to.be.reverted;
   });
 
@@ -44,7 +47,7 @@ describe("Access gating", () => {
       assetToUsdc: true,
       amountIn: ethers.parseEther("1"),
       minAmountOut: 0,
-      to: other.address
+      to: other.address,
     })).to.be.revertedWith("not permitted");
   });
 
@@ -59,9 +62,10 @@ describe("Access gating", () => {
     const Token = await ethers.getContractFactory("TestToken");
     const asset2 = await Token.deploy("Asset2", "A2");
     const usdc2  = await Token.deploy("USD Coin 2", "USDC2");
-    await asset2.waitForDeployment(); await usdc2.waitForDeployment();
+    await asset2.waitForDeployment();
+    await usdc2.waitForDeployment();
 
-    const [ , stranger ] = await ethers.getSigners();
+    const [, stranger] = await ethers.getSigners();
 
     // stranger cannot create
     await expect(
@@ -94,18 +98,18 @@ describe("Access gating", () => {
       hook.connect(other).bootstrap(
         await pool.getAddress(),
         ethers.parseEther("1"),
-        ethers.parseEther("1")
+        ethers.parseEther("1"),
       )
     ).to.be.revertedWith("only treasury");
 
-    // treasury can bootstrap (idempotency: calling twice should revert 'already init')
+    // treasury can bootstrap (idempotency: deployCore bootstrapped once already)
     await expect(
       hook.connect(deployer).bootstrap(
         await pool.getAddress(),
         ethers.parseEther("1"),
-        ethers.parseEther("1")
+        ethers.parseEther("1"),
       )
-    ).to.be.revertedWith("already init"); // deployCore already bootstraps once
+    ).to.be.revertedWith("already init");
   });
 
   it("Non-hook cannot call pool.mintFromHook (only hook allowed)", async () => {
@@ -115,7 +119,7 @@ describe("Access gating", () => {
       (pool as any).connect(other).mintFromHook(
         other.address,
         ethers.parseEther("1"),
-        ethers.parseEther("1")
+        ethers.parseEther("1"),
       )
     ).to.be.revertedWith("only hook");
   });
@@ -148,7 +152,7 @@ describe("Access gating", () => {
         assetToUsdc: true,
         amountIn: ethers.parseEther("1"),
         minAmountOut: 0,
-        to: other.address
+        to: other.address,
       })
     ).to.not.be.reverted;
   });
@@ -164,7 +168,7 @@ describe("Access gating", () => {
         pool: await pool.getAddress(),
         to: other.address,
         amountAssetDesired: ethers.parseEther("10"),
-        amountUsdcDesired:  ethers.parseEther("12"), // drift > 10 bps
+        amountUsdcDesired:  ethers.parseEther("12"), // > 10 bps drift
         data: "0x",
       })
     ).to.be.revertedWith("unequal value");
