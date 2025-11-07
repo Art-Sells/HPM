@@ -166,7 +166,7 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
 ---
 
 ### 5. Deployment Plan
-- [ ] Deploy on Testnet first, test USDC/ASSET using LPP first... if it works... Deploy on Mainnet
+- [ ] Deploy on Testnet first (get treasury address and key), test USDC/ASSET using LPP first... if it works... Deploy on Mainnet
 - [ ] Create asset/USDC pools A, B, C → initialize at reference price.  
 - [ ] Seed equal USDC & asset liquidity.  
 - [ ] Verify contracts, index Subgraph, launch dashboards, publish docs.  

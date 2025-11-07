@@ -15,70 +15,74 @@ contract LPPMintHook is ILPPMintHook {
         rebateVault = ILPPRebateVault(_rebateVault);
     }
 
+    /// Optional: one-time bootstrap (no rebates), callable by Treasury via Hook path.
+    function bootstrap(address pool, uint256 amountAsset, uint256 amountUsdc) external {
+        require(msg.sender == address(treasury), "only treasury");
+        ILPPPool(pool).bootstrapInitialize(amountAsset, amountUsdc);
+    }
+
     function mintWithRebate(MintParams calldata params) external override returns (uint256 liquidityOut) {
         ILPPPool pool = ILPPPool(params.pool);
         uint256 rA = pool.reserveAsset();
         uint256 rU = pool.reserveUsdc();
         require(rA > 0 && rU > 0, "pool not initialized");
 
+        // equal-value within 10 bps
         uint256 usdcNeeded = (params.amountAssetDesired * rU) / rA;
-        uint256 tol = (usdcNeeded * 10) / 10_000; // 10 bps = 0.10%
+        uint256 tol = (usdcNeeded * 10) / 10_000; // 10 bps
         require(
             params.amountUsdcDesired >= (usdcNeeded > tol ? usdcNeeded - tol : 0) &&
             params.amountUsdcDesired <= usdcNeeded + tol,
             "unequal value"
         );
 
-        // --- Compute TVL share S (bps) using implied price (USDC per 1 asset) ---
-// price = rU / rA (in 1e18 fixed-point)
-uint256 price1e18 = (rU * 1e18) / rA;
-uint256 depositValueUsdc = (params.amountAssetDesired * price1e18) / 1e18 + params.amountUsdcDesired;
-uint256 poolTvlUsdc = (rA * price1e18) / 1e18 + rU;
-uint256 tvlAfter = poolTvlUsdc + depositValueUsdc;
-uint256 shareBps = tvlAfter > 0 ? (depositValueUsdc * 10_000) / tvlAfter : 0;
+        // TVL share (bps) using implied price (USDC per 1 asset)
+        uint256 price1e18 = (rU * 1e18) / rA;
+        uint256 depositValueUsdc = (params.amountAssetDesired * price1e18) / 1e18 + params.amountUsdcDesired;
+        uint256 poolTvlUsdc = (rA * price1e18) / 1e18 + rU;
+        uint256 tvlAfter = poolTvlUsdc + depositValueUsdc;
+        uint256 shareBps = tvlAfter == 0 ? 0 : (depositValueUsdc * 10_000) / tvlAfter;
 
-// --- Tier selection (bps thresholds) ---
-uint16 rebateBps = 0;
-uint16 retentionBps = 0;
-uint8 tier = 0;
-if (shareBps >= 500 && shareBps < 1000) { tier = 1; rebateBps = 100; retentionBps = 50; }
-else if (shareBps >= 1000 && shareBps < 2000) { tier = 2; rebateBps = 180; retentionBps = 90; }
-else if (shareBps >= 2000 && shareBps < 3500) { tier = 3; rebateBps = 250; retentionBps = 125; }
-else if (shareBps >= 5000) { tier = 4; rebateBps = 350; retentionBps = 175; }
+        // tier selection
+        uint16 rebateBps; uint16 retentionBps; uint8 tier;
+        if (shareBps >= 500 && shareBps < 1000)      { tier = 1; rebateBps = 100; retentionBps = 50; }
+        else if (shareBps >= 1000 && shareBps < 2000) { tier = 2; rebateBps = 180; retentionBps = 90; }
+        else if (shareBps >= 2000 && shareBps < 3500) { tier = 3; rebateBps = 250; retentionBps = 125; }
+        else if (shareBps >= 5000)                    { tier = 4; rebateBps = 350; retentionBps = 175; }
 
-uint16 skimBps = rebateBps + retentionBps;
+        uint16 skimBps = rebateBps + retentionBps;
 
-// --- In-kind skim ---
-uint256 amountAssetMint = (params.amountAssetDesired * (10_000 - skimBps)) / 10_000;
-uint256 amountUsdcMint  = (params.amountUsdcDesired  * (10_000 - skimBps)) / 10_000;
+        // in-kind skim
+        uint256 amountAssetMint = (params.amountAssetDesired * (10_000 - skimBps)) / 10_000;
+        uint256 amountUsdcMint  = (params.amountUsdcDesired  * (10_000 - skimBps)) / 10_000;
 
-uint256 rebateAsset = (params.amountAssetDesired * rebateBps) / 10_000;
-uint256 rebateUsdc  = (params.amountUsdcDesired  * rebateBps) / 10_000;
+        uint256 rebateAsset = (params.amountAssetDesired * rebateBps) / 10_000;
+        uint256 rebateUsdc  = (params.amountUsdcDesired  * rebateBps) / 10_000;
 
-uint256 keepAsset   = (params.amountAssetDesired * retentionBps) / 10_000;
-uint256 keepUsdc    = (params.amountUsdcDesired  * retentionBps) / 10_000;
+        uint256 keepAsset   = (params.amountAssetDesired * retentionBps) / 10_000;
+        uint256 keepUsdc    = (params.amountUsdcDesired  * retentionBps) / 10_000;
 
-// --- Mint with remainder ---
-liquidityOut = pool.mint(params.to, amountAssetMint, amountUsdcMint);
+        // 🔁 MINT THROUGH HOOK-GATED ENTRY (no public mint)
+        liquidityOut = pool.mintFromHook(params.to, amountAssetMint, amountUsdcMint);
 
-// --- Pay rebates (record) ---
-address assetToken = pool.asset();
-address usdcToken  = pool.usdc();
-if (rebateAsset > 0) {
-    rebateVault.recordRebate(assetToken, params.to, rebateAsset);
-    emit MCVRebatePaid(params.to, params.pool, assetToken, rebateAsset, tier);
-}
-if (rebateUsdc > 0) {
-    rebateVault.recordRebate(usdcToken, params.to, rebateUsdc);
-    emit MCVRebatePaid(params.to, params.pool, usdcToken, rebateUsdc, tier);
-}
+        // record rebates (accounting-only for now)
+        address assetToken = pool.asset();
+        address usdcToken  = pool.usdc();
+        if (rebateAsset > 0) {
+            rebateVault.recordRebate(assetToken, params.to, rebateAsset);
+            emit MCVRebatePaid(params.to, params.pool, assetToken, rebateAsset, tier);
+        }
+        if (rebateUsdc > 0) {
+            rebateVault.recordRebate(usdcToken, params.to, rebateUsdc);
+            emit MCVRebatePaid(params.to, params.pool, usdcToken, rebateUsdc, tier);
+        }
 
-// --- Retention to treasury receivers (record) ---
-address assetReceiver = treasury.assetRetentionReceiver();
-address usdcReceiver  = treasury.usdcRetentionReceiver();
-if (keepAsset > 0) { rebateVault.recordRebate(assetToken, assetReceiver, keepAsset); }
-if (keepUsdc  > 0) { rebateVault.recordRebate(usdcToken,  usdcReceiver,  keepUsdc);  }
+        // retentions to treasury receivers
+        address assetReceiver = treasury.assetRetentionReceiver();
+        address usdcReceiver  = treasury.usdcRetentionReceiver();
+        if (keepAsset > 0) { rebateVault.recordRebate(assetToken, assetReceiver, keepAsset); }
+        if (keepUsdc  > 0) { rebateVault.recordRebate(usdcToken,  usdcReceiver,  keepUsdc); }
 
-emit MCVQualified(params.to, params.pool, tier, shareBps);
+        emit MCVQualified(params.to, params.pool, tier, shareBps);
     }
 }
