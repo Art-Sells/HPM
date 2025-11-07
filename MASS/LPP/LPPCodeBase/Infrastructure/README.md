@@ -127,7 +127,7 @@
 - [ ] Treasury retention accounting.  
 - [ ] Vesting unlock & withdrawal sequence.  
 
-#### Snapshots (Hardhat)
+##### Snapshots (Hardhat)
 | ID | Stage | Description |
 |----|--------|-------------|
 | `S1` | Bootstrap | Factory + pools deployed & initialized |
@@ -139,9 +139,7 @@
 
 Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and router state.
 
----
-
-### 3. Simulation & Bot Testing
+#### Simulation & Bot Testing
 - [ ] **Fork MEV bot repos** and repurpose for MCV analysis:  
   - Simulate arbitrage / rebate opportunities under LPP rules.  
   - Start with micro-liquidity and gradually scale to full capacity.  
@@ -151,7 +149,7 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
 
 ---
 
-### 4. Subgraph & Events
+### 3. Subgraph & Events
 - [ ] Index:  
   - `MCVQualified`, `MCVRebatePaid`, `SupplicatorApproved`, `SupplicateExecuted`, `RebalanceNeeded`.  
 - [ ] Add Quoter view calls for external analytics (no event emission).  
@@ -159,7 +157,7 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
 
 ---
 
-### 5. Frontend / API
+### 4. Frontend / API
 - [ ] Router auto-selects optimal LPP pools.  
 - [ ] Badge system: LP-MCV / Approved Supplicator / Unauthorized.  
 - [ ] Live **Quoter** integration: pre-display expected output + drift metrics.  
@@ -167,7 +165,7 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
 
 ---
 
-### 6. Deployment Plan
+### 5. Deployment Plan
 - [ ] Deploy on Testnet first, test USDC/ASSET using LPP first... if it works... Deploy on Mainnet
 - [ ] Create asset/USDC pools A, B, C → initialize at reference price.  
 - [ ] Seed equal USDC & asset liquidity.  
