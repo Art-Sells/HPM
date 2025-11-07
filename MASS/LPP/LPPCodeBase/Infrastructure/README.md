@@ -112,7 +112,7 @@
 #### Unit Tests
 - [ ] Rebate / retention math precision.  
 - [ ] Equal-value enforcement thresholds.  
-- [ ] Access gating: LP-MCV ✅, Approved ✅, Unauthorized ❌... Only using Private Key from LP Treasury
+- [ ] Access gating: LP-MCV supplicators & minting, Approved Treasury supplicators, Treasury pool bootstrapping aothorizations only... Everyone else Unauthorized... Only using Private Key from LP Treasury
 - [ ] Revocation enforcement.  
 - [ ] Vesting and epoch cap logic.  
 - [ ] Pool math integrity (price and reserve correctness).  
