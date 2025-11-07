@@ -1,41 +1,64 @@
+// scripts/deploy.ts
 import { ethers } from "hardhat";
+import * as dotenv from "dotenv";
+dotenv.config();
 
 async function main() {
-  const [deployer] = await ethers.getSigners();
-  console.log("Deploying with:", deployer.address);
+  const provider = ethers.provider;
 
-  const Access = await ethers.getContractFactory("LPPAccessManager");
-  const access = await Access.deploy();
-  await access.waitForDeployment();
-  console.log("AccessManager:", await access.getAddress());
+  // 1) Load treasury EOA
+  const pk = process.env.PRIVATE_KEY_TREASURY;
+  if (!pk) throw new Error("Set PRIVATE_KEY_TREASURY in .env");
+  const treasuryEOA = new ethers.Wallet(pk, provider);
 
-  const Treasury = await ethers.getContractFactory("LPPTreasury");
-  const treasury = await Treasury.deploy(deployer.address, deployer.address);
+  // 2) Deploy core
+  const TreasuryC = await ethers.getContractFactory("LPPTreasury", treasuryEOA);
+  const treasury = await TreasuryC.deploy(await treasuryEOA.getAddress(), await treasuryEOA.getAddress());
   await treasury.waitForDeployment();
-  console.log("Treasury:", await treasury.getAddress());
 
-  const Vault = await ethers.getContractFactory("LPPRebateVault");
-  const vault = await Vault.deploy();
-  await vault.waitForDeployment();
-  console.log("RebateVault:", await vault.getAddress());
+  const Vault = await (await ethers.getContractFactory("LPPRebateVault", treasuryEOA)).deploy();
+  await Vault.waitForDeployment();
 
-  const MintHook = await ethers.getContractFactory("LPPMintHook");
-  const hook = await MintHook.deploy(await treasury.getAddress(), await vault.getAddress());
-  await hook.waitForDeployment();
-  console.log("MintHook:", await hook.getAddress());
+  const Hook = await (await ethers.getContractFactory("LPPMintHook", treasuryEOA))
+    .deploy(await treasury.getAddress(), await Vault.getAddress());
+  await Hook.waitForDeployment();
 
-  const Router = await ethers.getContractFactory("LPPRouter");
-  const router = await Router.deploy(await access.getAddress());
-  await router.waitForDeployment();
-  console.log("Router:", await router.getAddress());
+  const Factory = await (await ethers.getContractFactory("LPPFactory", treasuryEOA))
+    .deploy(await treasuryEOA.getAddress()); // constructor(treasury)
+  await Factory.waitForDeployment();
 
-  const Factory = await ethers.getContractFactory("LPPFactory");
-  const factory = await Factory.deploy();
-  await factory.waitForDeployment();
-  console.log("Factory:", await factory.getAddress());
+  const Token = await ethers.getContractFactory("TestToken", treasuryEOA);
+  const asset = await Token.deploy("Asset", "ASSET");
+  const usdc  = await Token.deploy("USD Coin", "USDC");
+  await asset.waitForDeployment();
+  await usdc.waitForDeployment();
+
+  // Fund EOA for bootstrap (test tokens)
+  await asset.mint(await treasuryEOA.getAddress(), ethers.parseEther("1000"));
+  await usdc.mint(await treasuryEOA.getAddress(),  ethers.parseEther("1000"));
+
+  // Treasury-only flow:
+  await Factory.connect(treasuryEOA).createPool(await asset.getAddress(), await usdc.getAddress());
+  const poolAddr = (await Factory.getPools())[0];
+  const pool = await ethers.getContractAt("LPPPool", poolAddr, treasuryEOA);
+
+  await Factory.connect(treasuryEOA).setPoolHook(poolAddr, await Hook.getAddress());
+  await Hook.connect(treasuryEOA).bootstrap(
+    poolAddr,
+    ethers.parseEther("100"),
+    ethers.parseEther("100")
+  );
+
+  // Print addresses you’ll need later
+  console.log("== DEPLOY SUMMARY ==");
+  console.log("Treasury EOA:", await treasuryEOA.getAddress());
+  console.log("LPPTreasury:", await treasury.getAddress());
+  console.log("LPPRebateVault:", await Vault.getAddress());
+  console.log("LPPMintHook:", await Hook.getAddress());
+  console.log("LPPFactory:", await Factory.getAddress());
+  console.log("Asset:", await asset.getAddress());
+  console.log("USDC:", await usdc.getAddress());
+  console.log("Pool[0]:", poolAddr);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main().catch((e) => { console.error(e); process.exit(1); });
