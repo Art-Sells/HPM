@@ -1,9 +1,11 @@
+// test/MintMCV.sec.ts
+
 import { ethers } from "hardhat";
 import { expect } from "./shared/expect.ts";
 import snapshotGasCost from "./shared/snapshotGasCost.ts";
 import { deployCore } from "./helpers.ts";
 
-describe("S2 — First Mint (MCV)", () => {
+describe("Mint (MCV)", () => {
   it("Equal-value mint with Tier-1 rebate", async () => {
     const { deployer, hook, pool } = await deployCore();
     const tx = await hook.mintWithRebate({
