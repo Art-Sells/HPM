@@ -45,7 +45,6 @@ contract LPPPool is ILPPPool {
 
     function bootstrapInitialize(uint256 amtA, uint256 amtU)
         external
-        override
         onlyHook
         nonZero(amtA)
         nonZero(amtU)
@@ -139,4 +138,29 @@ contract LPPPool is ILPPPool {
 
         emit Supplicate(msg.sender, assetToUsdc, amountIn, amountOut);
     }
+    // add: set price on first bootstrap
+function bootstrapInitialize(uint256 amtA, uint256 amtU, int256 offsetBps)
+    external
+    onlyHook
+    nonZero(amtA)
+    nonZero(amtU)
+{
+    require(!initialized, "already init");
+    _internalMint(treasury, amtA, amtU);
+
+    // base price = usdc/asset in Q96
+    uint256 baseX96 = (amtU << 96) / amtA;
+
+    if (offsetBps != 0) {
+        // priceX96 = baseX96 * (10000 + offsetBps) / 10000 ; supports negative offsets
+        int256 num = int256(uint256(baseX96)) * (10000 + offsetBps);
+        require(num > 0, "bad offset");
+        _priceX96 = uint256(num) / 10000;
+    } else {
+        _priceX96 = baseX96;
+    }
+
+    initialized = true;
+    emit Initialized(amtA, amtU);
+}
 }

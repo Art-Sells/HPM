@@ -125,7 +125,28 @@
 - [ ] Approved Supplicator supplicate success.  
 - [ ] Unauthorized caller fails.  
 - [ ] Treasury retention accounting.  
-- [ ] Vesting unlock & withdrawal sequence.  
+- [ ] Vesting unlock & withdrawal sequence. 
+
+##### Bootstrap seeding dynamics
+Equal seed for all pools (via adapter):
+
+- Pool A: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
+- Pool B: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
+- Pool C: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
+
+Primary position (each pool): ultra‑narrow (≈ ±1–2 ticks).
+Fallback position: tiny, very wide range to prevent “no‑liquidity”.
+Mint via NonfungiblePositionManager (wrapped in @/periphery helpers).
+
+Center Offsets (relative to oracle at time of seed):
+
+- Pool A: −10 bps center
+- Pool B: −5 bps center
+- Pool C: +15 bps center
+
+Offsetting without an “anchor” intentionally creates internal spreads so external MEV can arb and then mint (via the atomic flow below).
+
+- Test if prices are off-center, if so, then increase pool seeds
 
 ##### Snapshots (Hardhat)
 | Stage | Description |

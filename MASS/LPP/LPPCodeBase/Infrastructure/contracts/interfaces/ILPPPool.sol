@@ -32,8 +32,7 @@ interface ILPPPool {
     // Wiring (one-time)
     function setHook(address hook_) external;
 
-    // Bootstrap (one-time; through hook)
-    function bootstrapInitialize(uint256 amtA, uint256 amtU) external;
+    function bootstrapInitialize(uint256 amtA, uint256 amtU, int256 offsetBps) external;
 
     // Mint path (hook-only)
     function mintFromHook(address to, uint256 amtA, uint256 amtU) external returns (uint256 liquidityOut);

@@ -19,5 +19,6 @@ describe("S2 — First Mint (MCV)", () => {
   });
 });
 // if anyone tries to mint iwthout rebates or without providing equal value, it should fail...
-//Add (after minting, rebate vaults)
+//Add (after minting, rebate vaults, and test edge cases if people can wihdraw from rebte vualts that arent
+// the actualy LP-MCV that minted, etc, etc
 //add snapshots to verify

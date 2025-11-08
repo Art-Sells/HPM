@@ -1,3 +1,150 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`S1 — Bootstrap Factory + pools deployed & initialized 1`] = `1136866`;
+exports[`Bootstrap Factory + pool deployed & initialized 1`] = `1238533`;
+
+exports[`Bootstrap Factory + pool deployed & initialized 2`] = `
+Object {
+  "factory": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707",
+  "pool": "0x61c36a8d610163660E21a8b7359e1Cac0C9133e1",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+}
+`;
+
+exports[`Bootstrap Factory + pool deployed & initialized 3`] = `
+Object {
+  "driftBps": "0",
+  "pool": "0x61c36a8d610163660E21a8b7359e1Cac0C9133e1",
+  "priceX96": "79228162514264337593543950336",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+  "sqrtPrices": Object {
+    "sqrtAssetPerUsdcX96": "79228162514264337593543950336",
+    "sqrtUsdcPerAssetX96": "79228162514264337593543950336",
+  },
+}
+`;
+
+exports[`Bootstrap bootstrap reverts if hook is not wired yet 1`] = `828581`;
+
+exports[`Bootstrap bootstrap with zero amounts is rejected 1`] = `828569`;
+
+exports[`Bootstrap bootstrap with zero amounts is rejected 2`] = `59063`;
+
+exports[`Bootstrap only Treasury owner can call bootstrapViaTreasury 1`] = `828569`;
+
+exports[`Bootstrap only Treasury owner can call bootstrapViaTreasury 2`] = `59063`;
+
+exports[`Bootstrap post-bootstrap reserves are the pool's accounting truth 1`] = `
+Object {
+  "addresses": Object {
+    "pool": "0x3063527AEE58c9470AD00E31e4fc6A613b84a8b1",
+  },
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+}
+`;
+
+exports[`Bootstrap post-bootstrap reserves are the pool's accounting truth 2`] = `
+Object {
+  "driftBps": "0",
+  "pool": "0x3063527AEE58c9470AD00E31e4fc6A613b84a8b1",
+  "priceX96": "79228162514264337593543950336",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+  "sqrtPrices": Object {
+    "sqrtAssetPerUsdcX96": "79228162514264337593543950336",
+    "sqrtUsdcPerAssetX96": "79228162514264337593543950336",
+  },
+}
+`;
+
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 1`] = `
+Object {
+  "driftBps": "0",
+  "pool": "0x625A692E96605c988192cd59563e5EB2f1E33C87",
+  "priceX96": "79228162514264337593543950336",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+  "sqrtPrices": Object {
+    "sqrtAssetPerUsdcX96": "79228162514264337593543950336",
+    "sqrtUsdcPerAssetX96": "79228162514264337593543950336",
+  },
+}
+`;
+
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 2`] = `828581`;
+
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 3`] = `59075`;
+
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 4`] = `828581`;
+
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 5`] = `59075`;
+
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 6`] = `828581`;
+
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 7`] = `59075`;
+
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 8`] = `153638`;
+
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 9`] = `153638`;
+
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 10`] = `153266`;
+
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 11`] = `
+Object {
+  "driftBps": "-10",
+  "pool": "0xb3da2F710C7356E4F6540752488e88e48Fd00Cdd",
+  "priceX96": "79148934351750073255950406385",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+  "sqrtPrices": Object {
+    "sqrtAssetPerUsdcX96": "79188538524532033966444101902",
+    "sqrtUsdcPerAssetX96": "79267806330862896863307409312",
+  },
+}
+`;
+
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 12`] = `
+Object {
+  "driftBps": "-5",
+  "pool": "0xC99f9655714Ca79D539FA25Ab25343cd0B2bdB08",
+  "priceX96": "79188548433007205424747178360",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+  "sqrtPrices": Object {
+    "sqrtAssetPerUsdcX96": "79208352997136529422885942753",
+    "sqrtUsdcPerAssetX96": "79247976985629344094933409459",
+  },
+}
+`;
+
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 13`] = `
+Object {
+  "driftBps": "14",
+  "pool": "0x18CE04CBBee461Be1a1486f30E8d1B745cA9D951",
+  "priceX96": "79347004758035734099934266261",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+  "sqrtPrices": Object {
+    "sqrtAssetPerUsdcX96": "79287561369925867994201481970",
+    "sqrtUsdcPerAssetX96": "79168808157689333993211664474",
+  },
+}
+`;
