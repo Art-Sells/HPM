@@ -268,17 +268,14 @@ describe("Bootstrap", () => {
       resU: (await e.pool.reserveUsdc())  as bigint,
     };
 
-    const ts = 1;
-    const lower = -10 * ts;
-    const upper = +10 * ts;
-
     const tx = await (e.hook as any).mintWithRebate({
       pool: await e.pool.getAddress(),
       to: await e.deployer.getAddress(),
+      // if your hook still accepts `payer`, keep it; otherwise remove this line
       payer: await e.deployer.getAddress(),
-      tickLower: lower,
-      tickUpper: upper,
-      liquidity: ethers.parseEther("1"),
+      amountAssetDesired: ethers.parseEther("1"),
+      amountUsdcDesired:  ethers.parseEther("1"),
+      data: "0x",
     });
     const r = await tx.wait();
     await snapshotGasCost(r!.gasUsed);

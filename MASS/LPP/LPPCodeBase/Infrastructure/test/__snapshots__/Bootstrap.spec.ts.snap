@@ -29,6 +29,38 @@ Object {
 }
 `;
 
+exports[`Bootstrap after bootstrap, first mint increases reserves and credits LP-MCV 1`] = `84454`;
+
+exports[`Bootstrap after bootstrap, first mint increases reserves and credits LP-MCV 2`] = `
+Object {
+  "deltas": Object {
+    "asset": "1000000000000000000",
+    "usdc": "1000000000000000000",
+  },
+  "pool": "0xB5d064b44960FdedA1072f983C3E8f1e123cE154",
+  "reservesAfter": Object {
+    "asset": "101000000000000000000",
+    "usdc": "101000000000000000000",
+  },
+}
+`;
+
+exports[`Bootstrap after bootstrap, first mint increases reserves and credits LP-MCV 3`] = `
+Object {
+  "driftBps": "0",
+  "pool": "0xB5d064b44960FdedA1072f983C3E8f1e123cE154",
+  "priceX96": "79228162514264337593543950336",
+  "reserves": Object {
+    "asset": "101000000000000000000",
+    "usdc": "101000000000000000000",
+  },
+  "sqrtPrices": Object {
+    "sqrtAssetPerUsdcX96": "79228162514264337593543950336",
+    "sqrtUsdcPerAssetX96": "79228162514264337593543950336",
+  },
+}
+`;
+
 exports[`Bootstrap bootstrap reverts if hook is not wired yet 1`] = `828581`;
 
 exports[`Bootstrap bootstrap with zero amounts is rejected 1`] = `828569`;
@@ -70,7 +102,7 @@ Object {
 exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 1`] = `
 Object {
   "driftBps": "0",
-  "pool": "0x625A692E96605c988192cd59563e5EB2f1E33C87",
+  "pool": "0x6C3d502f1a97d4470b881015b83D9Dd1062172e1",
   "priceX96": "79228162514264337593543950336",
   "reserves": Object {
     "asset": "100000000000000000000",
@@ -83,11 +115,11 @@ Object {
 }
 `;
 
-exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 2`] = `828581`;
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 2`] = `828557`;
 
 exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 3`] = `59075`;
 
-exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 4`] = `828581`;
+exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 4`] = `828569`;
 
 exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 5`] = `59075`;
 
@@ -104,7 +136,7 @@ exports[`Offset bootstrap seeding seeds three pools off-center and snapshots dri
 exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 11`] = `
 Object {
   "driftBps": "-10",
-  "pool": "0xb3da2F710C7356E4F6540752488e88e48Fd00Cdd",
+  "pool": "0xCf7c4Fcef7a32a04CC2A7fb16F441D772cddf385",
   "priceX96": "79148934351750073255950406385",
   "reserves": Object {
     "asset": "100000000000000000000",
@@ -120,7 +152,7 @@ Object {
 exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 12`] = `
 Object {
   "driftBps": "-5",
-  "pool": "0xC99f9655714Ca79D539FA25Ab25343cd0B2bdB08",
+  "pool": "0x60d67670F8F35363abBE37c20C225f34D453F284",
   "priceX96": "79188548433007205424747178360",
   "reserves": Object {
     "asset": "100000000000000000000",
@@ -136,7 +168,7 @@ Object {
 exports[`Offset bootstrap seeding seeds three pools off-center and snapshots drift (bps) 13`] = `
 Object {
   "driftBps": "14",
-  "pool": "0x18CE04CBBee461Be1a1486f30E8d1B745cA9D951",
+  "pool": "0x600422A5dE2FC4DDC395Cc5840e3C3B78141d5Aa",
   "priceX96": "79347004758035734099934266261",
   "reserves": Object {
     "asset": "100000000000000000000",

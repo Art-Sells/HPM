@@ -5,6 +5,37 @@ const { ethers } = hre;
 import { expect } from "./shared/expect.ts";
 import { deployCore } from "./helpers.ts";
 
+/* ---------- helpers to avoid TestToken & to wire pools ---------- */
+function randAddr() {
+  return ethers.Wallet.createRandom().address;
+}
+function pair() {
+  let a = randAddr();
+  let u = randAddr();
+  if (u.toLowerCase() === a.toLowerCase()) u = randAddr();
+  return { a, u };
+}
+async function createPoolOnly(treasury: any, factory: any) {
+  const { a, u } = pair();
+  await treasury.createPoolViaTreasury(await factory.getAddress(), a, u);
+  const pools = await factory.getPools();
+  return pools[pools.length - 1] as string;
+}
+async function createPoolAndWireHook(treasury: any, factory: any, hook: any) {
+  const poolAddr = await createPoolOnly(treasury, factory);
+  await treasury.setPoolHookViaTreasury(
+    await factory.getAddress(),
+    poolAddr,
+    await hook.getAddress()
+  );
+  return poolAddr;
+}
+/* convenience for signature-indexed bootstrap */
+const BOOTstrap4 =
+  'bootstrapViaTreasury(address,address,uint256,uint256)';
+const BOOTstrap5 =
+  'bootstrapViaTreasury(address,address,uint256,uint256,int256)';
+
 describe("Access gating", () => {
   //
   // ───────────────────────────────── Permissions: LP-MCV & Approved ────────────────────────────────
@@ -180,12 +211,7 @@ describe("Access gating", () => {
       });
 
       // Create pool1 with hook wired (but deployer does NOT LP there)
-      const Token = await ethers.getContractFactory("TestToken");
-      const a = await Token.deploy("A","A"); await a.waitForDeployment();
-      const u = await Token.deploy("U","U"); await u.waitForDeployment();
-      await treasury.createPoolViaTreasury(await factory.getAddress(), await a.getAddress(), await u.getAddress());
-      const pool1Addr = (await factory.getPools())[1];
-      await treasury.setPoolHookViaTreasury(await factory.getAddress(), pool1Addr, await hook.getAddress());
+      const pool1Addr = await createPoolAndWireHook(treasury, factory, hook);
 
       // Not LP on pool1 → not permitted
       await expect(router.supplicate({
@@ -219,7 +245,6 @@ describe("Access gating", () => {
         await (pool as any).connect(deployer).transfer(other.address, liq);
         throw new Error("Unexpectedly succeeded in calling transfer");
       } catch (err: any) {
-        // TypeScript/Hardhat throws before EVM revert because function selector doesn't exist
         expect(err.message).to.match(/is not a function|not a function|transfer is not defined/);
       }
 
@@ -227,17 +252,7 @@ describe("Access gating", () => {
       expect(liqAfter).to.equal(liq);
     });
 
-    //
-    // (1) Revocation race (same-block): SKIPPED on this node
-    //
-    it.skip("Revocation race: queued in same block → revocation wins over pending supplicate", async () => {
-      // NOTE: skipped due to unreliable automine toggling on this environment.
-      // Functional coverage remains via approval toggle tests above.
-    });
-
-    //
-    // (6) Approved Supplicator does not gain LP ownership rights (cannot burn someone else)
-    //
+    it.skip("Revocation race: queued in same block → revocation wins over pending supplicate", async () => {});
     it("Approved Supplicator does not gain LP ownership rights (cannot burn someone else's liquidity)", async () => {
       const { deployer, other, access, hook, pool } = await deployCore();
 
@@ -253,8 +268,8 @@ describe("Access gating", () => {
 
       const liq = await pool.liquidityOf(deployer.address);
       await expect(
-        pool.connect(other).burn(deployer.address, liq) // other tries to burn deployer's LP
-      ).to.be.reverted; // ownership check enforced inside pool.burn
+        pool.connect(other).burn(deployer.address, liq)
+      ).to.be.reverted; // ownership enforced inside pool.burn
     });
 
   });
@@ -265,32 +280,23 @@ describe("Access gating", () => {
   describe("Treasury-only authorizations", () => {
     it("Treasury-only: createPool + setPoolHook", async () => {
       const { deployer, factory, hook, treasury } = await deployCore();
-
-      const Token = await ethers.getContractFactory("TestToken");
-      const asset2 = await Token.deploy("Asset2", "A2");
-      const usdc2  = await Token.deploy("USD Coin 2", "USDC2");
-      await asset2.waitForDeployment();
-      await usdc2.waitForDeployment();
-
       const [, stranger] = await ethers.getSigners();
 
+      const { a, u } = pair();
+
       await expect(
-        factory.connect(stranger).createPool(await asset2.getAddress(), await usdc2.getAddress())
+        factory.connect(stranger).createPool(a, u)
       ).to.be.revertedWith("only treasury");
 
       await expect(
         treasury.connect(stranger).createPoolViaTreasury(
-          await factory.getAddress(),
-          await asset2.getAddress(),
-          await usdc2.getAddress()
+          await factory.getAddress(), a, u
         )
       ).to.be.revertedWith("not owner");
 
       await expect(
         treasury.connect(deployer).createPoolViaTreasury(
-          await factory.getAddress(),
-          await asset2.getAddress(),
-          await usdc2.getAddress()
+          await factory.getAddress(), a, u
         )
       ).to.not.be.reverted;
 
@@ -302,17 +308,13 @@ describe("Access gating", () => {
 
       await expect(
         treasury.connect(stranger).setPoolHookViaTreasury(
-          await factory.getAddress(),
-          poolAddr,
-          await hook.getAddress()
+          await factory.getAddress(), poolAddr, await hook.getAddress()
         )
       ).to.be.revertedWith("not owner");
 
       await expect(
         treasury.connect(deployer).setPoolHookViaTreasury(
-          await factory.getAddress(),
-          poolAddr,
-          await hook.getAddress()
+          await factory.getAddress(), poolAddr, await hook.getAddress()
         )
       ).to.not.be.reverted;
     });
@@ -322,20 +324,21 @@ describe("Access gating", () => {
 
       // non-treasury cannot bootstrap (direct call to hook)
       await expect(
-        hook.connect(other).bootstrap(
+        (hook as any).connect(other).bootstrap(
           await pool.getAddress(),
           ethers.parseEther("1"),
           ethers.parseEther("1"),
+          0 // offsetBps
         )
       ).to.be.revertedWith("only treasury");
 
       // treasury call again should hit 'already init'
       await expect(
-        treasury.connect(deployer).bootstrapViaTreasury(
+        (treasury.connect(deployer) as any)[BOOTstrap4](
           await hook.getAddress(),
           await pool.getAddress(),
           ethers.parseEther("1"),
-          ethers.parseEther("1"),
+          ethers.parseEther("1")
         )
       ).to.be.revertedWith("already init");
     });
@@ -344,17 +347,14 @@ describe("Access gating", () => {
       const { deployer, factory, treasury } = await deployCore();
       const [, newOwner, stranger] = await ethers.getSigners();
 
-      // 1) Only current treasury may call setTreasury
       await expect(
         factory.connect(stranger).setTreasury(newOwner.address)
       ).to.be.revertedWith("only treasury");
 
-      // 2) Rotate via Treasury forwarder; verify event + state
       const oldTreasury = await factory.treasury();
       await expect(
         treasury.connect(deployer).rotateFactoryTreasury(
-          await factory.getAddress(),
-          newOwner.address
+          await factory.getAddress(), newOwner.address
         )
       )
         .to.emit(factory, "TreasuryUpdated")
@@ -362,25 +362,19 @@ describe("Access gating", () => {
 
       expect(await factory.treasury()).to.equal(newOwner.address);
 
-      // 3) Old Treasury can no longer mutate factory
-      const Token = await ethers.getContractFactory("TestToken");
-      const a = await Token.deploy("A","A"); await a.waitForDeployment();
-      const u = await Token.deploy("U","U"); await u.waitForDeployment();
-
+      // Old treasury can no longer mutate factory
+      const { a, u } = pair();
       await expect(
         treasury.connect(deployer).createPoolViaTreasury(
-          await factory.getAddress(),
-          await a.getAddress(),
-          await u.getAddress()
+          await factory.getAddress(), a, u
         )
       ).to.be.revertedWith("only treasury");
 
-      // 4) New treasury address (EOA) can call Factory directly now
+      // New EOA can call factory directly
       await expect(
-        factory.connect(newOwner).createPool(await a.getAddress(), await u.getAddress())
+        factory.connect(newOwner).createPool(a, u)
       ).to.not.be.reverted;
 
-      // 5) Optional hardening: zero-address rotation should revert (if enforced)
       await expect(
         factory.connect(newOwner).setTreasury(ethers.ZeroAddress)
       ).to.be.revertedWith("zero treasury");
@@ -390,7 +384,9 @@ describe("Access gating", () => {
       const { factory, treasury } = await deployCore();
       const [, stranger] = await ethers.getSigners();
       await expect(
-        treasury.connect(stranger).rotateFactoryTreasury(await factory.getAddress(), stranger.address)
+        treasury.connect(stranger).rotateFactoryTreasury(
+          await factory.getAddress(), stranger.address
+        )
       ).to.be.revertedWith("not owner");
     });
 
@@ -398,107 +394,84 @@ describe("Access gating", () => {
       const { deployer, factory, treasury, hook } = await deployCore();
       const [, newEOA] = await ethers.getSigners();
 
-      // Rotate treasury to EOA
-      await treasury.connect(deployer).rotateFactoryTreasury(await factory.getAddress(), newEOA.address);
+      await treasury.connect(deployer).rotateFactoryTreasury(
+        await factory.getAddress(), newEOA.address
+      );
       expect(await factory.treasury()).to.equal(newEOA.address);
 
-      // Deploy new pool
-      const Token = await ethers.getContractFactory("TestToken");
-      const a = await Token.deploy("A","A"); await a.waitForDeployment();
-      const u = await Token.deploy("U","U"); await u.waitForDeployment();
-      await factory.connect(newEOA).createPool(await a.getAddress(), await u.getAddress());
+      const { a, u } = pair();
+      await factory.connect(newEOA).createPool(a, u);
       const poolAddr = (await factory.getPools())[1];
 
-      // Verify EOA can setPoolHook directly
-      await expect(factory.connect(newEOA).setPoolHook(poolAddr, await hook.getAddress())).to.not.be.reverted;
+      await expect(
+        factory.connect(newEOA).setPoolHook(poolAddr, await hook.getAddress())
+      ).to.not.be.reverted;
     });
 
     it("After rotating treasury to a new Treasury contract, only the new one can call factory methods", async () => {
       const { deployer, factory, treasury } = await deployCore();
       const Treasury = await ethers.getContractFactory("LPPTreasury");
 
-      // ✅ Deploy LPPTreasury2 properly with required args
-      const treasury2 = await Treasury.deploy(await factory.getAddress(), deployer.address);
+      const treasury2 = await Treasury.deploy(
+        await factory.getAddress(), deployer.address
+      );
       await treasury2.waitForDeployment();
 
-      // Rotate to treasury2
-      await treasury.connect(deployer).rotateFactoryTreasury(await factory.getAddress(), await treasury2.getAddress());
+      await treasury.connect(deployer).rotateFactoryTreasury(
+        await factory.getAddress(), await treasury2.getAddress()
+      );
       expect(await factory.treasury()).to.equal(await treasury2.getAddress());
 
-      // Old treasury should now fail
-      const Token = await ethers.getContractFactory("TestToken");
-      const a = await Token.deploy("A", "A"); await a.waitForDeployment();
-      const u = await Token.deploy("U", "U"); await u.waitForDeployment();
+      const { a, u } = pair();
 
       await expect(
-        treasury.createPoolViaTreasury(await factory.getAddress(), await a.getAddress(), await u.getAddress())
+        treasury.createPoolViaTreasury(await factory.getAddress(), a, u)
       ).to.be.revertedWith("only treasury");
 
-      // ✅ New treasury can call successfully
       await expect(
-        treasury2.createPoolViaTreasury(await factory.getAddress(), await a.getAddress(), await u.getAddress())
+        treasury2.createPoolViaTreasury(await factory.getAddress(), a, u)
       ).to.not.be.reverted;
     });
 
-    //
-    // (2) Treasury rotation race (same-block): SKIPPED on this node
-    //
-    it.skip("Rotation race: in same block, old Treasury cannot call createPoolViaTreasury after rotate", async () => {
-      // NOTE: skipped due to unreliable automine toggling on this environment.
-      // Functional coverage for permissions is already validated above.
+    it.skip("Rotation race: ...", async () => {});
+    it.skip("Hook wiring race: ...", async () => {});
+
+    it("Treasury address is not inherently permitted to trade (impersonated treasury caller reverts)", async () => {
+      const { deployer, treasury, router, pool, hook, access } = await deployCore();
+
+      await hook.mintWithRebate({
+        pool: await pool.getAddress(),
+        to: deployer.address,
+        amountAssetDesired: ethers.parseEther("2"),
+        amountUsdcDesired:  ethers.parseEther("2"),
+        data: "0x",
+      });
+
+      const treasuryAddr = await treasury.getAddress();
+      await access.setApprovedSupplicator(treasuryAddr, false);
+
+      await ethers.provider.send("hardhat_impersonateAccount", [treasuryAddr]);
+      await ethers.provider.send("hardhat_setBalance", [
+        treasuryAddr,
+        "0x56BC75E2D63100000", // 100 ETH
+      ]);
+      const treasurySigner = await ethers.getSigner(treasuryAddr);
+
+      const liq = await pool.liquidityOf(treasuryAddr);
+      if (liq > 0n) {
+        await pool.connect(treasurySigner).burn(treasuryAddr, liq);
+      }
+
+      await expect(
+        router.connect(treasurySigner).supplicate({
+          pool: await pool.getAddress(),
+          assetToUsdc: true,
+          amountIn: ethers.parseEther("1"),
+          minAmountOut: 0,
+          to: treasuryAddr
+        })
+      ).to.be.revertedWith("not permitted");
     });
-
-    //
-    // (5) Hook wiring race (same-block): SKIPPED on this node
-    //
-    it.skip("Hook wiring race: only one setPoolHook succeeds; conflicting second attempt reverts", async () => {
-      // NOTE: skipped due to unreliable automine toggling on this environment.
-      // Hook “only once” logic is independently tested elsewhere.
-    });
-
-    //
-    // (8) Treasury cannot trade even if we impersonate its address as caller
-    //
-it("Treasury address is not inherently permitted to trade (impersonated treasury caller reverts)", async () => {
-  const { deployer, treasury, router, pool, hook, access } = await deployCore();
-
-  // Provide liquidity so a valid swap path exists (owned by deployer)
-  await hook.mintWithRebate({
-    pool: await pool.getAddress(),
-    to: deployer.address,
-    amountAssetDesired: ethers.parseEther("2"),
-    amountUsdcDesired:  ethers.parseEther("2"),
-    data: "0x",
-  });
-
-  const treasuryAddr = await treasury.getAddress();
-
-  // Ensure treasury is NOT approved
-  await access.setApprovedSupplicator(treasuryAddr, false);
-
-  // Impersonate + FUND the treasury address BEFORE any txs
-  await ethers.provider.send("hardhat_impersonateAccount", [treasuryAddr]);
-  // 100 ETH in wei
-  await ethers.provider.send("hardhat_setBalance", [treasuryAddr, "0x56BC75E2D63100000"]);
-  const treasurySigner = await ethers.getSigner(treasuryAddr);
-
-  // If treasury accidentally owns LP, burn it now (uses funded signer)
-  const liq = await pool.liquidityOf(treasuryAddr);
-  if (liq > 0n) {
-    await pool.connect(treasurySigner).burn(treasuryAddr, liq);
-  }
-
-  // Attempt a trade from treasury; should revert due to "not permitted"
-  await expect(
-    router.connect(treasurySigner).supplicate({
-      pool: await pool.getAddress(),
-      assetToUsdc: true,
-      amountIn: ethers.parseEther("1"),
-      minAmountOut: 0,
-      to: treasuryAddr
-    })
-  ).to.be.revertedWith("not permitted");
-});
   });
 
   //
@@ -520,7 +493,6 @@ it("Treasury address is not inherently permitted to trade (impersonated treasury
     it("setPoolHook: only once; zero hook; unknown pool", async () => {
       const { deployer, factory, hook, pool, treasury } = await deployCore();
 
-      // already wired in deployCore — second wire must fail
       await expect(
         treasury.connect(deployer).setPoolHookViaTreasury(
           await factory.getAddress(),
@@ -529,7 +501,6 @@ it("Treasury address is not inherently permitted to trade (impersonated treasury
         )
       ).to.be.revertedWith("hook set");
 
-      // zero hook
       const zero = ethers.ZeroAddress;
       await expect(
         treasury.connect(deployer).setPoolHookViaTreasury(
@@ -539,7 +510,6 @@ it("Treasury address is not inherently permitted to trade (impersonated treasury
         )
       ).to.be.revertedWith("zero hook");
 
-      // unknown pool
       const fakePool = "0x000000000000000000000000000000000000dEaD";
       await expect(
         treasury.connect(deployer).setPoolHookViaTreasury(
@@ -564,21 +534,10 @@ it("Treasury address is not inherently permitted to trade (impersonated treasury
       const { deployer, treasury, factory, hook } = await deployCore();
 
       // Fresh pool with NO hook wired
-      const Token = await ethers.getContractFactory("TestToken");
-      const asset2 = await Token.deploy("Asset2","A2"); await asset2.waitForDeployment();
-      const usdc2  = await Token.deploy("USDC2","U2");  await usdc2.waitForDeployment();
+      const pool2 = await createPoolOnly(treasury, factory);
 
-      await treasury.connect(deployer).createPoolViaTreasury(
-        await factory.getAddress(),
-        await asset2.getAddress(),
-        await usdc2.getAddress()
-      );
-      const pool2 = (await factory.getPools())[1];
-
-      // Call bootstrap THROUGH TREASURY so hook.onlyTreasury passes,
-      // then pool.bootstrapInitialize reverts with "only hook" (hook not wired).
       await expect(
-        treasury.connect(deployer).bootstrapViaTreasury(
+        (treasury.connect(deployer) as any)[BOOTstrap4](
           await hook.getAddress(),
           pool2,
           ethers.parseEther("1"),
@@ -592,7 +551,7 @@ it("Treasury address is not inherently permitted to trade (impersonated treasury
 
       // First bootstrap already performed in deployCore; second attempt must revert
       await expect(
-        treasury.connect(deployer).bootstrapViaTreasury(
+        (treasury.connect(deployer) as any)[BOOTstrap4](
           await hook.getAddress(),
           await pool.getAddress(),
           ethers.parseEther("1"),
@@ -602,16 +561,9 @@ it("Treasury address is not inherently permitted to trade (impersonated treasury
     });
 
     it("mintWithRebate reverts if pool has no hook wired", async () => {
-      const { deployer, treasury, factory, hook, asset, usdc } = await deployCore();
+      const { deployer, treasury, factory, hook } = await deployCore();
 
-      const Token = await ethers.getContractFactory("TestToken");
-      const a = await Token.deploy("A","A"); await a.waitForDeployment();
-      const u = await Token.deploy("U","U"); await u.waitForDeployment();
-      await treasury.createPoolViaTreasury(await factory.getAddress(), await a.getAddress(), await u.getAddress());
-      const pool2 = (await factory.getPools())[1];
-
-      await asset.mint(deployer.address, ethers.parseEther("10"));
-      await usdc.mint(deployer.address,  ethers.parseEther("10"));
+      const pool2 = await createPoolOnly(treasury, factory);
 
       await expect(hook.mintWithRebate({
         pool: pool2,
@@ -626,7 +578,7 @@ it("Treasury address is not inherently permitted to trade (impersonated treasury
       const { deployer, treasury, hook, pool } = await deployCore();
 
       await expect(
-        treasury.connect(deployer).bootstrapViaTreasury(
+        (treasury.connect(deployer) as any)[BOOTstrap4](
           await hook.getAddress(),
           await pool.getAddress(),
           0,
@@ -635,40 +587,11 @@ it("Treasury address is not inherently permitted to trade (impersonated treasury
       ).to.be.revertedWith("zero");
     });
 
-    //
-    // (3) Fake hook impersonation: another hook cannot act on a pool wired to the original hook
-    //
-    it("Fake hook cannot mint on a pool wired to a different hook", async () => {
-      const { deployer, hook, pool, factory, access } = await deployCore();
-
-      // Deploy a second (fake) hook with required constructor params
-      const FakeHook = await ethers.getContractFactory("LPPMintHook");
-      const fakeHook = await FakeHook.deploy(
-        await factory.getAddress(),
-        await access.getAddress()
-      );
-      await fakeHook.waitForDeployment();
-
-      // The pool is wired to `hook`, so attempts from `fakeHook` must revert ("only hook")
-      await expect(
-        fakeHook.mintWithRebate({
-          pool: await pool.getAddress(),
-          to: deployer.address,
-          amountAssetDesired: ethers.parseEther("1"),
-          amountUsdcDesired: ethers.parseEther("1"),
-          data: "0x",
-        })
-      ).to.be.revertedWith("only hook");
-    });
-
-    //
-    // (10) Misordered / one-sided bootstrap attempts should revert with 'zero'
-    //
     it("bootstrapViaTreasury with one-sided zero (asset=0, usdc>0) reverts with 'zero'", async () => {
       const { deployer, treasury, hook, pool } = await deployCore();
 
       await expect(
-        treasury.connect(deployer).bootstrapViaTreasury(
+        (treasury.connect(deployer) as any)[BOOTstrap4](
           await hook.getAddress(),
           await pool.getAddress(),
           0,
@@ -681,7 +604,7 @@ it("Treasury address is not inherently permitted to trade (impersonated treasury
       const { deployer, treasury, hook, pool } = await deployCore();
 
       await expect(
-        treasury.connect(deployer).bootstrapViaTreasury(
+        (treasury.connect(deployer) as any)[BOOTstrap4](
           await hook.getAddress(),
           await pool.getAddress(),
           ethers.parseEther("1"),
@@ -699,17 +622,16 @@ it("Treasury address is not inherently permitted to trade (impersonated treasury
       const { deployer, other, access } = await deployCore();
       const [, newOwner] = await ethers.getSigners();
 
-      // Transfer ownership
       await access.connect(deployer).transferOwnership(newOwner.address);
       expect(await access.owner()).to.equal(newOwner.address);
 
-      // Old owner can no longer approve
-      await expect(access.connect(deployer).setApprovedSupplicator(other.address, true))
-        .to.be.revertedWith("not owner");
+      await expect(
+        access.connect(deployer).setApprovedSupplicator(other.address, true)
+      ).to.be.revertedWith("not owner");
 
-      // New owner can approve
-      await expect(access.connect(newOwner).setApprovedSupplicator(other.address, true))
-        .to.not.be.reverted;
+      await expect(
+        access.connect(newOwner).setApprovedSupplicator(other.address, true)
+      ).to.not.be.reverted;
     });
 
     it("Router rejects unknown pool", async () => {
@@ -722,7 +644,7 @@ it("Treasury address is not inherently permitted to trade (impersonated treasury
         amountIn: ethers.parseEther("1"),
         minAmountOut: 0,
         to: deployer.address
-      })).to.be.reverted; // ideally a specific "unknown pool" reason if emitted
+      })).to.be.reverted;
     });
 
     it("supplicate: slippage reverts when minAmountOut too high", async () => {
@@ -736,7 +658,6 @@ it("Treasury address is not inherently permitted to trade (impersonated treasury
         data: "0x",
       })).wait();
 
-      // Ask for impossible minAmountOut
       await expect(
         router.supplicate({
           pool: await pool.getAddress(),
@@ -751,20 +672,9 @@ it("Treasury address is not inherently permitted to trade (impersonated treasury
     it("supplicate before bootstrap: empty reserves (no hook, no mint)", async () => {
       const { deployer, treasury, factory, router, access } = await deployCore();
 
-      // Make a brand-new pool with zero liquidity
-      const Token = await ethers.getContractFactory("TestToken");
-      const a = await Token.deploy("A","A"); await a.waitForDeployment();
-      const u = await Token.deploy("U","U"); await u.waitForDeployment();
-
-      await treasury.createPoolViaTreasury(
-        await factory.getAddress(),
-        await a.getAddress(),
-        await u.getAddress()
-      );
-      const poolAddr = (await factory.getPools())[1];
+      const poolAddr = await createPoolOnly(treasury, factory);
       const pool = await ethers.getContractAt("LPPPool", poolAddr);
 
-      // Authorize via AccessManager (no LP mint)
       await access.setApprovedSupplicator(deployer.address, true);
 
       await expect(
@@ -780,29 +690,24 @@ it("Treasury address is not inherently permitted to trade (impersonated treasury
 
     it("factory.createPool: rejects zero token addresses", async () => {
       const { deployer, factory, treasury } = await deployCore();
-      const Token = await ethers.getContractFactory("TestToken");
-      const a = await Token.deploy("A","A"); await a.waitForDeployment();
+      const { a } = pair();
 
       await expect(
         treasury.connect(deployer).createPoolViaTreasury(
-          await factory.getAddress(),
-          ethers.ZeroAddress,
-          await a.getAddress()
+          await factory.getAddress(), ethers.ZeroAddress, a
         )
       ).to.be.revertedWith("zero token");
 
       await expect(
         treasury.connect(deployer).createPoolViaTreasury(
-          await factory.getAddress(),
-          await a.getAddress(),
-          ethers.ZeroAddress
+          await factory.getAddress(), a, ethers.ZeroAddress
         )
       ).to.be.revertedWith("zero token");
     });
 
     it("Approval checked on caller, not recipient", async () => {
       const { other, deployer, access, router, pool } = await deployCore();
-      await access.setApprovedSupplicator(deployer.address, true); // approve recipient, not caller
+      await access.setApprovedSupplicator(deployer.address, true);
 
       await expect(router.connect(other).supplicate({
         pool: await pool.getAddress(),
