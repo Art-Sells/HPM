@@ -17,3 +17,4 @@ describe("Revocation enforcement", () => {
     })).to.be.revertedWith("not permitted");
   });
 });
+//       - Revocation race: queued in same block → revocation wins over pending supplicate

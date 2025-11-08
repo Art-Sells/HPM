@@ -23,6 +23,7 @@ contract LPPAccessManager is ILPPAccessManager {
     }
 
     function setApprovedSupplicator(address who, bool approved) external override onlyOwner {
+        require(who != address(0), "zero address");
         _approved[who] = approved;
         emit SupplicatorApproved(who, approved);
     }

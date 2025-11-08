@@ -35,12 +35,9 @@ export async function deployCore(): Promise<DeployCoreResult> {
   const access = (await Access.deploy()) as unknown as LPPAccessManager;
   await access.waitForDeployment();
 
-  // Treasury
+  // Treasury (owner = deployer)
   const Treasury = await ethers.getContractFactory("LPPTreasury");
-  const treasury = (await Treasury.deploy(
-    deployer.address,
-    deployer.address
-  )) as unknown as LPPTreasury;
+  const treasury = (await Treasury.deploy(deployer.address, deployer.address)) as unknown as LPPTreasury;
   await treasury.waitForDeployment();
 
   // Vault
@@ -81,32 +78,29 @@ export async function deployCore(): Promise<DeployCoreResult> {
   await asset.mint(deployer.address, ethers.parseEther("1000"));
   await usdc.mint(deployer.address,  ethers.parseEther("1000"));
 
-  // create pool + set hook (treasury-only)
-  await factory.connect(deployer).createPool(await asset.getAddress(), await usdc.getAddress());
+  // Treasury-only: create pool via Treasury forwarder
+  await treasury.createPoolViaTreasury(
+    await factory.getAddress(),
+    await asset.getAddress(),
+    await usdc.getAddress()
+  );
   const poolAddr = (await factory.getPools())[0];
-
   const pool = (await ethers.getContractAt("LPPPool", poolAddr, deployer)) as unknown as LPPPool;
 
-  await factory.connect(deployer).setPoolHook(poolAddr, await hook.getAddress());
+  // Treasury-only: wire hook via Treasury forwarder
+  await treasury.setPoolHookViaTreasury(
+    await factory.getAddress(),
+    poolAddr,
+    await hook.getAddress()
+  );
 
-  // bootstrap via Hook (treasury-only)
-  await hook.connect(deployer).bootstrap(
+  // Treasury-only: bootstrap via Treasury forwarder (this is the critical fix)
+  await treasury.bootstrapViaTreasury(
+    await hook.getAddress(),
     poolAddr,
     ethers.parseEther("100"),
     ethers.parseEther("100")
   );
 
-  return {
-    deployer,
-    other,
-    access,
-    treasury,
-    vault,
-    hook,
-    router,
-    factory,
-    asset,
-    usdc,
-    pool,
-  };
+  return { deployer, other, access, treasury, vault, hook, router, factory, asset, usdc, pool };
 }
