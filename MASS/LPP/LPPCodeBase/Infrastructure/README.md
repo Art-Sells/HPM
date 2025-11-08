@@ -125,17 +125,38 @@
 - [ ] Approved Supplicator supplicate success.  
 - [ ] Unauthorized caller fails.  
 - [ ] Treasury retention accounting.  
-- [ ] Vesting unlock & withdrawal sequence.  
+- [ ] Vesting unlock & withdrawal sequence. 
+
+##### Bootstrap seeding dynamics
+Equal seed for all pools (via adapter):
+
+- Pool A: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
+- Pool B: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
+- Pool C: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
+
+Primary position (each pool): ultra‑narrow (≈ ±1–2 ticks).
+Fallback position: tiny, very wide range to prevent “no‑liquidity”.
+Mint via NonfungiblePositionManager (wrapped in @/periphery helpers).
+
+Center Offsets (relative to oracle at time of seed):
+
+- Pool A: −10 bps center
+- Pool B: −5 bps center
+- Pool C: +15 bps center
+
+Offsetting without an “anchor” intentionally creates internal spreads so external MEV can arb and then mint (via the atomic flow below).
+
+- Test if prices are off-center, if so, then increase pool seeds
 
 ##### Snapshots (Hardhat)
-| ID | Stage | Description |
-|----|--------|-------------|
-| `S1` | Bootstrap | Factory + pools deployed & initialized |
-| `S2` | First Mint (MCV) | Equal-value mint with Tier-1 rebate |
-| `S3` | First Supplicate (MCV) | LP-MCV executes rebalance |
-| `S4` | First Supplicate (Approved) | Treasury-approved address executes rebalance |
-| `S5` | Revocation Guard | Revoked Supplicator reverted |
-| `S6` | Quoter Validation | Compare quoter output vs. actual execution results |
+| Stage | Description |
+|--------|-------------|
+| Bootstrap | Factory + pools deployed & initialized |
+| Mint (MCV) | Equal-value mint with Tier-1 rebate |
+| Supplicate (MCV) | LP-MCV executes rebalance |
+| Supplicate (Approved) | Treasury-approved address executes rebalance |
+| Revocation Guard | Revoked Supplicator reverted |
+| Quoter Validation | Compare quoter output vs. actual execution results |
 
 Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and router state.
 

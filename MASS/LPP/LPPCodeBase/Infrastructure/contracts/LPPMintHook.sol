@@ -16,9 +16,9 @@ contract LPPMintHook is ILPPMintHook {
     }
 
     /// Optional: one-time bootstrap (no rebates), callable by Treasury via Hook path.
-    function bootstrap(address pool, uint256 amountAsset, uint256 amountUsdc) external {
+    function bootstrap(address pool, uint256 amtA, uint256 amtU, int256 offsetBps) external {
         require(msg.sender == address(treasury), "only treasury");
-        ILPPPool(pool).bootstrapInitialize(amountAsset, amountUsdc);
+        ILPPPool(pool).bootstrapInitialize(amtA, amtU, offsetBps);
     }
 
     function mintWithRebate(MintParams calldata params) external override returns (uint256 liquidityOut) {

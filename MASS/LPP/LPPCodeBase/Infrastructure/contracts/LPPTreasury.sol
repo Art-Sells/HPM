@@ -4,9 +4,9 @@ pragma solidity ^0.8.24;
 import { ILPPTreasury } from "./interfaces/ILPPTreasury.sol";
 import { ILPPFactory } from "./interfaces/ILPPFactory.sol";
 
-/// Minimal hook interface so Treasury can forward bootstrap
+/// Minimal hook interface so Treasury can forward bootstrap with an offset
 interface ILPPMintHookMinimal {
-    function bootstrap(address pool, uint256 amountAsset, uint256 amountUsdc) external;
+    function bootstrap(address pool, uint256 amtA, uint256 amtU, int256 offsetBps) external;
 }
 
 contract LPPTreasury is ILPPTreasury {
@@ -52,11 +52,31 @@ contract LPPTreasury is ILPPTreasury {
         ILPPFactory(factory).setPoolHook(pool, hook);
     }
 
-    function bootstrapViaTreasury(address hook, address pool, uint256 amountAsset, uint256 amountUsdc)
+    /// New signature: includes offsetBps so we can seed off-center
+    function bootstrapViaTreasury(
+        address hook,
+        address pool,
+        uint256 amountAsset,
+        uint256 amountUsdc,
+        int256 offsetBps
+    )
         external
         onlyOwner
     {
-        ILPPMintHookMinimal(hook).bootstrap(pool, amountAsset, amountUsdc);
+        ILPPMintHookMinimal(hook).bootstrap(pool, amountAsset, amountUsdc, offsetBps);
+    }
+
+    /// (Optional) Back-compat shim: offset = 0 bps
+    function bootstrapViaTreasury(
+        address hook,
+        address pool,
+        uint256 amountAsset,
+        uint256 amountUsdc
+    )
+        external
+        onlyOwner
+    {
+        ILPPMintHookMinimal(hook).bootstrap(pool, amountAsset, amountUsdc, 0);
     }
 
     /// Rotate Factory governance to a new address (EOA/multisig/new Treasury).

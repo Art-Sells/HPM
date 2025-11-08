@@ -10,7 +10,6 @@ import type {
   LPPRouter,
   LPPFactory,
   LPPPool,
-  TestToken,
 } from "../typechain-types";
 
 export interface DeployCoreResult {
@@ -22,9 +21,19 @@ export interface DeployCoreResult {
   hook: LPPMintHook;
   router: LPPRouter;
   factory: LPPFactory;
-  asset: TestToken;
-  usdc: TestToken;
   pool: LPPPool;
+  assetAddr: string;
+  usdcAddr: string;
+}
+
+/** Return two distinct, non-zero, EOA-looking addresses for token placeholders */
+function dummyTokenPair(): { assetAddr: string; usdcAddr: string } {
+  const a = ethers.Wallet.createRandom().address;
+  let b = ethers.Wallet.createRandom().address;
+  if (b.toLowerCase() === a.toLowerCase()) {
+    b = ethers.Wallet.createRandom().address;
+  }
+  return { assetAddr: a, usdcAddr: b };
 }
 
 export async function deployCore(): Promise<DeployCoreResult> {
@@ -67,22 +76,14 @@ export async function deployCore(): Promise<DeployCoreResult> {
   )) as unknown as LPPFactory;
   await factory.waitForDeployment();
 
-  // Tokens
-  const Token = await ethers.getContractFactory("TestToken");
-  const asset = (await Token.deploy("Asset", "ASSET")) as unknown as TestToken;
-  const usdc  = (await Token.deploy("USD Coin", "USDC")) as unknown as TestToken;
-  await asset.waitForDeployment();
-  await usdc.waitForDeployment();
-
-  // fund deployer for bootstrap
-  await asset.mint(deployer.address, ethers.parseEther("1000"));
-  await usdc.mint(deployer.address,  ethers.parseEther("1000"));
+  // Dummy token addresses (no TestToken!)
+  const { assetAddr, usdcAddr } = dummyTokenPair();
 
   // Treasury-only: create pool via Treasury forwarder
   await treasury.createPoolViaTreasury(
     await factory.getAddress(),
-    await asset.getAddress(),
-    await usdc.getAddress()
+    assetAddr,
+    usdcAddr
   );
   const poolAddr = (await factory.getPools())[0];
   const pool = (await ethers.getContractAt("LPPPool", poolAddr, deployer)) as unknown as LPPPool;
@@ -94,13 +95,14 @@ export async function deployCore(): Promise<DeployCoreResult> {
     await hook.getAddress()
   );
 
-  // Treasury-only: bootstrap via Treasury forwarder (this is the critical fix)
-  await treasury.bootstrapViaTreasury(
+  // Treasury-only: bootstrap via Treasury forwarder (no offset overload ambiguity here)
+  const bootstrap4 = (treasury as any)["bootstrapViaTreasury(address,address,uint256,uint256)"];
+  await bootstrap4(
     await hook.getAddress(),
     poolAddr,
     ethers.parseEther("100"),
     ethers.parseEther("100")
   );
 
-  return { deployer, other, access, treasury, vault, hook, router, factory, asset, usdc, pool };
+  return { deployer, other, access, treasury, vault, hook, router, factory, pool, assetAddr, usdcAddr };
 }
