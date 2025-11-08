@@ -128,14 +128,14 @@
 - [ ] Vesting unlock & withdrawal sequence.  
 
 ##### Snapshots (Hardhat)
-| ID | Stage | Description |
-|----|--------|-------------|
-| `S1` | Bootstrap | Factory + pools deployed & initialized |
-| `S2` | First Mint (MCV) | Equal-value mint with Tier-1 rebate |
-| `S3` | First Supplicate (MCV) | LP-MCV executes rebalance |
-| `S4` | First Supplicate (Approved) | Treasury-approved address executes rebalance |
-| `S5` | Revocation Guard | Revoked Supplicator reverted |
-| `S6` | Quoter Validation | Compare quoter output vs. actual execution results |
+| Stage | Description |
+|--------|-------------|
+| Bootstrap | Factory + pools deployed & initialized |
+| Mint (MCV) | Equal-value mint with Tier-1 rebate |
+| Supplicate (MCV) | LP-MCV executes rebalance |
+| Supplicate (Approved) | Treasury-approved address executes rebalance |
+| Revocation Guard | Revoked Supplicator reverted |
+| Quoter Validation | Compare quoter output vs. actual execution results |
 
 Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and router state.
 
