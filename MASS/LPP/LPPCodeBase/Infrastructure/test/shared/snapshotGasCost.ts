@@ -1,5 +1,5 @@
 // test/shared/snapshotGasCost.ts
-import { expect } from "./expect";
+import { expect } from "./expect.ts";
 
 function toNumber(x: any): number {
   if (typeof x === "bigint") return Number(x);

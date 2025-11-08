@@ -18,3 +18,6 @@ describe("S2 — First Mint (MCV)", () => {
     expect(liq).to.be.gt(0n);
   });
 });
+// if anyone tries to mint iwthout rebates or without providing equal value, it should fail...
+//Add (after minting, rebate vaults)
+//add snapshots to verify

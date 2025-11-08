@@ -1,5 +1,5 @@
 import { ethers } from "hardhat";
-import { expect } from "./shared/expect";
+import { expect } from "./shared/expect.ts";
 import { deployCore } from "./helpers.ts";
 
 describe("S4 — First Supplicate (Approved)", () => {
@@ -16,3 +16,5 @@ describe("S4 — First Supplicate (Approved)", () => {
     })).not.to.be.reverted;
   });
 });
+// if the address is not approved by treasury, it should fail, test this also...
+//add snapshots to verify
