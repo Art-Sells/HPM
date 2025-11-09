@@ -8,8 +8,10 @@ contract LPPFactory is ILPPFactory {
     address[] private _pools;
     mapping(address => bool) private _isPool;
 
-    // keep public so it auto-creates a getter that satisfies the interface
-    address public treasury;
+    // token allow-list
+    mapping(address => bool) private _allowedToken;
+
+    address public override treasury;
 
     modifier onlyTreasury() { require(msg.sender == treasury, "only treasury"); _; }
 
@@ -25,6 +27,18 @@ contract LPPFactory is ILPPFactory {
         treasury = newTreasury;
     }
 
+    // ── allow-list control ──────────────────────────────────────────────
+    function setAllowedToken(address token, bool allowed) external override onlyTreasury {
+        require(token != address(0), "zero token");
+        _allowedToken[token] = allowed;
+        emit TokenAllowed(token, allowed); // ✅ correct event name
+    }
+
+    function isTokenAllowed(address token) external view override returns (bool) {
+        return _allowedToken[token];
+    }
+
+    // ── pool lifecycle ─────────────────────────────────────────────────
     function createPool(address asset, address usdc)
         external
         override
@@ -32,7 +46,8 @@ contract LPPFactory is ILPPFactory {
         returns (address pool)
     {
         require(asset != address(0) && usdc != address(0), "zero token");
-        // Pass factory address so pool authorizes factory for setHook
+        require(_allowedToken[asset] && _allowedToken[usdc], "token not allowed");
+
         LPPPool p = new LPPPool(asset, usdc, treasury, address(this));
         pool = address(p);
         _pools.push(pool);
@@ -43,7 +58,7 @@ contract LPPFactory is ILPPFactory {
     function setPoolHook(address pool, address hook) external override onlyTreasury {
         require(_isPool[pool], "unknown pool");
         require(hook != address(0), "zero hook");
-        LPPPool(pool).setHook(hook); // pool allows treasury OR factory to wire the hook
+        LPPPool(pool).setHook(hook);
     }
 
     function isPool(address pool) external view override returns (bool) { return _isPool[pool]; }

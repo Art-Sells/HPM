@@ -20,11 +20,25 @@ contract LPPRouter is ILPPRouter {
         }
     }
 
-    function supplicate(SupplicateParams calldata p) external returns (uint256 amountOut) {
+    function supplicate(SupplicateParams calldata p)
+        external
+        override
+        returns (uint256 amountOut)
+    {
+        // permission: approved supplicator OR LP-MCV on that pool
         bool permitted = access.isApprovedSupplicator(msg.sender) || _isLPMCV(p.pool, msg.sender);
         require(permitted, "not permitted");
 
-        amountOut = ILPPPool(p.pool).supplicate(p.to, p.assetToUsdc, p.amountIn, p.minAmountOut);
+        // route through pool; caller is the payer of input tokens
+        amountOut = ILPPPool(p.pool).supplicate(
+            msg.sender,           // payer
+            p.to,                 // recipient
+            p.assetToUsdc,        // direction
+            p.amountIn,           // exact in
+            p.minAmountOut        // slippage guard
+        );
+
+        // book-keeping event (reason=0 reserved for "OK")
         address assetIn  = p.assetToUsdc ? ILPPPool(p.pool).asset() : ILPPPool(p.pool).usdc();
         address assetOut = p.assetToUsdc ? ILPPPool(p.pool).usdc() : ILPPPool(p.pool).asset();
         emit SupplicateExecuted(msg.sender, p.pool, assetIn, p.amountIn, assetOut, amountOut, 0);

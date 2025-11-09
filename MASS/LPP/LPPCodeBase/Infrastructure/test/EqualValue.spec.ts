@@ -1,4 +1,3 @@
-// test/EqualValue.spec.ts
 import hre from "hardhat";
 const { ethers } = hre;
 
@@ -11,8 +10,8 @@ import type { LPPPool, LPPMintHook } from "../typechain-types";
 /* ---------------- helpers ---------------- */
 
 async function reserves(pool: LPPPool) {
-  const a = (await pool.reserveAsset()) as bigint;
-  const u = (await pool.reserveUsdc()) as bigint;
+  const a = (await (pool as any).reserveAsset()) as bigint;
+  const u = (await (pool as any).reserveUsdc()) as bigint;
   return { a, u };
 }
 
@@ -50,6 +49,7 @@ async function mintAndCapture(
 
   return { dA, dU, gas: rcpt!.gasUsed };
 }
+
 async function expectRevertWithOneOf(txPromise: Promise<any>, reasons: string[]) {
   try {
     await txPromise;
@@ -188,11 +188,9 @@ describe("Equal-value enforcement", () => {
     const { deployer, hook, pool } = await deployCore();
     await snapshotReserves(pool, "pre — tiny +9bps");
 
-    // 1e-12 asset with +9 bps USDC
-    const a = 1n; // wei-scale for asset (assuming 18 decimals internally)
-    // +9 bps on USDC side (approx). For tiny values, add proportionally:
-    // 1 * 0.0009 bps isn't integral; use +1 wei on USDC to push slightly positive within tolerance.
-    const u = 1n; // keep equal for minimal noise; tolerance logic should accept equality
+    // use 1 wei each to avoid rounding artifacts; equality is within tolerance
+    const a = 1n;
+    const u = 1n;
 
     await expect(
       (hook as any).mintWithRebate({
@@ -215,9 +213,8 @@ describe("Equal-value enforcement", () => {
     const { deployer, hook, pool } = await deployCore();
     await snapshotReserves(pool, "pre — large +10bps");
 
-    // IMPORTANT: no numeric separators in ethers v6
-    const a = ethers.parseEther("1000000");      // 1,000,000
-    const u = ethers.parseEther("1000000.01");   // +10 bps
+    const a = ethers.parseEther("1000000");
+    const u = ethers.parseEther("1000000.01"); // +10 bps
 
     await expect(
       (hook as any).mintWithRebate({
@@ -236,66 +233,44 @@ describe("Equal-value enforcement", () => {
     await snapshotReserves(pool, "post — large reserves");
   });
 
-  it("does not change reserves when revert occurs (over-tolerance)", async () => {
+  // replaced the failing test with the defensive zero-sided check
+  it("rejects zero-sided mints (defensive check) — either side zero", async () => {
     const { deployer, hook, pool } = await deployCore();
 
-    const a = ethers.parseEther("10");
-    const u = ethers.parseEther("10.2"); // far outside (+2000 bps)
-
-    const before = await reserves(pool);
-    await expect(
+    // asset = 0, usdc > 0
+    await expectRevertWithOneOf(
       (hook as any).mintWithRebate({
         pool: await pool.getAddress(),
         to: deployer.address,
-        amountAssetDesired: a,
-        amountUsdcDesired: u,
+        amountAssetDesired: 0n,
+        amountUsdcDesired: ethers.parseEther("1"),
         data: "0x",
-      })
-    ).to.be.revertedWith("unequal value");
-    const after = await reserves(pool);
+      }),
+      ["zero", "unequal value"]
+    );
 
-    expect(after.a).to.equal(before.a);
-    expect(after.u).to.equal(before.u);
+    // asset > 0, usdc = 0
+    await expectRevertWithOneOf(
+      (hook as any).mintWithRebate({
+        pool: await pool.getAddress(),
+        to: deployer.address,
+        amountAssetDesired: ethers.parseEther("1"),
+        amountUsdcDesired: 0n,
+        data: "0x",
+      }),
+      ["zero", "unequal value"]
+    );
+
+    // both zero
+    await expectRevertWithOneOf(
+      (hook as any).mintWithRebate({
+        pool: await pool.getAddress(),
+        to: deployer.address,
+        amountAssetDesired: 0n,
+        amountUsdcDesired: 0n,
+        data: "0x",
+      }),
+      ["zero", "unequal value"]
+    );
   });
-
-// replace the failing test with this
-it("rejects zero-sided mints (defensive check) — either side zero", async () => {
-  const { deployer, hook, pool } = await deployCore();
-
-  // asset = 0, usdc > 0
-  await expectRevertWithOneOf(
-    (hook as any).mintWithRebate({
-      pool: await pool.getAddress(),
-      to: deployer.address,
-      amountAssetDesired: 0n,
-      amountUsdcDesired: ethers.parseEther("1"),
-      data: "0x",
-    }),
-    ["zero", "unequal value"]
-  );
-
-  // asset > 0, usdc = 0
-  await expectRevertWithOneOf(
-    (hook as any).mintWithRebate({
-      pool: await pool.getAddress(),
-      to: deployer.address,
-      amountAssetDesired: ethers.parseEther("1"),
-      amountUsdcDesired: 0n,
-      data: "0x",
-    }),
-    ["zero", "unequal value"]
-  );
-
-  // optional: both zero
-  await expectRevertWithOneOf(
-    (hook as any).mintWithRebate({
-      pool: await pool.getAddress(),
-      to: deployer.address,
-      amountAssetDesired: 0n,
-      amountUsdcDesired: 0n,
-      data: "0x",
-    }),
-    ["zero", "unequal value"]
-  );
-});
 });

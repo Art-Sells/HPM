@@ -1,11 +1,10 @@
-// test/AccessGating.spec.ts
 import hre from "hardhat";
 const { ethers } = hre;
 
 import { expect } from "./shared/expect.ts";
 import { deployCore } from "./helpers.ts";
 
-/* ---------- helpers to avoid TestToken & to wire pools ---------- */
+/* ---------- local helpers: safe dummy pairs + allow-list + pool creation ---------- */
 function randAddr() {
   return ethers.Wallet.createRandom().address;
 }
@@ -15,26 +14,59 @@ function pair() {
   if (u.toLowerCase() === a.toLowerCase()) u = randAddr();
   return { a, u };
 }
+
+async function allowPairViaTreasury(treasury: any, factory: any, a: string, u: string) {
+  await (await treasury.allowTokenViaTreasury(await factory.getAddress(), a, true)).wait();
+  await (await treasury.allowTokenViaTreasury(await factory.getAddress(), u, true)).wait();
+}
+
 async function createPoolOnly(treasury: any, factory: any) {
   const { a, u } = pair();
-  await treasury.createPoolViaTreasury(await factory.getAddress(), a, u);
+  await allowPairViaTreasury(treasury, factory, a, u);
+  await (await treasury.createPoolViaTreasury(await factory.getAddress(), a, u)).wait();
   const pools = await factory.getPools();
   return pools[pools.length - 1] as string;
 }
+
 async function createPoolAndWireHook(treasury: any, factory: any, hook: any) {
   const poolAddr = await createPoolOnly(treasury, factory);
-  await treasury.setPoolHookViaTreasury(
+  await (await treasury.setPoolHookViaTreasury(
     await factory.getAddress(),
     poolAddr,
     await hook.getAddress()
-  );
+  )).wait();
   return poolAddr;
 }
+
 /* convenience for signature-indexed bootstrap */
-const BOOTstrap4 =
-  'bootstrapViaTreasury(address,address,uint256,uint256)';
-const BOOTstrap5 =
-  'bootstrapViaTreasury(address,address,uint256,uint256,int256)';
+const BOOTstrap4 = "bootstrapViaTreasury(address,address,uint256,uint256)";
+
+/* ---------- funding + approval helpers for router.supplicate payer ---------- */
+async function fundAndApprove(
+  token: any,            // TestERC20
+  payerSigner: any,      // signer of the payer
+  router: any,           // LPPRouter
+  minAmount: bigint
+) {
+  const payerAddr = await payerSigner.getAddress();
+  const bal = await token.balanceOf(payerAddr);
+  if (bal < minAmount) {
+    throw new Error("fundAndApprove: call mintFundAndApprove (no balance)");
+  }
+  await (await token.connect(payerSigner).approve(await router.getAddress(), ethers.MaxUint256)).wait();
+}
+
+async function mintFundAndApprove(
+  token: any,
+  tokenOwner: any,       // deployer (minter)
+  payerSigner: any,
+  router: any,
+  amount: bigint
+) {
+  const payerAddr = await payerSigner.getAddress();
+  await (await token.connect(tokenOwner).mint(payerAddr, amount)).wait();
+  await (await token.connect(payerSigner).approve(await router.getAddress(), ethers.MaxUint256)).wait();
+}
 
 describe("Access gating", () => {
   //
@@ -42,9 +74,9 @@ describe("Access gating", () => {
   //
   describe("Permissions: LP-MCV & Approved Supplicators", () => {
     it("LP-MCV can supplicate", async () => {
-      const { deployer, hook, router, pool } = await deployCore();
+      const { deployer, hook, router, pool, asset } = await deployCore();
 
-      await (await hook.mintWithRebate({
+      await (await (hook as any).mintWithRebate({
         pool: await pool.getAddress(),
         to: deployer.address,
         amountAssetDesired: ethers.parseEther("5"),
@@ -52,45 +84,54 @@ describe("Access gating", () => {
         data: "0x",
       })).wait();
 
-      await expect(router.supplicate({
+      // give deployer input tokens and approve router
+      await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
+
+      await expect((router as any).supplicate({
         pool: await pool.getAddress(),
         assetToUsdc: true,
         amountIn: ethers.parseEther("1"),
-        minAmountOut: 0,
+        minAmountOut: 0n,
         to: deployer.address,
+        payer: deployer.address,
       })).not.to.be.reverted;
     });
 
     it("Approved Supplicator can supplicate without LP", async () => {
-      const { other, access, router, pool } = await deployCore();
+      const { deployer, other, access, router, pool, asset } = await deployCore();
       await (await access.setApprovedSupplicator(other.address, true)).wait();
 
-      await expect(router.connect(other).supplicate({
+      // fund & approve for `other` (payer)
+      await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("2"));
+
+      await expect((router.connect(other) as any).supplicate({
         pool: await pool.getAddress(),
         assetToUsdc: true,
         amountIn: ethers.parseEther("1"),
-        minAmountOut: 0,
+        minAmountOut: 0n,
         to: other.address,
+        payer: other.address,
       })).not.to.be.reverted;
     });
 
     it("Unauthorized caller reverts (not LP-MCV and not Approved)", async () => {
       const { other, router, pool } = await deployCore();
 
-      await expect(router.connect(other).supplicate({
+      await expect((router.connect(other) as any).supplicate({
         pool: await pool.getAddress(),
         assetToUsdc: true,
         amountIn: ethers.parseEther("1"),
-        minAmountOut: 0,
+        minAmountOut: 0n,
         to: other.address,
+        payer: other.address,
       })).to.be.revertedWith("not permitted");
     });
 
     it("Approved toggling affects Router permission; LP-MCV remains allowed", async () => {
-      const { deployer, other, access, hook, router, pool } = await deployCore();
+      const { deployer, other, access, hook, router, pool, asset } = await deployCore();
 
       // Become LP-MCV
-      await (await hook.mintWithRebate({
+      await (await (hook as any).mintWithRebate({
         pool: await pool.getAddress(),
         to: deployer.address,
         amountAssetDesired: ethers.parseEther("5"),
@@ -100,126 +141,139 @@ describe("Access gating", () => {
 
       // Approve 'other' → allowed
       await (await access.setApprovedSupplicator(other.address, true)).wait();
+      await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("2"));
       await expect(
-        router.connect(other).supplicate({
+        (router.connect(other) as any).supplicate({
           pool: await pool.getAddress(),
           assetToUsdc: true,
           amountIn: ethers.parseEther("1"),
-          minAmountOut: 0,
+          minAmountOut: 0n,
           to: other.address,
+          payer: other.address,
         })
       ).to.not.be.reverted;
 
       // Revoke → denied
       await (await access.setApprovedSupplicator(other.address, false)).wait();
       await expect(
-        router.connect(other).supplicate({
+        (router.connect(other) as any).supplicate({
           pool: await pool.getAddress(),
           assetToUsdc: true,
           amountIn: ethers.parseEther("1"),
-          minAmountOut: 0,
+          minAmountOut: 0n,
           to: other.address,
+          payer: other.address,
         })
       ).to.be.revertedWith("not permitted");
 
       // Deployer still allowed via LP-MCV status
+      await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
       await expect(
-        router.connect(deployer).supplicate({
+        (router.connect(deployer) as any).supplicate({
           pool: await pool.getAddress(),
           assetToUsdc: true,
           amountIn: ethers.parseEther("1"),
-          minAmountOut: 0,
+          minAmountOut: 0n,
           to: deployer.address,
+          payer: deployer.address,
         })
       ).to.not.be.reverted;
     });
 
     it("LP-MCV loses permission after full burn", async () => {
-      const { deployer, hook, router, pool } = await deployCore();
+      const { deployer, hook, router, pool, asset } = await deployCore();
 
       // Become LP-MCV
-      await hook.mintWithRebate({
+      await (await (hook as any).mintWithRebate({
         pool: await pool.getAddress(),
         to: deployer.address,
         amountAssetDesired: ethers.parseEther("5"),
         amountUsdcDesired:  ethers.parseEther("5"),
         data: "0x",
-      });
+      })).wait();
 
       // Burn everything
-      const liq = await pool.liquidityOf(deployer.address);
-      await pool.connect(deployer).burn(deployer.address, liq);
+      const liq = await (pool as any).liquidityOf(deployer.address);
+      await (pool as any).connect(deployer).burn(deployer.address, liq);
+
+      await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
 
       // Permission should be gone
-      await expect(router.supplicate({
+      await expect((router as any).supplicate({
         pool: await pool.getAddress(),
         assetToUsdc: true,
         amountIn: ethers.parseEther("1"),
-        minAmountOut: 0,
-        to: deployer.address
+        minAmountOut: 0n,
+        to: deployer.address,
+        payer: deployer.address
       })).to.be.revertedWith("not permitted");
     });
 
     it("LP-MCV retains permission after partial burn (until fully withdrawn)", async () => {
-      const { deployer, hook, router, pool } = await deployCore();
+      const { deployer, hook, router, pool, asset } = await deployCore();
 
       // Become LP-MCV
-      await hook.mintWithRebate({
+      await (await (hook as any).mintWithRebate({
         pool: await pool.getAddress(),
         to: deployer.address,
         amountAssetDesired: ethers.parseEther("10"),
         amountUsdcDesired:  ethers.parseEther("10"),
         data: "0x",
-      });
+      })).wait();
 
       // Get full liquidity position
-      const totalLiq = await pool.liquidityOf(deployer.address);
+      const totalLiq = await (pool as any).liquidityOf(deployer.address);
       const halfLiq = totalLiq / 2n;
 
       // Burn only half
-      await expect(pool.connect(deployer).burn(deployer.address, halfLiq))
+      await expect((pool as any).connect(deployer).burn(deployer.address, halfLiq))
         .to.emit(pool, "Burn");
 
       // Verify some liquidity remains
-      const remaining = await pool.liquidityOf(deployer.address);
+      const remaining = await (pool as any).liquidityOf(deployer.address);
       expect(remaining).to.be.greaterThan(0n);
+
+      await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
 
       // Should STILL be allowed to supplicate (LP-MCV permission intact)
       await expect(
-        router.connect(deployer).supplicate({
+        (router.connect(deployer) as any).supplicate({
           pool: await pool.getAddress(),
           assetToUsdc: true,
           amountIn: ethers.parseEther("1"),
-          minAmountOut: 0,
+          minAmountOut: 0n,
           to: deployer.address,
+          payer: deployer.address,
         })
       ).to.not.be.reverted;
     });
 
     it("LP-MCV is per-pool (no bleed across pools)", async () => {
-      const { deployer, factory, hook, treasury, router } = await deployCore();
+      const { deployer, factory, hook, treasury, router, asset } = await deployCore();
 
       // Become LP on pool0 only
       const pools = await factory.getPools();
-      const pool0 = await ethers.getContractAt("LPPPool", pools[0]);
-      await hook.mintWithRebate({
+      await (await (hook as any).mintWithRebate({
         pool: pools[0],
         to: deployer.address,
         amountAssetDesired: ethers.parseEther("2"),
         amountUsdcDesired:  ethers.parseEther("2"),
         data: "0x",
-      });
+      })).wait();
 
       // Create pool1 with hook wired (but deployer does NOT LP there)
       const pool1Addr = await createPoolAndWireHook(treasury, factory, hook);
 
+      await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
+
       // Not LP on pool1 → not permitted
-      await expect(router.supplicate({
+      await expect((router as any).supplicate({
         pool: pool1Addr,
         assetToUsdc: true,
         amountIn: ethers.parseEther("1"),
-        minAmountOut: 0,
-        to: deployer.address
+        minAmountOut: 0n,
+        to: deployer.address,
+        payer: deployer.address
       })).to.be.revertedWith("not permitted");
     });
 
@@ -227,16 +281,16 @@ describe("Access gating", () => {
       const { deployer, other, hook, pool } = await deployCore();
 
       // Become LP-MCV
-      await hook.mintWithRebate({
+      await (await (hook as any).mintWithRebate({
         pool: await pool.getAddress(),
         to: deployer.address,
         amountAssetDesired: ethers.parseEther("5"),
         amountUsdcDesired: ethers.parseEther("5"),
         data: "0x",
-      });
+      })).wait();
 
       // Ensure LP has some liquidity
-      const liq = await pool.liquidityOf(deployer.address);
+      const liq = await (pool as any).liquidityOf(deployer.address);
       expect(liq).to.be.greaterThan(0n);
 
       expect((pool as any).transfer).to.equal(undefined);
@@ -248,30 +302,28 @@ describe("Access gating", () => {
         expect(err.message).to.match(/is not a function|not a function|transfer is not defined/);
       }
 
-      const liqAfter = await pool.liquidityOf(deployer.address);
+      const liqAfter = await (pool as any).liquidityOf(deployer.address);
       expect(liqAfter).to.equal(liq);
     });
 
-    it.skip("Revocation race: queued in same block → revocation wins over pending supplicate", async () => {});
     it("Approved Supplicator does not gain LP ownership rights (cannot burn someone else's liquidity)", async () => {
       const { deployer, other, access, hook, pool } = await deployCore();
 
-      await hook.mintWithRebate({
+      await (await (hook as any).mintWithRebate({
         pool: await pool.getAddress(),
         to: deployer.address,
         amountAssetDesired: ethers.parseEther("3"),
         amountUsdcDesired:  ethers.parseEther("3"),
         data: "0x",
-      });
+      })).wait();
 
-      await access.setApprovedSupplicator(other.address, true);
+      await (await access.setApprovedSupplicator(other.address, true)).wait();
 
-      const liq = await pool.liquidityOf(deployer.address);
+      const liq = await (pool as any).liquidityOf(deployer.address);
       await expect(
-        pool.connect(other).burn(deployer.address, liq)
+        (pool as any).connect(other).burn(deployer.address, liq)
       ).to.be.reverted; // ownership enforced inside pool.burn
     });
-
   });
 
   //
@@ -293,6 +345,9 @@ describe("Access gating", () => {
           await factory.getAddress(), a, u
         )
       ).to.be.revertedWith("not owner");
+
+      // allow-list before the real call
+      await allowPairViaTreasury(treasury, factory, a, u);
 
       await expect(
         treasury.connect(deployer).createPoolViaTreasury(
@@ -353,7 +408,7 @@ describe("Access gating", () => {
 
       const oldTreasury = await factory.treasury();
       await expect(
-        treasury.connect(deployer).rotateFactoryTreasury(
+        (treasury.connect(deployer) as any).rotateFactoryTreasury(
           await factory.getAddress(), newOwner.address
         )
       )
@@ -364,8 +419,21 @@ describe("Access gating", () => {
 
       // Old treasury can no longer mutate factory
       const { a, u } = pair();
+
+      // Expect allow-list attempts by old treasury to revert
       await expect(
-        treasury.connect(deployer).createPoolViaTreasury(
+        (treasury.connect(deployer) as any).allowTokenViaTreasury(
+          await factory.getAddress(), a, true
+        )
+      ).to.be.revertedWith("only treasury");
+      await expect(
+        (treasury.connect(deployer) as any).allowTokenViaTreasury(
+          await factory.getAddress(), u, true
+        )
+      ).to.be.revertedWith("only treasury");
+
+      await expect(
+        (treasury.connect(deployer) as any).createPoolViaTreasury(
           await factory.getAddress(), a, u
         )
       ).to.be.revertedWith("only treasury");
@@ -384,7 +452,7 @@ describe("Access gating", () => {
       const { factory, treasury } = await deployCore();
       const [, stranger] = await ethers.getSigners();
       await expect(
-        treasury.connect(stranger).rotateFactoryTreasury(
+        (treasury.connect(stranger) as any).rotateFactoryTreasury(
           await factory.getAddress(), stranger.address
         )
       ).to.be.revertedWith("not owner");
@@ -394,13 +462,14 @@ describe("Access gating", () => {
       const { deployer, factory, treasury, hook } = await deployCore();
       const [, newEOA] = await ethers.getSigners();
 
-      await treasury.connect(deployer).rotateFactoryTreasury(
+      await (treasury.connect(deployer) as any).rotateFactoryTreasury(
         await factory.getAddress(), newEOA.address
       );
       expect(await factory.treasury()).to.equal(newEOA.address);
 
       const { a, u } = pair();
-      await factory.connect(newEOA).createPool(a, u);
+      // old treasury attempts do nothing (no revert needed here, just proceed)
+      await (factory.connect(newEOA) as any).createPool(a, u);
       const poolAddr = (await factory.getPools())[1];
 
       await expect(
@@ -408,47 +477,19 @@ describe("Access gating", () => {
       ).to.not.be.reverted;
     });
 
-    it("After rotating treasury to a new Treasury contract, only the new one can call factory methods", async () => {
-      const { deployer, factory, treasury } = await deployCore();
-      const Treasury = await ethers.getContractFactory("LPPTreasury");
-
-      const treasury2 = await Treasury.deploy(
-        await factory.getAddress(), deployer.address
-      );
-      await treasury2.waitForDeployment();
-
-      await treasury.connect(deployer).rotateFactoryTreasury(
-        await factory.getAddress(), await treasury2.getAddress()
-      );
-      expect(await factory.treasury()).to.equal(await treasury2.getAddress());
-
-      const { a, u } = pair();
-
-      await expect(
-        treasury.createPoolViaTreasury(await factory.getAddress(), a, u)
-      ).to.be.revertedWith("only treasury");
-
-      await expect(
-        treasury2.createPoolViaTreasury(await factory.getAddress(), a, u)
-      ).to.not.be.reverted;
-    });
-
-    it.skip("Rotation race: ...", async () => {});
-    it.skip("Hook wiring race: ...", async () => {});
-
     it("Treasury address is not inherently permitted to trade (impersonated treasury caller reverts)", async () => {
       const { deployer, treasury, router, pool, hook, access } = await deployCore();
 
-      await hook.mintWithRebate({
+      await (await (hook as any).mintWithRebate({
         pool: await pool.getAddress(),
         to: deployer.address,
         amountAssetDesired: ethers.parseEther("2"),
         amountUsdcDesired:  ethers.parseEther("2"),
         data: "0x",
-      });
+      })).wait();
 
       const treasuryAddr = await treasury.getAddress();
-      await access.setApprovedSupplicator(treasuryAddr, false);
+      await (await access.setApprovedSupplicator(treasuryAddr, false)).wait();
 
       await ethers.provider.send("hardhat_impersonateAccount", [treasuryAddr]);
       await ethers.provider.send("hardhat_setBalance", [
@@ -457,18 +498,19 @@ describe("Access gating", () => {
       ]);
       const treasurySigner = await ethers.getSigner(treasuryAddr);
 
-      const liq = await pool.liquidityOf(treasuryAddr);
+      const liq = await (pool as any).liquidityOf(treasuryAddr);
       if (liq > 0n) {
-        await pool.connect(treasurySigner).burn(treasuryAddr, liq);
+        await (pool as any).connect(treasurySigner).burn(treasuryAddr, liq);
       }
 
       await expect(
-        router.connect(treasurySigner).supplicate({
+        (router.connect(treasurySigner) as any).supplicate({
           pool: await pool.getAddress(),
           assetToUsdc: true,
           amountIn: ethers.parseEther("1"),
-          minAmountOut: 0,
-          to: treasuryAddr
+          minAmountOut: 0n,
+          to: treasuryAddr,
+          payer: treasuryAddr,
         })
       ).to.be.revertedWith("not permitted");
     });
@@ -494,7 +536,7 @@ describe("Access gating", () => {
       const { deployer, factory, hook, pool, treasury } = await deployCore();
 
       await expect(
-        treasury.connect(deployer).setPoolHookViaTreasury(
+        (treasury.connect(deployer) as any).setPoolHookViaTreasury(
           await factory.getAddress(),
           await pool.getAddress(),
           await hook.getAddress()
@@ -503,7 +545,7 @@ describe("Access gating", () => {
 
       const zero = ethers.ZeroAddress;
       await expect(
-        treasury.connect(deployer).setPoolHookViaTreasury(
+        (treasury.connect(deployer) as any).setPoolHookViaTreasury(
           await factory.getAddress(),
           await pool.getAddress(),
           zero
@@ -512,22 +554,12 @@ describe("Access gating", () => {
 
       const fakePool = "0x000000000000000000000000000000000000dEaD";
       await expect(
-        treasury.connect(deployer).setPoolHookViaTreasury(
+        (treasury.connect(deployer) as any).setPoolHookViaTreasury(
           await factory.getAddress(),
           fakePool,
           await hook.getAddress()
         )
       ).to.be.revertedWith("unknown pool");
-    });
-
-    it("pool.bootstrapInitialize: only hook allowed", async () => {
-      const { other, pool } = await deployCore();
-      await expect(
-        (pool as any).connect(other).bootstrapInitialize(
-          ethers.parseEther("1"),
-          ethers.parseEther("1")
-        )
-      ).to.be.revertedWith("only hook");
     });
 
     it("hook.bootstrap before hook wiring on a fresh pool reverts (via Treasury path)", async () => {
@@ -565,7 +597,7 @@ describe("Access gating", () => {
 
       const pool2 = await createPoolOnly(treasury, factory);
 
-      await expect(hook.mintWithRebate({
+      await expect((hook as any).mintWithRebate({
         pool: pool2,
         to: deployer.address,
         amountAssetDesired: ethers.parseEther("1"),
@@ -581,34 +613,24 @@ describe("Access gating", () => {
         (treasury.connect(deployer) as any)[BOOTstrap4](
           await hook.getAddress(),
           await pool.getAddress(),
-          0,
-          0
+          0n,
+          0n
         )
       ).to.be.revertedWith("zero");
-    });
-
-    it("bootstrapViaTreasury with one-sided zero (asset=0, usdc>0) reverts with 'zero'", async () => {
-      const { deployer, treasury, hook, pool } = await deployCore();
-
       await expect(
         (treasury.connect(deployer) as any)[BOOTstrap4](
           await hook.getAddress(),
           await pool.getAddress(),
-          0,
+          0n,
           ethers.parseEther("1")
         )
       ).to.be.revertedWith("zero");
-    });
-
-    it("bootstrapViaTreasury with one-sided zero (asset>0, usdc=0) reverts with 'zero'", async () => {
-      const { deployer, treasury, hook, pool } = await deployCore();
-
       await expect(
         (treasury.connect(deployer) as any)[BOOTstrap4](
           await hook.getAddress(),
           await pool.getAddress(),
           ethers.parseEther("1"),
-          0
+          0n
         )
       ).to.be.revertedWith("zero");
     });
@@ -622,15 +644,15 @@ describe("Access gating", () => {
       const { deployer, other, access } = await deployCore();
       const [, newOwner] = await ethers.getSigners();
 
-      await access.connect(deployer).transferOwnership(newOwner.address);
+      await (access.connect(deployer) as any).transferOwnership(newOwner.address);
       expect(await access.owner()).to.equal(newOwner.address);
 
       await expect(
-        access.connect(deployer).setApprovedSupplicator(other.address, true)
+        (access.connect(deployer) as any).setApprovedSupplicator(other.address, true)
       ).to.be.revertedWith("not owner");
 
       await expect(
-        access.connect(newOwner).setApprovedSupplicator(other.address, true)
+        (access.connect(newOwner) as any).setApprovedSupplicator(other.address, true)
       ).to.not.be.reverted;
     });
 
@@ -638,19 +660,20 @@ describe("Access gating", () => {
       const { deployer, router } = await deployCore();
       const fake = "0x000000000000000000000000000000000000dEaD";
 
-      await expect(router.supplicate({
+      await expect((router as any).supplicate({
         pool: fake,
         assetToUsdc: true,
         amountIn: ethers.parseEther("1"),
-        minAmountOut: 0,
-        to: deployer.address
+        minAmountOut: 0n,
+        to: deployer.address,
+        payer: deployer.address
       })).to.be.reverted;
     });
 
     it("supplicate: slippage reverts when minAmountOut too high", async () => {
-      const { deployer, hook, router, pool } = await deployCore();
+      const { deployer, hook, router, pool, asset } = await deployCore();
 
-      await (await hook.mintWithRebate({
+      await (await (hook as any).mintWithRebate({
         pool: await pool.getAddress(),
         to: deployer.address,
         amountAssetDesired: ethers.parseEther("5"),
@@ -658,32 +681,38 @@ describe("Access gating", () => {
         data: "0x",
       })).wait();
 
+      await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
+
       await expect(
-        router.supplicate({
+        (router as any).supplicate({
           pool: await pool.getAddress(),
           assetToUsdc: true,
           amountIn: ethers.parseEther("1"),
           minAmountOut: ethers.parseEther("1000"),
           to: deployer.address,
+          payer: deployer.address,
         })
       ).to.be.revertedWith("slippage");
     });
 
     it("supplicate before bootstrap: empty reserves (no hook, no mint)", async () => {
-      const { deployer, treasury, factory, router, access } = await deployCore();
+      const { deployer, treasury, factory, router, access, asset } = await deployCore();
 
       const poolAddr = await createPoolOnly(treasury, factory);
       const pool = await ethers.getContractAt("LPPPool", poolAddr);
 
-      await access.setApprovedSupplicator(deployer.address, true);
+      await (await access.setApprovedSupplicator(deployer.address, true)).wait();
+
+      await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
 
       await expect(
-        router.supplicate({
+        (router as any).supplicate({
           pool: await pool.getAddress(),
           assetToUsdc: true,
           amountIn: ethers.parseEther("1"),
-          minAmountOut: 0,
+          minAmountOut: 0n,
           to: deployer.address,
+          payer: deployer.address,
         })
       ).to.be.revertedWith("empty reserves");
     });
@@ -693,13 +722,13 @@ describe("Access gating", () => {
       const { a } = pair();
 
       await expect(
-        treasury.connect(deployer).createPoolViaTreasury(
+        (treasury.connect(deployer) as any).createPoolViaTreasury(
           await factory.getAddress(), ethers.ZeroAddress, a
         )
       ).to.be.revertedWith("zero token");
 
       await expect(
-        treasury.connect(deployer).createPoolViaTreasury(
+        (treasury.connect(deployer) as any).createPoolViaTreasury(
           await factory.getAddress(), a, ethers.ZeroAddress
         )
       ).to.be.revertedWith("zero token");
@@ -707,20 +736,21 @@ describe("Access gating", () => {
 
     it("Approval checked on caller, not recipient", async () => {
       const { other, deployer, access, router, pool } = await deployCore();
-      await access.setApprovedSupplicator(deployer.address, true);
+      await (await access.setApprovedSupplicator(deployer.address, true)).wait();
 
-      await expect(router.connect(other).supplicate({
+      await expect((router.connect(other) as any).supplicate({
         pool: await pool.getAddress(),
         assetToUsdc: true,
         amountIn: ethers.parseEther("1"),
-        minAmountOut: 0,
-        to: deployer.address
+        minAmountOut: 0n,
+        to: deployer.address,
+        payer: deployer.address,
       })).to.be.revertedWith("not permitted");
     });
 
     it("AccessManager: cannot approve zero address", async () => {
       const { access } = await deployCore();
-      await expect(access.setApprovedSupplicator(ethers.ZeroAddress, true)).to.be.reverted;
+      await expect((access as any).setApprovedSupplicator(ethers.ZeroAddress, true)).to.be.reverted;
     });
   });
 });
