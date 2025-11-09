@@ -1,5 +1,5 @@
 //Test when MCV (for pool rebalancing) USDC/ASSETout mint/burn tests...
-// should only be one way... and not supplicating one for another
+// add sqrtpricing (from ABI)
 
 
 // test/MintMCV.spec.ts

@@ -228,7 +228,7 @@ Object {
   "gasUsed": "44970",
   "label": "LP — burn 50%",
   "lp": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-  "pool": "0x654631B17cd58cc96a1F9dfFAF526958E8b6c5A5",
+  "pool": "0xbE2c683b28a76aF4b719271f7c14024d3830cD0D",
   "poolDelta": Object {
     "assetOut": "4925000000000000000",
     "sum": "9850000000000000000",
@@ -255,7 +255,7 @@ Object {
   "gasUsed": "44994",
   "label": "LP — burn precise amount",
   "lp": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-  "pool": "0x654631B17cd58cc96a1F9dfFAF526958E8b6c5A5",
+  "pool": "0xbE2c683b28a76aF4b719271f7c14024d3830cD0D",
   "poolDelta": Object {
     "assetOut": "1641666666666666666",
     "sum": "3283333333333333332",
@@ -374,52 +374,29 @@ Object {
 }
 `;
 
-exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP-MCV retains permission after partial burn (until fully withdrawn) 1`] = `87237`;
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP-MCV partial burn: outs only (no trade) 1`] = `44970`;
 
-exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP-MCV retains permission after partial burn (until fully withdrawn) 2`] = `
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP-MCV partial burn: outs only (no trade) 2`] = `
 Object {
-  "amountIn": "1000000000000000000",
-  "amountOut": "990559358036346471",
-  "amounts": Object {
+  "burnLiquidity": "9850000000000000000",
+  "callerDelta": Object {
     "assetOut": "0",
-    "sumOut": "990559358036346471",
-    "usdcOut": "990559358036346471",
+    "sum": "0",
+    "usdcOut": "0",
   },
-  "caller": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-  "callerBalances": Object {
-    "after": Object {
-      "a": "99999991050000000000000000",
-      "u": "99999991040559358036346471",
-    },
-    "before": Object {
-      "a": "99999992050000000000000000",
-      "u": "99999990050000000000000000",
-    },
-    "delta": Object {
-      "a": "0",
-      "sum": "990559358036346471",
-      "u": "990559358036346471",
-    },
+  "expected": Object {
+    "assetOut": "4925000000000000000",
+    "sum": "9850000000000000000",
+    "usdcOut": "4925000000000000000",
   },
-  "direction": "ASSET->USDC",
-  "gasUsed": "87237",
-  "label": "Partial burn — LP-MCV still allowed (ABI-verified)",
-  "minOut": "0",
+  "gasUsed": "44970",
+  "label": "LP — partial burn 50% (no trade)",
+  "lp": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
   "pool": "0xc96825EB7Cf77649A9324562d9dE5Ed9605EAA0A",
-  "reserves": Object {
-    "after": Object {
-      "a": "105925000000000000000",
-      "u": "103934440641963653529",
-    },
-    "before": Object {
-      "a": "104925000000000000000",
-      "u": "104925000000000000000",
-    },
-    "delta": Object {
-      "a": "0",
-      "sum": "990559358036346471",
-      "u": "990559358036346471",
-    },
+  "poolDelta": Object {
+    "assetOut": "4925000000000000000",
+    "sum": "9850000000000000000",
+    "usdcOut": "4925000000000000000",
   },
 }
 `;

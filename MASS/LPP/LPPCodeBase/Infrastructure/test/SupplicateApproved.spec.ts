@@ -17,4 +17,4 @@ describe("S4 — First Supplicate (Approved)", () => {
   });
 });
 // if the address is not approved by treasury, it should fail, test this also...
-//add snapshots to verify
+// add snapshots and sqrtpricing (from ABI)

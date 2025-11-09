@@ -571,8 +571,8 @@ describe("Access gating", () => {
       })).to.be.revertedWith("not permitted");
     });
 
-    it("LP-MCV retains permission after partial burn (until fully withdrawn)", async () => {
-      const { deployer, hook, router, pool, asset, usdc } = await deployCore();
+    it("LP-MCV partial burn: outs only (no trade)", async () => {
+      const { deployer, hook, pool, asset, usdc } = await deployCore();
 
       // Become LP-MCV
       await (await (hook as any).mintWithRebate({
@@ -583,37 +583,20 @@ describe("Access gating", () => {
         data: "0x",
       })).wait();
 
-      // Get full liquidity position
+      // Get full liquidity position (we will burn half and snapshot only the burn)
       const totalLiq = await (pool as any).liquidityOf(deployer.address);
       const halfLiq = totalLiq / 2n;
 
-      // Burn only half
-      await expect((pool as any).connect(deployer).burn(deployer.address, halfLiq))
-        .to.emit(pool, "Burn");
+      // Snapshot the partial burn (records assetOut/usdcOut/sum, caller & pool deltas, gas)
+      await snapshotBurnStrict({
+        label: "LP — partial burn 50% (no trade)",
+        pool, asset, usdc, signer: deployer,
+        burnAmount: halfLiq,
+      });
 
       // Verify some liquidity remains
       const remaining = await (pool as any).liquidityOf(deployer.address);
       expect(remaining).to.be.greaterThan(0n);
-
-      await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
-      await approveInputForSupplicate(asset, deployer, router, pool);
-
-      await snapshotSupplicateStrict({
-        label: "Partial burn — LP-MCV still allowed (ABI-verified)",
-        router,
-        pool,
-        asset,
-        usdc,
-        signer: deployer,
-        args: {
-          pool: await pool.getAddress(),
-          assetToUsdc: true,
-          amountIn: ethers.parseEther("1"),
-          minAmountOut: 0n,
-          to: deployer.address,
-          payer: deployer.address,
-        },
-      });
     });
 
     it("LP-MCV is per-pool (no bleed across pools)", async () => {

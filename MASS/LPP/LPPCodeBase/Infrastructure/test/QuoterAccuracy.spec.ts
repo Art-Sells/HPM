@@ -14,3 +14,4 @@ describe("Quoter accuracy", () => {
     expect(q.expectedAmountOut).to.equal(amountOut);
   });
 });
+// add snapshots assetOut-in/usdcOur-in and sqrtpricing (from ABI)
