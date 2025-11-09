@@ -1,3 +1,7 @@
+//Test when MCV (for pool rebalancing) USDC/ASSETout mint/burn tests...
+// should only be one way... and not supplicating one for another
+
+
 // test/MintMCV.spec.ts
 import hre from "hardhat";
 const { ethers } = hre;
@@ -6,7 +10,7 @@ import { expect } from "./shared/expect.ts";
 import snapshotGasCost from "./shared/snapshotGasCost.ts";
 import { deployCore } from "./helpers.ts";
 
-import type { LPPPool, LPPMintHook } from "../typechain-types";
+import type { LPPPool, LPPMintHook } from "../typechain-types/index.ts";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Small utils

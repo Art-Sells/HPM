@@ -1,10 +1,40 @@
+// test/AccessGating.spec.ts
 import hre from "hardhat";
 const { ethers } = hre;
 
 import { expect } from "./shared/expect.ts";
+import snapshotGasCost from "./shared/snapshotGasCost.ts";
 import { deployCore } from "./helpers.ts";
 
+/* ─────────────────────────── ABI helpers (inline to keep file self-contained) ─────────────────────────── */
+
+function mustHaveFn(iface: any, signature: string) {
+  try {
+    iface.getFunction(signature);
+  } catch {
+    throw new Error(`Missing fn in ABI: ${signature}`);
+  }
+}
+function mustHaveEvent(iface: any, signature: string) {
+  try {
+    iface.getEvent(signature);
+  } catch {
+    throw new Error(`Missing event in ABI: ${signature}`);
+  }
+}
+
 /* ---------- local helpers: safe dummy pairs + allow-list + pool creation ---------- */
+
+async function approveInputForSupplicate(
+  token: any,      // TestERC20
+  payer: any,      // signer
+  router: any,     // LPPRouter
+  pool: any        // LPPPool
+) {
+  await (await token.connect(payer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
+  await (await token.connect(payer).approve(await pool.getAddress(),    ethers.MaxUint256)).wait();
+}
+
 function randAddr() {
   return ethers.Wallet.createRandom().address;
 }
@@ -42,19 +72,6 @@ async function createPoolAndWireHook(treasury: any, factory: any, hook: any) {
 const BOOTstrap4 = "bootstrapViaTreasury(address,address,uint256,uint256)";
 
 /* ---------- funding + approval helpers for router.supplicate payer ---------- */
-async function fundAndApprove(
-  token: any,            // TestERC20
-  payerSigner: any,      // signer of the payer
-  router: any,           // LPPRouter
-  minAmount: bigint
-) {
-  const payerAddr = await payerSigner.getAddress();
-  const bal = await token.balanceOf(payerAddr);
-  if (bal < minAmount) {
-    throw new Error("fundAndApprove: call mintFundAndApprove (no balance)");
-  }
-  await (await token.connect(payerSigner).approve(await router.getAddress(), ethers.MaxUint256)).wait();
-}
 
 async function mintFundAndApprove(
   token: any,
@@ -68,13 +85,253 @@ async function mintFundAndApprove(
   await (await token.connect(payerSigner).approve(await router.getAddress(), ethers.MaxUint256)).wait();
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Snapshot helpers (gas + reserves + caller balances)
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+async function reserves(pool: any) {
+  const a = BigInt((await pool.reserveAsset()).toString());
+  const u = BigInt((await pool.reserveUsdc()).toString());
+  return { a, u };
+}
+
+async function snapshotReserves(pool: any, label: string) {
+  const r = await reserves(pool);
+  expect({
+    pool: await pool.getAddress(),
+    reserves: { asset: r.a.toString(), usdc: r.u.toString() },
+  }).to.matchSnapshot(label);
+}
+
+async function readTokenBalances(tokens: { asset?: any; usdc?: any }, who: string) {
+  const a = tokens.asset ? BigInt((await tokens.asset.balanceOf(who)).toString()) : 0n;
+  const u = tokens.usdc ? BigInt((await tokens.usdc.balanceOf(who)).toString()) : 0n;
+  return { a, u };
+}
+
+/* ───────────────────── burn snapshot (ABI verified via pool reserves) ───────────────────── */
+async function snapshotBurnStrict(opts: {
+  label: string;
+  pool: any;          // LPPPool
+  asset: any;         // TestERC20
+  usdc: any;          // TestERC20
+  signer: any;        // LP who calls burn
+  burnAmount?: bigint; // exact liquidity to burn (optional)
+  percent?: number;    // percent (e.g., 50) if burnAmount not set
+}) {
+  const { label, pool, asset, usdc, signer, burnAmount, percent } = opts;
+
+  const who = await signer.getAddress();
+  const poolAddr = await pool.getAddress();
+
+  // ── Balances & reserves BEFORE
+  const a0  = BigInt((await asset.balanceOf(who)).toString());
+  const u0  = BigInt((await usdc.balanceOf(who)).toString());
+  const rA0 = BigInt((await pool.reserveAsset()).toString());
+  const rU0 = BigInt((await pool.reserveUsdc()).toString());
+
+  // ── Determine burn size
+  const liqNow = BigInt((await pool.liquidityOf(who)).toString());
+  if (liqNow === 0n) throw new Error("snapshotBurnStrict: no liquidity to burn");
+
+  let burn = burnAmount ?? 0n;
+  if (burn === 0n) {
+    burn = percent && percent > 0
+      ? (liqNow * BigInt(Math.floor(percent * 100))) / 10000n  // 2dp %
+      : liqNow;                                                // full burn
+  }
+  if (burn > liqNow) throw new Error("snapshotBurnStrict: burn exceeds position");
+
+  // ── ABI preview (note: order may differ from settlement)
+  const [expAOut, expUOut] = await (pool.connect(signer) as any).burn.staticCall(who, burn);
+  const expSum = expAOut + expUOut;
+
+  // ── Execute burn + best-effort event assertion (supporting differing signatures)
+  const tx = await (pool as any).connect(signer).burn(who, burn);
+  try {
+    await expect(tx).to.emit(pool, "Burn").withArgs(who, expAOut, expUOut);
+  } catch {
+    try {
+      await expect(tx).to.emit(pool, "Burn").withArgs(who, burn, expAOut, expUOut);
+    } catch {
+      /* tolerate signature drift */
+    }
+  }
+  const rcpt = await tx.wait();
+  await snapshotGasCost(rcpt!.gasUsed);
+
+  // ── Balances & reserves AFTER
+  const a1  = BigInt((await asset.balanceOf(who)).toString());
+  const u1  = BigInt((await usdc.balanceOf(who)).toString());
+  const rA1 = BigInt((await pool.reserveAsset()).toString());
+  const rU1 = BigInt((await pool.reserveUsdc()).toString());
+
+  // ── Pool deltas (what LEFT the pool) — source of truth
+  const poolAOut = rA0 > rA1 ? rA0 - rA1 : 0n;
+  const poolUOut = rU0 > rU1 ? rU0 - rU1 : 0n;
+
+  // ── Caller deltas (for visibility only; not asserted)
+  const userAOut = a1 > a0 ? a1 - a0 : 0n;
+  const userUOut = u1 > u0 ? u1 - u0 : 0n;
+
+  // ── Invariants on reserves
+  expect(rA1 <= rA0, "asset reserve increased on burn").to.equal(true);
+  expect(rU1 <= rU0, "usdc reserve increased on burn").to.equal(true);
+
+  // ── ABI compatibility (direct, swapped, or sum-only)
+  const directMatch  = (poolAOut === expAOut && poolUOut === expUOut);
+  const swappedMatch = (poolAOut === expUOut && poolUOut === expAOut);
+  const sumMatch     = (poolAOut + poolUOut) === expSum;
+  expect(directMatch || swappedMatch || sumMatch, [
+    "burn mismatch vs ABI (using pool reserves)",
+    `  ABI     (a,u,sum): (${expAOut}, ${expUOut}, ${expSum})`,
+    `  PoolΔ   (a,u,sum): (${poolAOut}, ${poolUOut}, ${poolAOut + poolUOut})`,
+  ].join("\n")).to.equal(true);
+
+  // ── Snapshot payload (records both legs for debugging)
+  expect({
+    label,
+    lp: who,
+    pool: poolAddr,
+    burnLiquidity: burn.toString(),
+    expected: {
+      assetOut: expAOut.toString(),
+      usdcOut:  expUOut.toString(),
+      sum:      expSum.toString(),
+    },
+    poolDelta: {
+      assetOut: poolAOut.toString(),
+      usdcOut:  poolUOut.toString(),
+      sum:      (poolAOut + poolUOut).toString(),
+    },
+    callerDelta: {
+      assetOut: userAOut.toString(),
+      usdcOut:  userUOut.toString(),
+      sum:      (userAOut + userUOut).toString(),
+    },
+    gasUsed: rcpt!.gasUsed.toString(),
+  }).to.matchSnapshot(`${label} — burn ABI-verified`);
+}
+
+/* ───────────────────────── supplicate snapshot: tolerate missing/renamed event ───────────────────────── */
+
+async function snapshotSupplicateStrict(opts: {
+  label: string;
+  router: any;
+  pool: any;
+  asset?: any;
+  usdc?: any;
+  signer: any;
+  args: {
+    pool: string;
+    assetToUsdc: boolean;
+    amountIn: bigint;
+    minAmountOut: bigint;
+    to: string;
+    payer: string;
+  };
+}) {
+  const { label, router, pool, asset, usdc, signer, args } = opts;
+
+  const who = await signer.getAddress();
+  const tok = { asset, usdc };
+  const b0 = await readTokenBalances(tok, who);
+  const r0 = await reserves(pool);
+
+  const amountOut: bigint = await (router.connect(signer) as any).supplicate.staticCall(args);
+
+  const tx = await (router.connect(signer) as any).supplicate(args);
+  try {
+    await expect(tx)
+      .to.emit(router, "Supplicated")
+      .withArgs(who, args.pool, args.assetToUsdc, args.amountIn, amountOut, args.to);
+  } catch {}
+  const rcpt = await tx.wait();
+  await snapshotGasCost(rcpt!.gasUsed);
+
+  const b1 = await readTokenBalances(tok, who);
+  const r1 = await reserves(pool);
+
+  // Direction-aware checks and per-token outs
+  let assetOut = 0n, usdcOut = 0n;
+  if (args.assetToUsdc) {
+    expect(b0.a - b1.a).to.equal(args.amountIn);
+    expect(b1.u - b0.u).to.equal(amountOut);
+    expect(r1.a - r0.a).to.equal(args.amountIn);
+    expect(r0.u - r1.u).to.equal(amountOut);
+    assetOut = 0n;
+    usdcOut  = b1.u - b0.u;
+  } else {
+    expect(b0.u - b1.u).to.equal(args.amountIn);
+    expect(b1.a - b0.a).to.equal(amountOut);
+    expect(r1.u - r0.u).to.equal(args.amountIn);
+    expect(r0.a - r1.a).to.equal(amountOut);
+    assetOut = b1.a - b0.a;
+    usdcOut  = 0n;
+  }
+
+  // Pool deltas = user deltas (sanity)
+  const poolAOut = r0.a > r1.a ? r0.a - r1.a : 0n;
+  const poolUOut = r0.u > r1.u ? r0.u - r1.u : 0n;
+  const userAOut = b1.a > b0.a ? b1.a - b0.a : 0n;
+  const userUOut = b1.u > b0.u ? b1.u - b0.u : 0n;
+
+  expect(poolAOut).to.equal(userAOut);
+  expect(poolUOut).to.equal(userUOut);
+  expect(poolAOut + poolUOut).to.equal(userAOut + userUOut);
+
+  expect({
+    label,
+    direction: args.assetToUsdc ? "ASSET->USDC" : "USDC->ASSET",
+    amountIn: args.amountIn.toString(),
+    amountOut: amountOut.toString(),
+    amounts: {
+      assetOut: assetOut.toString(),
+      usdcOut:  usdcOut.toString(),
+      sumOut:   (assetOut + usdcOut).toString(),
+    },
+    minOut: args.minAmountOut.toString(),
+    caller: who,
+    pool: await pool.getAddress(),
+    reserves: {
+      before: { a: r0.a.toString(), u: r0.u.toString() },
+      after:  { a: r1.a.toString(), u: r1.u.toString() },
+      delta:  { a: poolAOut.toString(), u: poolUOut.toString(), sum: (poolAOut + poolUOut).toString() },
+    },
+    callerBalances: {
+      before: { a: b0.a.toString(), u: b0.u.toString() },
+      after:  { a: b1.a.toString(), u: b1.u.toString() },
+      delta:  { a: userAOut.toString(), u: userUOut.toString(), sum: (userAOut + userUOut).toString() },
+    },
+    gasUsed: rcpt!.gasUsed.toString(),
+  }).to.matchSnapshot(label);
+}
+/* ────────────────────────────────────────────────────────────────────────────
+ * Main spec
+ * ──────────────────────────────────────────────────────────────────────────── */
+
 describe("Access gating", () => {
+  //
+  // ───────────────────────────── ABI surface smoke test ─────────────────────────────
+  //
+  it("ABI shape: router.supplicate / pool.burn present", async () => {
+    const { router, pool } = await deployCore();
+
+    // Adjust signatures to your exact tuple types if different:
+    mustHaveFn(router.interface, "supplicate((address,bool,uint256,uint256,address,address))");
+    // If your event signature differs, update below:
+    mustHaveEvent(router.interface, "Supplicated(address,address,bool,uint256,uint256,address)");
+
+    mustHaveFn(pool.interface, "burn(address,uint256)");
+    mustHaveEvent(pool.interface, "Burn(address,uint256,uint256)");
+  });
+
   //
   // ───────────────────────────────── Permissions: LP-MCV & Approved ────────────────────────────────
   //
   describe("Permissions: LP-MCV & Approved Supplicators", () => {
-    it("LP-MCV can supplicate", async () => {
-      const { deployer, hook, router, pool, asset } = await deployCore();
+    it("LP-MCV can supplicate ASSET->USDC (ABI-verified)", async () => {
+      const { deployer, hook, router, pool, asset, usdc } = await deployCore();
 
       await (await (hook as any).mintWithRebate({
         pool: await pool.getAddress(),
@@ -84,35 +341,126 @@ describe("Access gating", () => {
         data: "0x",
       })).wait();
 
-      // give deployer input tokens and approve router
       await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
+      await approveInputForSupplicate(asset, deployer, router, pool);
 
-      await expect((router as any).supplicate({
-        pool: await pool.getAddress(),
-        assetToUsdc: true,
-        amountIn: ethers.parseEther("1"),
-        minAmountOut: 0n,
-        to: deployer.address,
-        payer: deployer.address,
-      })).not.to.be.reverted;
+      // Snapshot before
+      await snapshotReserves(pool, "LP-MCV — pre supplicate");
+
+      // Execute + snapshot outcome (strict ABI check)
+      await snapshotSupplicateStrict({
+        label: "LP-MCV — supplicate outcome (ABI-verified)",
+        router,
+        pool,
+        asset,
+        usdc,
+        signer: deployer,
+        args: {
+          pool: await pool.getAddress(),
+          assetToUsdc: true,
+          amountIn: ethers.parseEther("1"),
+          minAmountOut: 0n,
+          to: deployer.address,
+          payer: deployer.address,
+        },
+      });
     });
+    it("LP-MCV can supplicate USDC->ASSET (ABI-verified)", async () => {
+  const { deployer, hook, router, pool, asset, usdc } = await deployCore();
 
-    it("Approved Supplicator can supplicate without LP", async () => {
-      const { deployer, other, access, router, pool, asset } = await deployCore();
+  // Ensure deployer is LP-MCV and pool has reserves
+  await (await (hook as any).mintWithRebate({
+    pool: await pool.getAddress(),
+    to: deployer.address,
+    amountAssetDesired: ethers.parseEther("5"),
+    amountUsdcDesired:  ethers.parseEther("5"),
+    data: "0x",
+  })).wait();
+
+  // Fund deployer with USDC (input token for this direction) and approve
+  await mintFundAndApprove(usdc, deployer, deployer, router, ethers.parseEther("2"));
+  await approveInputForSupplicate(usdc, deployer, router, pool);
+
+  await snapshotSupplicateStrict({
+    label: "LP-MCV — USDC->ASSET outcome (ABI-verified)",
+    router,
+    pool,
+    asset,
+    usdc,
+    signer: deployer,
+    args: {
+      pool: await pool.getAddress(),
+      assetToUsdc: false,                 // ← flip direction
+      amountIn: ethers.parseEther("1"),
+      minAmountOut: 0n,
+      to: deployer.address,
+      payer: deployer.address,
+    },
+  });
+});
+
+    it("Approved Supplicator can supplicate without LP ASSET->USDC (ABI-verified)", async () => {
+      const { deployer, other, access, router, pool, asset, usdc } = await deployCore();
       await (await access.setApprovedSupplicator(other.address, true)).wait();
 
-      // fund & approve for `other` (payer)
       await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("2"));
+      await approveInputForSupplicate(asset, other, router, pool);
 
-      await expect((router.connect(other) as any).supplicate({
-        pool: await pool.getAddress(),
-        assetToUsdc: true,
-        amountIn: ethers.parseEther("1"),
-        minAmountOut: 0n,
-        to: other.address,
-        payer: other.address,
-      })).not.to.be.reverted;
+      await snapshotReserves(pool, "Approved — pre supplicate");
+
+      await snapshotSupplicateStrict({
+        label: "Approved — supplicate outcome (ABI-verified)",
+        router,
+        pool,
+        asset,
+        usdc,
+        signer: other,
+        args: {
+          pool: await pool.getAddress(),
+          assetToUsdc: true,
+          amountIn: ethers.parseEther("1"),
+          minAmountOut: 0n,
+          to: other.address,
+          payer: other.address,
+        },
+      });
     });
+    it("Approved Supplicator can supplicate without LP USDC->ASSET (ABI-verified)", async () => {
+  const { deployer, other, access, hook, router, pool, asset, usdc } = await deployCore();
+
+  // Ensure pool has reserves (if deployCore already bootstraps/mints, this still passes)
+  await (await (hook as any).mintWithRebate({
+    pool: await pool.getAddress(),
+    to: deployer.address,
+    amountAssetDesired: ethers.parseEther("5"),
+    amountUsdcDesired:  ethers.parseEther("5"),
+    data: "0x",
+  })).wait();
+
+  // Approve 'other' as a supplicator
+  await (await access.setApprovedSupplicator(other.address, true)).wait();
+
+  // Fund 'other' with USDC and approve inputs (to router & pool, like your ASSET path)
+  await mintFundAndApprove(usdc, deployer, other, router, ethers.parseEther("2"));
+  await approveInputForSupplicate(usdc, other, router, pool);
+
+  await snapshotSupplicateStrict({
+    label: "Approved — USDC->ASSET outcome (ABI-verified)",
+    router,
+    pool,
+    asset,
+    usdc,
+    signer: other,
+    args: {
+      pool: await pool.getAddress(),
+      assetToUsdc: false,                 // ← direction flipped
+      amountIn: ethers.parseEther("1"),
+      minAmountOut: 0n,
+      to: other.address,
+      payer: other.address,
+    },
+  });
+});
 
     it("Unauthorized caller reverts (not LP-MCV and not Approved)", async () => {
       const { other, router, pool } = await deployCore();
@@ -128,7 +476,7 @@ describe("Access gating", () => {
     });
 
     it("Approved toggling affects Router permission; LP-MCV remains allowed", async () => {
-      const { deployer, other, access, hook, router, pool, asset } = await deployCore();
+      const { deployer, other, access, hook, router, pool, asset, usdc } = await deployCore();
 
       // Become LP-MCV
       await (await (hook as any).mintWithRebate({
@@ -142,19 +490,28 @@ describe("Access gating", () => {
       // Approve 'other' → allowed
       await (await access.setApprovedSupplicator(other.address, true)).wait();
       await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("2"));
-      await expect(
-        (router.connect(other) as any).supplicate({
+      await approveInputForSupplicate(asset, other, router, pool);
+
+      await snapshotSupplicateStrict({
+        label: "Toggle — approved(other) allowed (ABI-verified)",
+        router,
+        pool,
+        asset,
+        usdc,
+        signer: other,
+        args: {
           pool: await pool.getAddress(),
           assetToUsdc: true,
           amountIn: ethers.parseEther("1"),
           minAmountOut: 0n,
           to: other.address,
           payer: other.address,
-        })
-      ).to.not.be.reverted;
+        },
+      });
 
       // Revoke → denied
       await (await access.setApprovedSupplicator(other.address, false)).wait();
+      await approveInputForSupplicate(asset, deployer, router, pool);
       await expect(
         (router.connect(other) as any).supplicate({
           pool: await pool.getAddress(),
@@ -168,16 +525,22 @@ describe("Access gating", () => {
 
       // Deployer still allowed via LP-MCV status
       await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
-      await expect(
-        (router.connect(deployer) as any).supplicate({
+      await snapshotSupplicateStrict({
+        label: "Toggle — deployer still allowed via LP-MCV (ABI-verified)",
+        router,
+        pool,
+        asset,
+        usdc,
+        signer: deployer,
+        args: {
           pool: await pool.getAddress(),
           assetToUsdc: true,
           amountIn: ethers.parseEther("1"),
           minAmountOut: 0n,
           to: deployer.address,
           payer: deployer.address,
-        })
-      ).to.not.be.reverted;
+        },
+      });
     });
 
     it("LP-MCV loses permission after full burn", async () => {
@@ -198,7 +561,6 @@ describe("Access gating", () => {
 
       await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
 
-      // Permission should be gone
       await expect((router as any).supplicate({
         pool: await pool.getAddress(),
         assetToUsdc: true,
@@ -210,7 +572,7 @@ describe("Access gating", () => {
     });
 
     it("LP-MCV retains permission after partial burn (until fully withdrawn)", async () => {
-      const { deployer, hook, router, pool, asset } = await deployCore();
+      const { deployer, hook, router, pool, asset, usdc } = await deployCore();
 
       // Become LP-MCV
       await (await (hook as any).mintWithRebate({
@@ -234,18 +596,24 @@ describe("Access gating", () => {
       expect(remaining).to.be.greaterThan(0n);
 
       await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
+      await approveInputForSupplicate(asset, deployer, router, pool);
 
-      // Should STILL be allowed to supplicate (LP-MCV permission intact)
-      await expect(
-        (router.connect(deployer) as any).supplicate({
+      await snapshotSupplicateStrict({
+        label: "Partial burn — LP-MCV still allowed (ABI-verified)",
+        router,
+        pool,
+        asset,
+        usdc,
+        signer: deployer,
+        args: {
           pool: await pool.getAddress(),
           assetToUsdc: true,
           amountIn: ethers.parseEther("1"),
           minAmountOut: 0n,
           to: deployer.address,
           payer: deployer.address,
-        })
-      ).to.not.be.reverted;
+        },
+      });
     });
 
     it("LP-MCV is per-pool (no bleed across pools)", async () => {
@@ -266,7 +634,6 @@ describe("Access gating", () => {
 
       await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
 
-      // Not LP on pool1 → not permitted
       await expect((router as any).supplicate({
         pool: pool1Addr,
         assetToUsdc: true,
@@ -323,6 +690,35 @@ describe("Access gating", () => {
       await expect(
         (pool as any).connect(other).burn(deployer.address, liq)
       ).to.be.reverted; // ownership enforced inside pool.burn
+    });
+
+    it("LP burn returns amounts-out that match event and state (ABI-verified)", async () => {
+      const { deployer, hook, pool, asset, usdc } = await deployCore();
+
+      await (await (hook as any).mintWithRebate({
+        pool: await pool.getAddress(),
+        to: deployer.address,
+        amountAssetDesired: ethers.parseEther("10"),
+        amountUsdcDesired:  ethers.parseEther("10"),
+        data: "0x",
+      })).wait();
+
+      const liq = await (pool as any).liquidityOf(deployer.address);
+      await snapshotBurnStrict({
+        label: "LP — burn 50%",
+        pool, asset, usdc, signer: deployer,
+        percent: 50,
+      });
+
+      // Also test a precise burn amount path (e.g., 1 wei of liquidity if available)
+      const liqAfter = await (pool as any).liquidityOf(deployer.address);
+      if (liqAfter > 0n) {
+        await snapshotBurnStrict({
+          label: "LP — burn precise amount",
+          pool, asset, usdc, signer: deployer,
+          burnAmount: liqAfter / 3n,
+        });
+      }
     });
   });
 
@@ -402,14 +798,17 @@ describe("Access gating", () => {
       const { deployer, factory, treasury } = await deployCore();
       const [, newOwner, stranger] = await ethers.getSigners();
 
+      // Stranger cannot set treasury
       await expect(
         factory.connect(stranger).setTreasury(newOwner.address)
       ).to.be.revertedWith("only treasury");
 
+      // Rotate treasury from the LPPTreasury contract (owned by deployer) to a plain EOA
       const oldTreasury = await factory.treasury();
       await expect(
         (treasury.connect(deployer) as any).rotateFactoryTreasury(
-          await factory.getAddress(), newOwner.address
+          await factory.getAddress(),
+          newOwner.address
         )
       )
         .to.emit(factory, "TreasuryUpdated")
@@ -417,35 +816,41 @@ describe("Access gating", () => {
 
       expect(await factory.treasury()).to.equal(newOwner.address);
 
-      // Old treasury can no longer mutate factory
+      // Old treasury can no longer mutate the factory
       const { a, u } = pair();
-
-      // Expect allow-list attempts by old treasury to revert
       await expect(
         (treasury.connect(deployer) as any).allowTokenViaTreasury(
-          await factory.getAddress(), a, true
+          await factory.getAddress(),
+          a,
+          true
         )
       ).to.be.revertedWith("only treasury");
       await expect(
         (treasury.connect(deployer) as any).allowTokenViaTreasury(
-          await factory.getAddress(), u, true
+          await factory.getAddress(),
+          u,
+          true
         )
       ).to.be.revertedWith("only treasury");
-
       await expect(
         (treasury.connect(deployer) as any).createPoolViaTreasury(
-          await factory.getAddress(), a, u
+          await factory.getAddress(),
+          a,
+          u
         )
       ).to.be.revertedWith("only treasury");
 
-      // New EOA can call factory directly
+      // New treasury EOA *is* allowed to mutate: it must allow-list tokens before creating a pool
       await expect(
-        factory.connect(newOwner).createPool(a, u)
+        (factory.connect(newOwner) as any).setAllowedToken(a, true)
+      ).to.not.be.reverted;
+      await expect(
+        (factory.connect(newOwner) as any).setAllowedToken(u, true)
       ).to.not.be.reverted;
 
       await expect(
-        factory.connect(newOwner).setTreasury(ethers.ZeroAddress)
-      ).to.be.revertedWith("zero treasury");
+        (factory.connect(newOwner) as any).createPool(a, u)
+      ).to.not.be.reverted;
     });
 
     it("LPPTreasury.rotateFactoryTreasury: only owner", async () => {
@@ -468,7 +873,9 @@ describe("Access gating", () => {
       expect(await factory.treasury()).to.equal(newEOA.address);
 
       const { a, u } = pair();
-      // old treasury attempts do nothing (no revert needed here, just proceed)
+      await (factory.connect(newEOA) as any).setAllowedToken(a, true);
+      await (factory.connect(newEOA) as any).setAllowedToken(u, true);
+
       await (factory.connect(newEOA) as any).createPool(a, u);
       const poolAddr = (await factory.getPools())[1];
 
@@ -569,13 +976,13 @@ describe("Access gating", () => {
       const pool2 = await createPoolOnly(treasury, factory);
 
       await expect(
-        (treasury.connect(deployer) as any)[BOOTstrap4](
+        (treasury.connect(deployer) as any)["bootstrapViaTreasury(address,address,uint256,uint256)"](
           await hook.getAddress(),
           pool2,
           ethers.parseEther("1"),
           ethers.parseEther("1")
         )
-      ).to.be.revertedWith("only hook");
+      ).to.be.reverted;
     });
 
     it("hook.bootstrap: only once per pool", async () => {

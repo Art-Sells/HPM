@@ -1,0 +1,425 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators Approved Supplicator can supplicate without LP ASSET->USDC (ABI-verified) 1`] = `
+Object {
+  "pool": "0x724dbC61127E39A610Be416b455deb800d51A3B2",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+}
+`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators Approved Supplicator can supplicate without LP ASSET->USDC (ABI-verified) 2`] = `101305`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators Approved Supplicator can supplicate without LP ASSET->USDC (ABI-verified) 3`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "990099009900990099",
+  "amounts": Object {
+    "assetOut": "0",
+    "sumOut": "990099009900990099",
+    "usdcOut": "990099009900990099",
+  },
+  "caller": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "1000000000000000000",
+      "u": "990099009900990099",
+    },
+    "before": Object {
+      "a": "2000000000000000000",
+      "u": "0",
+    },
+    "delta": Object {
+      "a": "0",
+      "sum": "990099009900990099",
+      "u": "990099009900990099",
+    },
+  },
+  "direction": "ASSET->USDC",
+  "gasUsed": "101305",
+  "label": "Approved — supplicate outcome (ABI-verified)",
+  "minOut": "0",
+  "pool": "0x724dbC61127E39A610Be416b455deb800d51A3B2",
+  "reserves": Object {
+    "after": Object {
+      "a": "101000000000000000000",
+      "u": "99009900990099009901",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+    "delta": Object {
+      "a": "0",
+      "sum": "990099009900990099",
+      "u": "990099009900990099",
+    },
+  },
+}
+`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators Approved Supplicator can supplicate without LP USDC->ASSET (ABI-verified) 1`] = `101337`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators Approved Supplicator can supplicate without LP USDC->ASSET (ABI-verified) 2`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "990566037735849056",
+  "amounts": Object {
+    "assetOut": "990566037735849056",
+    "sumOut": "990566037735849056",
+    "usdcOut": "0",
+  },
+  "caller": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "990566037735849056",
+      "u": "1000000000000000000",
+    },
+    "before": Object {
+      "a": "0",
+      "u": "2000000000000000000",
+    },
+    "delta": Object {
+      "a": "990566037735849056",
+      "sum": "990566037735849056",
+      "u": "0",
+    },
+  },
+  "direction": "USDC->ASSET",
+  "gasUsed": "101337",
+  "label": "Approved — USDC->ASSET outcome (ABI-verified)",
+  "minOut": "0",
+  "pool": "0x9c87F296aafe0Ef694FFa1F051b4B8b16a9b2AD6",
+  "reserves": Object {
+    "after": Object {
+      "a": "104009433962264150944",
+      "u": "106000000000000000000",
+    },
+    "before": Object {
+      "a": "105000000000000000000",
+      "u": "105000000000000000000",
+    },
+    "delta": Object {
+      "a": "990566037735849056",
+      "sum": "990566037735849056",
+      "u": "0",
+    },
+  },
+}
+`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators Approved toggling affects Router permission; LP-MCV remains allowed 1`] = `101305`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators Approved toggling affects Router permission; LP-MCV remains allowed 2`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "990566037735849056",
+  "amounts": Object {
+    "assetOut": "0",
+    "sumOut": "990566037735849056",
+    "usdcOut": "990566037735849056",
+  },
+  "caller": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "1000000000000000000",
+      "u": "990566037735849056",
+    },
+    "before": Object {
+      "a": "2000000000000000000",
+      "u": "0",
+    },
+    "delta": Object {
+      "a": "0",
+      "sum": "990566037735849056",
+      "u": "990566037735849056",
+    },
+  },
+  "direction": "ASSET->USDC",
+  "gasUsed": "101305",
+  "label": "Toggle — approved(other) allowed (ABI-verified)",
+  "minOut": "0",
+  "pool": "0x25141BdAc698910858129c81cfd9C32a8B3b3f87",
+  "reserves": Object {
+    "after": Object {
+      "a": "106000000000000000000",
+      "u": "104009433962264150944",
+    },
+    "before": Object {
+      "a": "105000000000000000000",
+      "u": "105000000000000000000",
+    },
+    "delta": Object {
+      "a": "0",
+      "sum": "990566037735849056",
+      "u": "990566037735849056",
+    },
+  },
+}
+`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators Approved toggling affects Router permission; LP-MCV remains allowed 3`] = `87237`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators Approved toggling affects Router permission; LP-MCV remains allowed 4`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "972050784694057485",
+  "amounts": Object {
+    "assetOut": "0",
+    "sumOut": "972050784694057485",
+    "usdcOut": "972050784694057485",
+  },
+  "caller": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "99999996000000000000000000",
+      "u": "99999995972050784694057485",
+    },
+    "before": Object {
+      "a": "99999997000000000000000000",
+      "u": "99999995000000000000000000",
+    },
+    "delta": Object {
+      "a": "0",
+      "sum": "972050784694057485",
+      "u": "972050784694057485",
+    },
+  },
+  "direction": "ASSET->USDC",
+  "gasUsed": "87237",
+  "label": "Toggle — deployer still allowed via LP-MCV (ABI-verified)",
+  "minOut": "0",
+  "pool": "0x25141BdAc698910858129c81cfd9C32a8B3b3f87",
+  "reserves": Object {
+    "after": Object {
+      "a": "107000000000000000000",
+      "u": "103037383177570093459",
+    },
+    "before": Object {
+      "a": "106000000000000000000",
+      "u": "104009433962264150944",
+    },
+    "delta": Object {
+      "a": "0",
+      "sum": "972050784694057485",
+      "u": "972050784694057485",
+    },
+  },
+}
+`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP burn returns amounts-out that match event and state (ABI-verified) 1`] = `44970`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP burn returns amounts-out that match event and state (ABI-verified) 2`] = `
+Object {
+  "burnLiquidity": "9850000000000000000",
+  "callerDelta": Object {
+    "assetOut": "0",
+    "sum": "0",
+    "usdcOut": "0",
+  },
+  "expected": Object {
+    "assetOut": "4925000000000000000",
+    "sum": "9850000000000000000",
+    "usdcOut": "4925000000000000000",
+  },
+  "gasUsed": "44970",
+  "label": "LP — burn 50%",
+  "lp": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "pool": "0x654631B17cd58cc96a1F9dfFAF526958E8b6c5A5",
+  "poolDelta": Object {
+    "assetOut": "4925000000000000000",
+    "sum": "9850000000000000000",
+    "usdcOut": "4925000000000000000",
+  },
+}
+`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP burn returns amounts-out that match event and state (ABI-verified) 3`] = `44994`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP burn returns amounts-out that match event and state (ABI-verified) 4`] = `
+Object {
+  "burnLiquidity": "3283333333333333333",
+  "callerDelta": Object {
+    "assetOut": "0",
+    "sum": "0",
+    "usdcOut": "0",
+  },
+  "expected": Object {
+    "assetOut": "1641666666666666666",
+    "sum": "3283333333333333332",
+    "usdcOut": "1641666666666666666",
+  },
+  "gasUsed": "44994",
+  "label": "LP — burn precise amount",
+  "lp": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "pool": "0x654631B17cd58cc96a1F9dfFAF526958E8b6c5A5",
+  "poolDelta": Object {
+    "assetOut": "1641666666666666666",
+    "sum": "3283333333333333332",
+    "usdcOut": "1641666666666666666",
+  },
+}
+`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP-MCV can supplicate ASSET->USDC (ABI-verified) 1`] = `
+Object {
+  "pool": "0x763e69d24a03c0c8B256e470D9fE9e0753504D07",
+  "reserves": Object {
+    "asset": "105000000000000000000",
+    "usdc": "105000000000000000000",
+  },
+}
+`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP-MCV can supplicate ASSET->USDC (ABI-verified) 2`] = `87237`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP-MCV can supplicate ASSET->USDC (ABI-verified) 3`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "990566037735849056",
+  "amounts": Object {
+    "assetOut": "0",
+    "sumOut": "990566037735849056",
+    "usdcOut": "990566037735849056",
+  },
+  "caller": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "99999996000000000000000000",
+      "u": "99999995990566037735849056",
+    },
+    "before": Object {
+      "a": "99999997000000000000000000",
+      "u": "99999995000000000000000000",
+    },
+    "delta": Object {
+      "a": "0",
+      "sum": "990566037735849056",
+      "u": "990566037735849056",
+    },
+  },
+  "direction": "ASSET->USDC",
+  "gasUsed": "87237",
+  "label": "LP-MCV — supplicate outcome (ABI-verified)",
+  "minOut": "0",
+  "pool": "0x763e69d24a03c0c8B256e470D9fE9e0753504D07",
+  "reserves": Object {
+    "after": Object {
+      "a": "106000000000000000000",
+      "u": "104009433962264150944",
+    },
+    "before": Object {
+      "a": "105000000000000000000",
+      "u": "105000000000000000000",
+    },
+    "delta": Object {
+      "a": "0",
+      "sum": "990566037735849056",
+      "u": "990566037735849056",
+    },
+  },
+}
+`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP-MCV can supplicate USDC->ASSET (ABI-verified) 1`] = `87269`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP-MCV can supplicate USDC->ASSET (ABI-verified) 2`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "990566037735849056",
+  "amounts": Object {
+    "assetOut": "990566037735849056",
+    "sumOut": "990566037735849056",
+    "usdcOut": "0",
+  },
+  "caller": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "99999995990566037735849056",
+      "u": "99999996000000000000000000",
+    },
+    "before": Object {
+      "a": "99999995000000000000000000",
+      "u": "99999997000000000000000000",
+    },
+    "delta": Object {
+      "a": "990566037735849056",
+      "sum": "990566037735849056",
+      "u": "0",
+    },
+  },
+  "direction": "USDC->ASSET",
+  "gasUsed": "87269",
+  "label": "LP-MCV — USDC->ASSET outcome (ABI-verified)",
+  "minOut": "0",
+  "pool": "0x1007BDBA1BCc3C94e20d57768EF9fc0b1Cc2844b",
+  "reserves": Object {
+    "after": Object {
+      "a": "104009433962264150944",
+      "u": "106000000000000000000",
+    },
+    "before": Object {
+      "a": "105000000000000000000",
+      "u": "105000000000000000000",
+    },
+    "delta": Object {
+      "a": "990566037735849056",
+      "sum": "990566037735849056",
+      "u": "0",
+    },
+  },
+}
+`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP-MCV retains permission after partial burn (until fully withdrawn) 1`] = `87237`;
+
+exports[`Access gating Permissions: LP-MCV & Approved Supplicators LP-MCV retains permission after partial burn (until fully withdrawn) 2`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "990559358036346471",
+  "amounts": Object {
+    "assetOut": "0",
+    "sumOut": "990559358036346471",
+    "usdcOut": "990559358036346471",
+  },
+  "caller": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "99999991050000000000000000",
+      "u": "99999991040559358036346471",
+    },
+    "before": Object {
+      "a": "99999992050000000000000000",
+      "u": "99999990050000000000000000",
+    },
+    "delta": Object {
+      "a": "0",
+      "sum": "990559358036346471",
+      "u": "990559358036346471",
+    },
+  },
+  "direction": "ASSET->USDC",
+  "gasUsed": "87237",
+  "label": "Partial burn — LP-MCV still allowed (ABI-verified)",
+  "minOut": "0",
+  "pool": "0xc96825EB7Cf77649A9324562d9dE5Ed9605EAA0A",
+  "reserves": Object {
+    "after": Object {
+      "a": "105925000000000000000",
+      "u": "103934440641963653529",
+    },
+    "before": Object {
+      "a": "104925000000000000000",
+      "u": "104925000000000000000",
+    },
+    "delta": Object {
+      "a": "0",
+      "sum": "990559358036346471",
+      "u": "990559358036346471",
+    },
+  },
+}
+`;
