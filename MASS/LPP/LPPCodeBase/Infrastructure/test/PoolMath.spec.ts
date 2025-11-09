@@ -6,25 +6,20 @@ import { expect } from "./shared/expect.ts";
 import snapshotGasCost from "./shared/snapshotGasCost.ts";
 import { deployCore } from "./helpers.ts";
 
-type IERC20Like = {
-  balanceOf(addr: string): Promise<any>;
-  mint(to: string, amount: bigint): Promise<any>;
-  approve(spender: string, amount: bigint): Promise<any>;
-  connect(signer: any): any;
-};
+import type { TestERC20, LPPPool, LPPRouter } from "../typechain-types/index.ts";
 
-async function getTokens(env: any): Promise<{ asset: IERC20Like; usdc: IERC20Like }> {
-  // deployCore exposes mocks directly
-  return { asset: env.asset as IERC20Like, usdc: env.usdc as IERC20Like };
+async function getTokens(env: any): Promise<{ asset: TestERC20; usdc: TestERC20 }> {
+  // deployCore exposes your TestERC20 mocks directly
+  return { asset: env.asset as TestERC20, usdc: env.usdc as TestERC20 };
 }
 
-async function reserves(pool: any) {
+async function reserves(pool: LPPPool) {
   const a = BigInt((await pool.reserveAsset()).toString());
   const u = BigInt((await pool.reserveUsdc()).toString());
   return { a, u };
 }
 
-async function snapshotReserves(pool: any, label: string) {
+async function snapshotReserves(pool: LPPPool, label: string) {
   const r = await reserves(pool);
   expect({
     pool: await pool.getAddress(),
@@ -32,7 +27,7 @@ async function snapshotReserves(pool: any, label: string) {
   }).to.matchSnapshot(label);
 }
 
-async function mintWithRebate(hook: any, pool: any, to: string, a: bigint, u: bigint) {
+async function mintWithRebate(hook: any, pool: LPPPool, to: string, a: bigint, u: bigint) {
   const tx = await (hook as any).mintWithRebate({
     pool: await pool.getAddress(),
     to,
@@ -47,11 +42,11 @@ async function mintWithRebate(hook: any, pool: any, to: string, a: bigint, u: bi
 
 /** IMPORTANT: the POOL does transferFrom(...) inside LPPPool.supplicate → approve the POOL. */
 async function fundAndApproveForSupplicate(opts: {
-  token: IERC20Like;
+  token: TestERC20;
   minter: any; // deployer (has mint perms in TestERC20)
   payer: any;
-  pool: any;
-  router?: any; // optional, harmless to approve as well
+  pool: LPPPool;
+  router?: LPPRouter; // optional, harmless to approve as well
   amount: bigint;
 }) {
   const { token, minter, payer, pool, router, amount } = opts;
@@ -228,7 +223,7 @@ describe("Pool math integrity", () => {
 
       const pools = await factory.getPools();
       const poolAddr = pools[pools.length - 1];
-      const pool = await ethers.getContractAt("LPPPool", poolAddr);
+      const pool = (await ethers.getContractAt("LPPPool", poolAddr)) as LPPPool;
 
       // approver lets deployer trade even though not LP-MCV here
       await (await access.setApprovedSupplicator(deployer.address, true)).wait();

@@ -1,4 +1,3 @@
-
 // test/MintMCV.spec.ts
 import hre from "hardhat";
 const { ethers } = hre;
@@ -7,7 +6,14 @@ import { expect } from "./shared/expect.ts";
 import snapshotGasCost from "./shared/snapshotGasCost.ts";
 import { deployCore } from "./helpers.ts";
 
-import type { LPPPool, LPPMintHook } from "../typechain-types/index.ts";
+import type { LPPPool, LPPMintHook, IERC20 } from "../typechain-types/index.ts";
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Constants
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+// Avoid HH701 artifact ambiguity by using a fully-qualified name
+const IERC20_FQN = "contracts/external/IERC20.sol:IERC20";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Small utils
@@ -44,6 +50,24 @@ async function mintWithRebate(
   const rcpt = await tx.wait();
   await snapshotGasCost(rcpt!.gasUsed);
   return rcpt!.gasUsed as bigint;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * IERC20 readers (from the actual pool tokens)
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+async function getReaderTokensFromPool(pool: LPPPool): Promise<{ asset: IERC20; usdc: IERC20 }> {
+  const assetAddr = await pool.asset();
+  const usdcAddr  = await pool.usdc();
+  const asset = (await ethers.getContractAt(IERC20_FQN, assetAddr)) as unknown as IERC20;
+  const usdc  = (await ethers.getContractAt(IERC20_FQN, usdcAddr))  as unknown as IERC20;
+  return { asset, usdc };
+}
+
+async function readTokenBalances(tokens: { asset: IERC20; usdc: IERC20 }, who: string) {
+  const a = BigInt((await tokens.asset.balanceOf(who)).toString());
+  const u = BigInt((await tokens.usdc.balanceOf(who)).toString());
+  return { a, u };
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -123,37 +147,6 @@ async function safeReadRetention(treasury: any): Promise<bigint> {
   return 0n;
 }
 
-type TokenLike = { balanceOf(addr: string): Promise<any> };
-
-async function getTokens(env: any): Promise<{ asset?: TokenLike; usdc?: TokenLike }> {
-  // Try pool getters first
-  const { pool } = env;
-  const out: { asset?: TokenLike; usdc?: TokenLike } = {};
-  try {
-    if (typeof (pool as any).asset === "function") {
-      const addr = await (pool as any).asset();
-      out.asset = await ethers.getContractAt("IERC20", addr);
-    }
-  } catch {}
-  try {
-    if (typeof (pool as any).usdc === "function") {
-      const addr = await (pool as any).usdc();
-      out.usdc = await ethers.getContractAt("IERC20", addr);
-    }
-  } catch {}
-
-  // If helpers exposed tokens, prefer them
-  if (env.asset) out.asset = env.asset;
-  if (env.usdc) out.usdc = env.usdc;
-  return out;
-}
-
-async function readTokenBalances(tokens: { asset?: TokenLike; usdc?: TokenLike }, who: string) {
-  const a = tokens.asset ? BigInt((await tokens.asset.balanceOf(who)).toString()) : 0n;
-  const u = tokens.usdc ? BigInt((await tokens.usdc.balanceOf(who)).toString()) : 0n;
-  return { a, u };
-}
-
 /* ────────────────────────────────────────────────────────────────────────────
  * Probe helpers (empirical bps)
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -176,20 +169,24 @@ async function probeBps(
   u: bigint
 ): Promise<BpsObservation> {
   const { deployer, hook, pool, treasury, vault } = env;
-  const tokens = await getTokens(env);
+
+  // Use the REAL token contracts behind the pool for balance accounting
+  const tokens = await getReaderTokensFromPool(pool as LPPPool);
   const basis = a + u;
 
   const vaultEarnBefore = vault ? await safeReadBigInt(vault, "earned", [deployer.address]) : 0n;
   const treasBefore = await safeReadRetention(treasury);
-  const vaultTokBefore = await readTokenBalances(tokens, vault ? await vault.getAddress() : deployer.address);
-  const treasTokBefore = await readTokenBalances(tokens, treasury ? await treasury.getAddress() : deployer.address);
+  const vaultAddr = vault ? await vault.getAddress() : deployer.address;
+  const treasAddr = treasury ? await treasury.getAddress() : deployer.address;
+  const vaultTokBefore = await readTokenBalances(tokens, vaultAddr);
+  const treasTokBefore = await readTokenBalances(tokens, treasAddr);
 
   await mintWithRebate(hook, pool, deployer.address, a, u);
 
   const vaultEarnAfter = vault ? await safeReadBigInt(vault, "earned", [deployer.address]) : 0n;
   const treasAfter = await safeReadRetention(treasury);
-  const vaultTokAfter = await readTokenBalances(tokens, vault ? await vault.getAddress() : deployer.address);
-  const treasTokAfter = await readTokenBalances(tokens, treasury ? await treasury.getAddress() : deployer.address);
+  const vaultTokAfter = await readTokenBalances(tokens, vaultAddr);
+  const treasTokAfter = await readTokenBalances(tokens, treasAddr);
 
   const dVault = vaultEarnAfter - vaultEarnBefore;
   const dTreas = treasAfter - treasBefore;
@@ -262,8 +259,14 @@ describe("Mint (MCV) — empirical tiers & retention (no on-chain table required
 
       // Only assert strictly if we actually see an immediate signal; otherwise just snapshot
       if (obs.accrualSignal) {
-        expect(obs.dVault + obs.dTreasury + obs.dVaultTokens.a + obs.dVaultTokens.u + obs.dTreasuryTokens.a + obs.dTreasuryTokens.u)
-          .to.be.greaterThan(0n);
+        expect(
+          obs.dVault +
+            obs.dTreasury +
+            obs.dVaultTokens.a +
+            obs.dVaultTokens.u +
+            obs.dTreasuryTokens.a +
+            obs.dTreasuryTokens.u
+        ).to.be.greaterThan(0n);
         expect(obs.retentionBps).to.be.at.most(obs.rebateBps);
       }
 
@@ -334,91 +337,92 @@ describe("Mint (MCV) — empirical tiers & retention (no on-chain table required
       }
     });
   });
+
   describe("TestERC20 minter restrictions", () => {
-  it("non-minter EOA cannot mint ASSET/USDC", async () => {
-    const env = await deployCore();
-    const { other, asset, usdc } = env;
-
-    await expectRevertWithOneOf(
-      asset.connect(other).mint(other.address, ethers.parseEther("1")),
-      NOT_MINTER
-    );
-    await expectRevertWithOneOf(
-      usdc.connect(other).mint(other.address, ethers.parseEther("1")),
-      NOT_MINTER
-    );
-  });
-
-  it("designated minter (deployer) can mint; balances increase", async () => {
-    const env = await deployCore();
-    const { deployer, asset, usdc } = env;
-
-    const bA0 = await asset.balanceOf(deployer.address);
-    const bU0 = await usdc.balanceOf(deployer.address);
-
-    await (await asset.connect(deployer).mint(deployer.address, ethers.parseEther("3"))).wait();
-    await (await usdc.connect(deployer).mint(deployer.address,  ethers.parseEther("7"))).wait();
-
-    const bA1 = await asset.balanceOf(deployer.address);
-    const bU1 = await usdc.balanceOf(deployer.address);
-
-    expect(bA1 - bA0).to.equal(ethers.parseEther("3"));
-    expect(bU1 - bU0).to.equal(ethers.parseEther("7"));
-  });
-
-  it("contract addresses (hook/router/pool/treasury) cannot mint when impersonated", async () => {
-    const env = await deployCore();
-    const { asset, usdc, hook, router, pool, treasury } = env;
-
-    // helper to impersonate and try mint
-    async function tryImpersonatedMint(targetAddr: string) {
-      await ethers.provider.send("hardhat_impersonateAccount", [targetAddr]);
-      await ethers.provider.send("hardhat_setBalance", [targetAddr, "0x56BC75E2D63100000"]); // 100 ETH
-      const s = await ethers.getSigner(targetAddr);
+    it("non-minter EOA cannot mint ASSET/USDC", async () => {
+      const env = await deployCore();
+      const { other, asset, usdc } = env;
 
       await expectRevertWithOneOf(
-        asset.connect(s).mint(targetAddr, ethers.parseEther("1")),
+        asset.connect(other).mint(other.address, ethers.parseEther("1")),
         NOT_MINTER
       );
       await expectRevertWithOneOf(
-        usdc.connect(s).mint(targetAddr, ethers.parseEther("1")),
+        usdc.connect(other).mint(other.address, ethers.parseEther("1")),
         NOT_MINTER
       );
+    });
 
-      await ethers.provider.send("hardhat_stopImpersonatingAccount", [targetAddr]);
-    }
+    it("designated minter (deployer) can mint; balances increase", async () => {
+      const env = await deployCore();
+      const { deployer, asset, usdc } = env;
 
-    await tryImpersonatedMint(await hook.getAddress());
-    await tryImpersonatedMint(await router.getAddress());
-    await tryImpersonatedMint(await pool.getAddress());
-    await tryImpersonatedMint(await treasury.getAddress());
+      const bA0 = await asset.balanceOf(deployer.address);
+      const bU0 = await usdc.balanceOf(deployer.address);
+
+      await (await asset.connect(deployer).mint(deployer.address, ethers.parseEther("3"))).wait();
+      await (await usdc.connect(deployer).mint(deployer.address,  ethers.parseEther("7"))).wait();
+
+      const bA1 = await asset.balanceOf(deployer.address);
+      const bU1 = await usdc.balanceOf(deployer.address);
+
+      expect(bA1 - bA0).to.equal(ethers.parseEther("3"));
+      expect(bU1 - bU0).to.equal(ethers.parseEther("7"));
+    });
+
+    it("contract addresses (hook/router/pool/treasury) cannot mint when impersonated", async () => {
+      const env = await deployCore();
+      const { asset, usdc, hook, router, pool, treasury } = env;
+
+      // helper to impersonate and try mint
+      async function tryImpersonatedMint(targetAddr: string) {
+        await ethers.provider.send("hardhat_impersonateAccount", [targetAddr]);
+        await ethers.provider.send("hardhat_setBalance", [targetAddr, "0x56BC75E2D63100000"]); // 100 ETH
+        const s = await ethers.getSigner(targetAddr);
+
+        await expectRevertWithOneOf(
+          asset.connect(s).mint(targetAddr, ethers.parseEther("1")),
+          NOT_MINTER
+        );
+        await expectRevertWithOneOf(
+          usdc.connect(s).mint(targetAddr, ethers.parseEther("1")),
+          NOT_MINTER
+        );
+
+        await ethers.provider.send("hardhat_stopImpersonatingAccount", [targetAddr]);
+      }
+
+      await tryImpersonatedMint(await hook.getAddress());
+      await tryImpersonatedMint(await router.getAddress());
+      await tryImpersonatedMint(await pool.getAddress());
+      await tryImpersonatedMint(await treasury.getAddress());
+    });
+
+    it("mint cannot be invoked indirectly via Hook/Router/Pool code paths", async () => {
+      const env = await deployCore();
+      const { deployer, hook, router, pool } = env;
+
+      await expect(
+        (hook as any).mintWithRebate({
+          pool: await pool.getAddress(),
+          to: deployer.address,
+          amountAssetDesired: ethers.parseEther("1"),
+          amountUsdcDesired:  ethers.parseEther("1"),
+          data: "0x",
+        })
+      ).to.not.be.reverted;
+
+      // 👇 Add `payer`
+      await expect(
+        (router as any).supplicate({
+          pool: await pool.getAddress(),
+          assetToUsdc: true,
+          amountIn: 0n,
+          minAmountOut: 0n,
+          to: deployer.address,
+          payer: deployer.address,    // <-- required by your ABI
+        })
+      ).to.be.reverted; // any revert is fine for the sanity check
+    });
   });
-
-  it("mint cannot be invoked indirectly via Hook/Router/Pool code paths", async () => {
-    const env = await deployCore();
-    const { deployer, hook, router, pool } = env;
-
-    await expect(
-      (hook as any).mintWithRebate({
-        pool: await pool.getAddress(),
-        to: deployer.address,
-        amountAssetDesired: ethers.parseEther("1"),
-        amountUsdcDesired:  ethers.parseEther("1"),
-        data: "0x",
-      })
-    ).to.not.be.reverted;
-
-    // 👇 Add `payer`
-    await expect(
-      (router as any).supplicate({
-        pool: await pool.getAddress(),
-        assetToUsdc: true,
-        amountIn: 0n,
-        minAmountOut: 0n,
-        to: deployer.address,
-        payer: deployer.address,    // <-- required by your ABI
-      })
-    ).to.be.reverted; // any revert is fine for the sanity check
-  });
-});
 });
