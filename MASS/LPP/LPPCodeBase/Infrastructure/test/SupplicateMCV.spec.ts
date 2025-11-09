@@ -22,3 +22,6 @@ describe("S3 — First Supplicate (MCV)", () => {
     })).not.to.be.reverted;
   });
 });
+
+//Test when MCV (for pool rebalancing) USDC/ASSETout tests
+// add snapshots and sqrtpricing (from ABI)

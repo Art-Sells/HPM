@@ -15,3 +15,4 @@ describe("S6 — Quoter Validation", () => {
     expect(quoted.expectedAmountOut).to.equal(amountOut);
   });
 });
+// add snapshots assetOut-in/usdcOur-in and sqrtpricing (from ABI)

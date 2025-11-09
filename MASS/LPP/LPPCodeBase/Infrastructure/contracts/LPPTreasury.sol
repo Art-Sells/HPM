@@ -2,15 +2,15 @@
 pragma solidity ^0.8.24;
 
 import { ILPPTreasury } from "./interfaces/ILPPTreasury.sol";
-import { ILPPFactory } from "./interfaces/ILPPFactory.sol";
+import { ILPPFactory }  from "./interfaces/ILPPFactory.sol";
 
-/// Minimal hook interface so Treasury can forward bootstrap with an offset
+/// Minimal hook interface to forward bootstrap calls with optional price offset
 interface ILPPMintHookMinimal {
     function bootstrap(address pool, uint256 amtA, uint256 amtU, int256 offsetBps) external;
 }
 
 contract LPPTreasury is ILPPTreasury {
-    address public owner;
+    address public override owner;
     address public override assetRetentionReceiver;
     address public override usdcRetentionReceiver;
 
@@ -34,7 +34,7 @@ contract LPPTreasury is ILPPTreasury {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Forwarders (this contract must be the Factory.treasury)
+    // Factory forwarders (this contract address must equal Factory.treasury)
     // ─────────────────────────────────────────────────────────────
 
     function createPoolViaTreasury(address factory, address asset, address usdc)
@@ -52,7 +52,15 @@ contract LPPTreasury is ILPPTreasury {
         ILPPFactory(factory).setPoolHook(pool, hook);
     }
 
-    /// New signature: includes offsetBps so we can seed off-center
+    /// Forward allow-listing to Factory (Factory requires onlyTreasury)
+    function allowTokenViaTreasury(address factory, address token, bool allowed)
+        external
+        onlyOwner
+    {
+        ILPPFactory(factory).setAllowedToken(token, allowed);
+    }
+
+    /// Bootstrap via hook (offset in bps; can pass 0)
     function bootstrapViaTreasury(
         address hook,
         address pool,
@@ -66,7 +74,7 @@ contract LPPTreasury is ILPPTreasury {
         ILPPMintHookMinimal(hook).bootstrap(pool, amountAsset, amountUsdc, offsetBps);
     }
 
-    /// (Optional) Back-compat shim: offset = 0 bps
+    /// Back-compat overload (offset = 0)
     function bootstrapViaTreasury(
         address hook,
         address pool,
@@ -79,11 +87,18 @@ contract LPPTreasury is ILPPTreasury {
         ILPPMintHookMinimal(hook).bootstrap(pool, amountAsset, amountUsdc, 0);
     }
 
-    /// Rotate Factory governance to a new address (EOA/multisig/new Treasury).
+    /// Rotate Factory.treasury to a new address
     function rotateFactoryTreasury(address factory, address newTreasury)
         external
         onlyOwner
     {
         ILPPFactory(factory).setTreasury(newTreasury);
+    }
+
+    // optional: owner transfer helper
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "zero");
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
     }
 }

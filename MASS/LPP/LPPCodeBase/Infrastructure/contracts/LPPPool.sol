@@ -1,22 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import { IERC20 } from "./external/IERC20.sol";
 import { ILPPPool } from "./interfaces/ILPPPool.sol";
 
 contract LPPPool is ILPPPool {
-    address public /*override*/ immutable asset;
-    address public /*override*/ immutable usdc;
+    address public immutable override asset;
+    address public immutable override usdc;
 
-    address public /*override*/ immutable treasury; // project-level authority
-    address public /*override*/ immutable factory;  // deploying factory (authorized to set hook)
-    address public /*override*/ hook;               // LPPMintHook set exactly once
+    address public immutable override treasury; // project-level authority
+    address public immutable override factory;  // deploying factory (authorized to set hook)
+    address public override hook;               // LPPMintHook set exactly once
 
-    uint256 public /*override*/ reserveAsset;
-    uint256 public /*override*/ reserveUsdc;
+    uint256 public override reserveAsset;
+    uint256 public override reserveUsdc;
 
     uint256 private _priceX96;
     mapping(address => uint256) private _liq;
-    uint256 public /*override*/ totalLiquidity;
+    uint256 public override totalLiquidity;
 
     bool public initialized;
 
@@ -43,14 +44,27 @@ contract LPPPool is ILPPPool {
         emit HookSet(hook_);
     }
 
-    function bootstrapInitialize(uint256 amtA, uint256 amtU)
+    function bootstrapInitialize(uint256 amtA, uint256 amtU, int256 offsetBps)
         external
         onlyHook
         nonZero(amtA)
         nonZero(amtU)
     {
         require(!initialized, "already init");
+
+        // Tokens MUST already be transferred to this pool by the hook.
         _internalMint(treasury, amtA, amtU);
+
+        // base price = usdc/asset in Q96, then apply offset bps
+        uint256 baseX96 = (amtU << 96) / amtA;
+        if (offsetBps != 0) {
+            int256 num = int256(uint256(baseX96)) * (10000 + offsetBps);
+            require(num > 0, "bad offset");
+            _priceX96 = uint256(num) / 10000;
+        } else {
+            _priceX96 = baseX96;
+        }
+
         initialized = true;
         emit Initialized(amtA, amtU);
     }
@@ -63,6 +77,7 @@ contract LPPPool is ILPPPool {
         nonZero(amtU)
         returns (uint256 liquidityOut)
     {
+        // Tokens MUST already be transferred to this pool by the hook.
         liquidityOut = _internalMint(to, amtA, amtU);
     }
 
@@ -117,7 +132,7 @@ contract LPPPool is ILPPPool {
         }
     }
 
-    function supplicate(address /*to*/, bool assetToUsdc, uint256 amountIn, uint256 minAmountOut)
+    function supplicate(address payer, address to, bool assetToUsdc, uint256 amountIn, uint256 minAmountOut)
         external
         override
         nonZero(amountIn)
@@ -126,41 +141,25 @@ contract LPPPool is ILPPPool {
         (amountOut, ) = this.quoteSupplication(assetToUsdc, amountIn);
         require(amountOut >= minAmountOut, "slippage");
 
+        address a = asset;
+        address u = usdc;
+
         if (assetToUsdc) {
+            // pull asset from payer → pool; send USDC to `to`
+            require(IERC20(a).transferFrom(payer, address(this), amountIn), "pull asset fail");
             reserveAsset += amountIn;
             require(reserveUsdc >= amountOut, "insufficient usdc");
             reserveUsdc -= amountOut;
+            require(IERC20(u).transfer(to, amountOut), "push usdc fail");
         } else {
+            // pull USDC from payer → pool; send asset to `to`
+            require(IERC20(u).transferFrom(payer, address(this), amountIn), "pull usdc fail");
             reserveUsdc += amountIn;
             require(reserveAsset >= amountOut, "insufficient asset");
             reserveAsset -= amountOut;
+            require(IERC20(a).transfer(to, amountOut), "push asset fail");
         }
 
         emit Supplicate(msg.sender, assetToUsdc, amountIn, amountOut);
     }
-    // add: set price on first bootstrap
-function bootstrapInitialize(uint256 amtA, uint256 amtU, int256 offsetBps)
-    external
-    onlyHook
-    nonZero(amtA)
-    nonZero(amtU)
-{
-    require(!initialized, "already init");
-    _internalMint(treasury, amtA, amtU);
-
-    // base price = usdc/asset in Q96
-    uint256 baseX96 = (amtU << 96) / amtA;
-
-    if (offsetBps != 0) {
-        // priceX96 = baseX96 * (10000 + offsetBps) / 10000 ; supports negative offsets
-        int256 num = int256(uint256(baseX96)) * (10000 + offsetBps);
-        require(num > 0, "bad offset");
-        _priceX96 = uint256(num) / 10000;
-    } else {
-        _priceX96 = baseX96;
-    }
-
-    initialized = true;
-    emit Initialized(amtA, amtU);
-}
 }

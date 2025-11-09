@@ -53,8 +53,8 @@ async function snapshotParity(pool: LPPPool, label: string) {
   const details = {
     addresses: { pool: await addr(pool) },
     reserves: {
-      asset: ((await pool.reserveAsset()) as bigint).toString(),
-      usdc:  ((await pool.reserveUsdc())  as bigint).toString(),
+      asset: ((await (pool as any).reserveAsset()) as bigint).toString(),
+      usdc:  ((await (pool as any).reserveUsdc())  as bigint).toString(),
     },
   };
   expect(details).to.matchSnapshot(`${label} — DETAILS`);
@@ -67,8 +67,8 @@ async function snapshotPriceDetail(pool: LPPPool, label: string) {
   const sqrtAssetPerUsdcX96 = toSqrtPriceX96(px);
   const sqrtUsdcPerAssetX96 = sqrtAssetPerUsdcX96 === 0n ? 0n : (Q192 / sqrtAssetPerUsdcX96);
 
-  const resA = (await pool.reserveAsset()) as bigint;
-  const resU = (await pool.reserveUsdc()) as bigint;
+  const resA = (await (pool as any).reserveAsset()) as bigint;
+  const resU = (await (pool as any).reserveUsdc()) as bigint;
 
   expect({
     pool: await pool.getAddress(),
@@ -85,29 +85,28 @@ async function snapshotPriceDetail(pool: LPPPool, label: string) {
   }).to.matchSnapshot(label);
 }
 
-/* ---------------- local helpers ---------------- */
+/* ---------------- local helpers (ERC20-aware) ---------------- */
 
-function dummyTokenPair(): { a: string; u: string } {
-  const a = ethers.Wallet.createRandom().address;
-  let u = ethers.Wallet.createRandom().address;
-  if (u.toLowerCase() === a.toLowerCase()) {
-    u = ethers.Wallet.createRandom().address;
-  }
-  return { a, u };
+async function allowPairViaTreasury(treasury: LPPTreasury, factory: LPPFactory, a: string, u: string) {
+  await (await treasury.allowTokenViaTreasury(await factory.getAddress(), a, true)).wait();
+  await (await treasury.allowTokenViaTreasury(await factory.getAddress(), u, true)).wait();
 }
 
-async function newPoolViaTreasury(
+async function newPoolViaTreasuryWithTokens(
   treasury: LPPTreasury,
-  factory: LPPFactory
+  factory: LPPFactory,
+  assetAddr: string,
+  usdcAddr: string
 ): Promise<LPPPool> {
-  const { a, u } = dummyTokenPair();
-  const tx1 = await treasury.createPoolViaTreasury(
+  await allowPairViaTreasury(treasury, factory, assetAddr, usdcAddr);
+
+  const tx = await (treasury as any).createPoolViaTreasury(
     await factory.getAddress(),
-    a,
-    u
+    assetAddr,
+    usdcAddr
   );
-  const r1 = await tx1.wait();
-  await snapshotGasCost(r1!.gasUsed);
+  const rcpt = await tx.wait();
+  await snapshotGasCost(rcpt!.gasUsed);
 
   const pools = await (factory as any).getPools();
   const poolAddr = pools[pools.length - 1] as string;
@@ -120,34 +119,17 @@ async function wireHookViaTreasury(
   pool: LPPPool,
   hook: LPPMintHook
 ) {
-  const tx2 = await treasury.setPoolHookViaTreasury(
+  const tx = await (treasury as any).setPoolHookViaTreasury(
     await factory.getAddress(),
     await pool.getAddress(),
     await hook.getAddress()
   );
-  const r2 = await tx2.wait();
-  await snapshotGasCost(r2!.gasUsed);
+  const rcpt = await tx.wait();
+  await snapshotGasCost(rcpt!.gasUsed);
 }
 
-async function bootstrapViaTreasury4(
-  treasury: LPPTreasury,
-  hook: LPPMintHook,
-  pool: LPPPool,
-  amountAsset: bigint,
-  amountUsdc: bigint
-) {
-  const fn = (treasury as any)["bootstrapViaTreasury(address,address,uint256,uint256)"];
-  const tx = await fn(
-    await hook.getAddress(),
-    await pool.getAddress(),
-    amountAsset,
-    amountUsdc
-  );
-  const r = await tx.wait();
-  await snapshotGasCost(r!.gasUsed);
-}
-
-async function bootstrapViaTreasury5(
+/** Use the 5-arg overload with offset bps */
+async function bootstrapViaTreasury(
   treasury: LPPTreasury,
   hook: LPPMintHook,
   pool: LPPPool,
@@ -163,8 +145,34 @@ async function bootstrapViaTreasury5(
     amountUsdc,
     offsetBps
   );
-  const r = await tx.wait();
-  await snapshotGasCost(r!.gasUsed);
+  const rcpt = await tx.wait();
+  await snapshotGasCost(rcpt!.gasUsed);
+}
+
+/** Impersonate the Treasury (contract) as signer */
+async function asTreasurySigner(treasury: LPPTreasury) {
+  const tAddr = await treasury.getAddress();
+  await ethers.provider.send("hardhat_impersonateAccount", [tAddr]);
+  await ethers.provider.send("hardhat_setBalance", [tAddr, "0x56BC75E2D63100000"]); // 100 ETH
+  return ethers.getSigner(tAddr);
+}
+
+/** Fund Treasury with tokens and approve Hook to pull them during bootstrap */
+async function fundTreasuryAndApproveHook(
+  env: { deployer: any; treasury: LPPTreasury; hook: LPPMintHook; asset: any; usdc: any },
+  amountA: bigint,
+  amountU: bigint
+) {
+  const tAddr = await env.treasury.getAddress();
+
+  // Mint balances to treasury (deployer is the minter)
+  if (amountA > 0n) await (await env.asset.connect(env.deployer).mint(tAddr, amountA)).wait();
+  if (amountU > 0n) await (await env.usdc.connect(env.deployer).mint(tAddr, amountU)).wait();
+
+  // Approve hook from treasury address (impersonated)
+  const tSigner = await asTreasurySigner(env.treasury);
+  await (await env.asset.connect(tSigner).approve(await env.hook.getAddress(), ethers.MaxUint256)).wait();
+  await (await env.usdc.connect(tSigner).approve(await env.hook.getAddress(), ethers.MaxUint256)).wait();
 }
 
 /* ---------------- tests ---------------- */
@@ -178,8 +186,8 @@ describe("Bootstrap", () => {
       factory: await addr(e.factory),
       pool: await addr(e.pool),
       reserves: {
-        asset: (await e.pool.reserveAsset()).toString(),
-        usdc:  (await e.pool.reserveUsdc()).toString(),
+        asset: (await (e.pool as any).reserveAsset()).toString(),
+        usdc:  (await (e.pool as any).reserveUsdc()).toString(),
       },
     }).to.matchSnapshot();
 
@@ -201,7 +209,12 @@ describe("Bootstrap", () => {
   it("only Treasury owner can call bootstrapViaTreasury", async () => {
     const e = await deployCore();
 
-    const freshPool = await newPoolViaTreasury(e.treasury, e.factory);
+    const freshPool = await newPoolViaTreasuryWithTokens(
+      e.treasury,
+      e.factory,
+      await e.asset.getAddress(),
+      await e.usdc.getAddress()
+    );
     await wireHookViaTreasury(e.treasury, e.factory, freshPool, e.hook);
 
     const [, notOwner] = await ethers.getSigners();
@@ -217,7 +230,16 @@ describe("Bootstrap", () => {
 
   it("bootstrap reverts if hook is not wired yet", async () => {
     const e = await deployCore();
-    const pool2 = await newPoolViaTreasury(e.treasury, e.factory);
+
+    // Fresh pool with REAL tokens but no hook wired
+    const pool2 = await newPoolViaTreasuryWithTokens(
+      e.treasury, e.factory,
+      await e.asset.getAddress(),
+      await e.usdc.getAddress()
+    );
+
+    // Ensure token path doesn't short-circuit: fund + approve treasury→hook
+    await fundTreasuryAndApproveHook(e, ethers.parseEther("10"), ethers.parseEther("10"));
 
     await expect(
       (e.treasury as any)["bootstrapViaTreasury(address,address,uint256,uint256)"](
@@ -226,14 +248,21 @@ describe("Bootstrap", () => {
         10n,
         10n
       )
-    ).to.be.reverted; // not wired
+    ).to.be.revertedWith("only hook");
   });
 
   it("bootstrap with zero amounts is rejected", async () => {
     const e = await deployCore();
 
-    const pool2 = await newPoolViaTreasury(e.treasury, e.factory);
+    const pool2 = await newPoolViaTreasuryWithTokens(
+      e.treasury, e.factory,
+      await e.asset.getAddress(),
+      await e.usdc.getAddress()
+    );
     await wireHookViaTreasury(e.treasury, e.factory, pool2, e.hook);
+
+    // Avoid ERC20 short-circuit; then assert the zero guard
+    await fundTreasuryAndApproveHook(e, ethers.parseEther("10"), ethers.parseEther("10"));
 
     await expect(
       (e.treasury as any)["bootstrapViaTreasury(address,address,uint256,uint256)"](
@@ -243,6 +272,7 @@ describe("Bootstrap", () => {
         10n
       )
     ).to.be.revertedWith("zero");
+
     await expect(
       (e.treasury as any)["bootstrapViaTreasury(address,address,uint256,uint256)"](
         await e.hook.getAddress(),
@@ -262,17 +292,14 @@ describe("Bootstrap", () => {
   it("after bootstrap, first mint increases reserves and credits LP-MCV", async () => {
     const e = await deployCore();
 
-    // No ERC20 approvals (no TestToken). Your hook/pool do internal accounting.
     const before = {
-      resA: (await e.pool.reserveAsset()) as bigint,
-      resU: (await e.pool.reserveUsdc())  as bigint,
+      resA: (await (e.pool as any).reserveAsset()) as bigint,
+      resU: (await (e.pool as any).reserveUsdc())  as bigint,
     };
 
     const tx = await (e.hook as any).mintWithRebate({
       pool: await e.pool.getAddress(),
       to: await e.deployer.getAddress(),
-      // if your hook still accepts `payer`, keep it; otherwise remove this line
-      payer: await e.deployer.getAddress(),
       amountAssetDesired: ethers.parseEther("1"),
       amountUsdcDesired:  ethers.parseEther("1"),
       data: "0x",
@@ -281,8 +308,8 @@ describe("Bootstrap", () => {
     await snapshotGasCost(r!.gasUsed);
 
     const after = {
-      resA: (await e.pool.reserveAsset()) as bigint,
-      resU: (await e.pool.reserveUsdc())  as bigint,
+      resA: (await (e.pool as any).reserveAsset()) as bigint,
+      resU: (await (e.pool as any).reserveUsdc())  as bigint,
     };
 
     const dA = after.resA - before.resA;
@@ -306,21 +333,27 @@ describe("Offset bootstrap seeding", () => {
 
     await snapshotPriceDetail(e.pool, "Offset seed — baseline (0 bps)");
 
-    const poolA = await newPoolViaTreasury(e.treasury, e.factory);
+    const assetAddr = await e.asset.getAddress();
+    const usdcAddr  = await e.usdc.getAddress();
+
+    const poolA = await newPoolViaTreasuryWithTokens(e.treasury, e.factory, assetAddr, usdcAddr);
     await wireHookViaTreasury(e.treasury, e.factory, poolA, e.hook);
 
-    const poolB = await newPoolViaTreasury(e.treasury, e.factory);
+    const poolB = await newPoolViaTreasuryWithTokens(e.treasury, e.factory, assetAddr, usdcAddr);
     await wireHookViaTreasury(e.treasury, e.factory, poolB, e.hook);
 
-    const poolC = await newPoolViaTreasury(e.treasury, e.factory);
+    const poolC = await newPoolViaTreasuryWithTokens(e.treasury, e.factory, assetAddr, usdcAddr);
     await wireHookViaTreasury(e.treasury, e.factory, poolC, e.hook);
 
     const amtA = ethers.parseEther("100");
     const amtU = ethers.parseEther("100");
 
-    await bootstrapViaTreasury5(e.treasury, e.hook, poolA, amtA, amtU, -10n);
-    await bootstrapViaTreasury5(e.treasury, e.hook, poolB, amtA, amtU,  -5n);
-    await bootstrapViaTreasury5(e.treasury, e.hook, poolC, amtA, amtU,  15n);
+    // Fund once with enough for all three boots
+    await fundTreasuryAndApproveHook(e, amtA * 3n, amtU * 3n);
+
+    await bootstrapViaTreasury(e.treasury, e.hook, poolA, amtA, amtU, -10n);
+    await bootstrapViaTreasury(e.treasury, e.hook, poolB, amtA, amtU,  -5n);
+    await bootstrapViaTreasury(e.treasury, e.hook, poolC, amtA, amtU,  15n);
 
     await snapshotPriceDetail(poolA, "Offset seed — Pool A (-10 bps)");
     await snapshotPriceDetail(poolB, "Offset seed — Pool B (-5 bps)");

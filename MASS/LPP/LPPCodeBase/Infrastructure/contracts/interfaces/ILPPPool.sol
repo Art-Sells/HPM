@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 interface ILPPPool {
-    // Events (declare them here once; do NOT redeclare in the contract)
+    // Events
     event HookSet(address hook);
     event Initialized(uint256 amountAsset, uint256 amountUsdc);
     event Mint(address indexed lp, uint256 amountAsset, uint256 amountUsdc, uint256 liquidity);
@@ -32,6 +32,7 @@ interface ILPPPool {
     // Wiring (one-time)
     function setHook(address hook_) external;
 
+    // NOTE: offsetBps version (matches your implementation)
     function bootstrapInitialize(uint256 amtA, uint256 amtU, int256 offsetBps) external;
 
     // Mint path (hook-only)
@@ -46,7 +47,7 @@ interface ILPPPool {
         view
         returns (uint256 amountOut, int256 priceDriftBps);
 
-    function supplicate(address to, bool assetToUsdc, uint256 amountIn, uint256 minAmountOut)
+    function supplicate(address payer, address to, bool assetToUsdc, uint256 amountIn, uint256 minAmountOut)
         external
         returns (uint256 amountOut);
 }
