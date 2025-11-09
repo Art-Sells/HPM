@@ -187,6 +187,7 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
 ---
 
 ### 5. Deployment Plan
+- [ ] Delete TestERC20 contract
 - [ ] Deploy on Testnet first (get treasury address and key), test USDC/ASSET using LPP first... if it works... Deploy on Mainnet
 - [ ] Create asset/USDC pools A, B, C → initialize at reference price.  
 - [ ] Seed equal USDC & asset liquidity.  

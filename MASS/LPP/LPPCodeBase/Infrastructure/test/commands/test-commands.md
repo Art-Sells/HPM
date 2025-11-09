@@ -1,4 +1,4 @@
-yarn hardhat test test/AccessGating.spec.ts
+yarn hardhat test test/AccessGating.MintBurn.Supplicate.spec.ts
 yarn hardhat test test/Bootstrap.spec.ts
 yarn hardhat test test/EqualValue.spec.ts
 yarn hardhat test test/MintMCV.spec.ts

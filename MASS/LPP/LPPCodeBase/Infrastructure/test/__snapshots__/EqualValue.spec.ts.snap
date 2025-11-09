@@ -1,0 +1,161 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Equal-value enforcement accepts exactly at +10 bps boundary (inclusive) 1`] = `
+Object {
+  "pool": "0xDC17C27Ae8bE831AF07CC38C02930007060020F4",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+}
+`;
+
+exports[`Equal-value enforcement accepts exactly at +10 bps boundary (inclusive) 2`] = `133733`;
+
+exports[`Equal-value enforcement accepts exactly at +10 bps boundary (inclusive) 3`] = `
+Object {
+  "deltas": Object {
+    "asset": "9850000000000000000",
+    "usdc": "9859850000000000000",
+  },
+  "gas": "133733",
+}
+`;
+
+exports[`Equal-value enforcement accepts exactly at +10 bps boundary (inclusive) 4`] = `
+Object {
+  "pool": "0xDC17C27Ae8bE831AF07CC38C02930007060020F4",
+  "reserves": Object {
+    "asset": "119700000000000000000",
+    "usdc": "119719700000000000000",
+  },
+}
+`;
+
+exports[`Equal-value enforcement accepts exactly at −10 bps boundary (inclusive) 1`] = `
+Object {
+  "pool": "0xeaF6B7a8eb2E3ff41E43a0d97cbCd749FA0cE94a",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+}
+`;
+
+exports[`Equal-value enforcement accepts exactly at −10 bps boundary (inclusive) 2`] = `133757`;
+
+exports[`Equal-value enforcement accepts exactly at −10 bps boundary (inclusive) 3`] = `
+Object {
+  "deltas": Object {
+    "asset": "9850000000000000000",
+    "usdc": "9840150000000000000",
+  },
+  "gas": "133757",
+}
+`;
+
+exports[`Equal-value enforcement accepts exactly at −10 bps boundary (inclusive) 4`] = `
+Object {
+  "pool": "0xeaF6B7a8eb2E3ff41E43a0d97cbCd749FA0cE94a",
+  "reserves": Object {
+    "asset": "119700000000000000000",
+    "usdc": "119680300000000000000",
+  },
+}
+`;
+
+exports[`Equal-value enforcement accepts strictly within ±10 bps (e.g., +9 bps) 1`] = `
+Object {
+  "pool": "0x61c36a8d610163660E21a8b7359e1Cac0C9133e1",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+}
+`;
+
+exports[`Equal-value enforcement accepts strictly within ±10 bps (e.g., +9 bps) 2`] = `133769`;
+
+exports[`Equal-value enforcement accepts strictly within ±10 bps (e.g., +9 bps) 3`] = `
+Object {
+  "deltas": Object {
+    "asset": "9850000000000000000",
+    "usdc": "9858865000000000000",
+  },
+  "gas": "133769",
+}
+`;
+
+exports[`Equal-value enforcement accepts strictly within ±10 bps (e.g., +9 bps) 4`] = `
+Object {
+  "pool": "0x61c36a8d610163660E21a8b7359e1Cac0C9133e1",
+  "reserves": Object {
+    "asset": "119700000000000000000",
+    "usdc": "119717730000000000000",
+  },
+}
+`;
+
+exports[`Equal-value enforcement tiny amounts within tolerance still pass 1`] = `
+Object {
+  "pool": "0x8e0BfED44D5B63812d0693FB248AfA1892dDc036",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+}
+`;
+
+exports[`Equal-value enforcement tiny amounts within tolerance still pass 2`] = `103364`;
+
+exports[`Equal-value enforcement tiny amounts within tolerance still pass 3`] = `
+Object {
+  "deltas": Object {
+    "asset": "1",
+    "usdc": "1",
+  },
+  "gas": "103364",
+}
+`;
+
+exports[`Equal-value enforcement tiny amounts within tolerance still pass 4`] = `
+Object {
+  "pool": "0x8e0BfED44D5B63812d0693FB248AfA1892dDc036",
+  "reserves": Object {
+    "asset": "100000000000000000002",
+    "usdc": "100000000000000000002",
+  },
+}
+`;
+
+exports[`Equal-value enforcement very large amounts at boundary still pass (scale invariance) 1`] = `
+Object {
+  "pool": "0xF8ADc47E258b9a56a8E0A717572dB3F1Cb1b4cc4",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+}
+`;
+
+exports[`Equal-value enforcement very large amounts at boundary still pass (scale invariance) 2`] = `133996`;
+
+exports[`Equal-value enforcement very large amounts at boundary still pass (scale invariance) 3`] = `
+Object {
+  "deltas": Object {
+    "asset": "947500000000000000000000",
+    "usdc": "947500009475000000000000",
+  },
+  "gas": "133996",
+}
+`;
+
+exports[`Equal-value enforcement very large amounts at boundary still pass (scale invariance) 4`] = `
+Object {
+  "pool": "0xF8ADc47E258b9a56a8E0A717572dB3F1Cb1b4cc4",
+  "reserves": Object {
+    "asset": "1895100000000000000000000",
+    "usdc": "1895100018950000000000000",
+  },
+}
+`;

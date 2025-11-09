@@ -1,6 +1,3 @@
-//Test when MCV (for pool rebalancing) USDC/ASSETout mint/burn tests...
-// add sqrtpricing (from ABI)
-
 
 // test/MintMCV.spec.ts
 import hre from "hardhat";
