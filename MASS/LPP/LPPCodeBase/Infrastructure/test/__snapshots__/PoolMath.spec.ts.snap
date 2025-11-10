@@ -1,0 +1,15 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Pool math integrity Directional accounting ASSET->USDC: pool deltas == user deltas (token-wise) 1`] = `185057`;
+
+exports[`Pool math integrity Directional accounting USDC->ASSET: pool deltas == user deltas (token-wise) 1`] = `185045`;
+
+exports[`Pool math integrity Quote behavior (monotonicity & rounding) larger amountIn yields >= amountOut (same direction, same block) 1`] = `185161`;
+
+exports[`Pool math integrity Quote behavior (monotonicity & rounding) tiny trade produces non-zero output (if reserves are healthy) 1`] = `185230`;
+
+exports[`Pool math integrity Reserves update on mint/supplicate reserves move in correct directions for ASSET->USDC 1`] = `120584`;
+
+exports[`Pool math integrity Round-trip sanity (tiny ASSET->USDC then back) small forward+reverse returns close to start (within expected loss) 1`] = `185230`;
+
+exports[`Pool math integrity Validation & slippage reverts when minAmountOut too high (slippage) 1`] = `120584`;

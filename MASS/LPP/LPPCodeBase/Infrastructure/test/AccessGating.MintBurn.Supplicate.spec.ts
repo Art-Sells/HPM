@@ -1,4 +1,4 @@
-// test/AccessGating.spec.ts
+// test/AccessGating.MintBurn.Supplicate.spec.ts
 import hre from "hardhat";
 const { ethers } = hre;
 

@@ -1,0 +1,131 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Rebate / Retention — tiering and token flows Boundary probes around 5% (T1 lower) — snapshot Just-below 5% → NONE ; just-above 5% → T1 1`] = `
+Object {
+  "above5": Object {
+    "depA": "11000000000000000000",
+    "depU": "11000000000000000000",
+    "shareBps": "534",
+    "tierByLocal": "T1",
+  },
+  "below5": Object {
+    "depA": "1000000000000000000",
+    "depU": "1000000000000000000",
+    "shareBps": "51",
+    "tierByLocal": "NONE",
+  },
+  "reserves": Object {
+    "rA": "194750000000000000000",
+    "rU": "194750000000000000000",
+  },
+}
+`;
+
+exports[`Rebate / Retention — tiering and token flows Tier boundaries: find valid deposits for T1/T2/T3/T4; verify flows & snapshot 1`] = `
+Array [
+  Object {
+    "deltas": Object {
+      "poolAsset": "10835000000000000000",
+      "poolUsdc": "10835000000000000000",
+      "tresAsset": "55000000000000000",
+      "tresUsdc": "55000000000000000",
+      "vaultAsset": "110000000000000000",
+      "vaultUsdc": "110000000000000000",
+    },
+    "deposit": Object {
+      "asset": "11000000000000000000",
+      "usdc": "11000000000000000000",
+    },
+    "events": Array [
+      "MCVRebatePaid",
+      "MCVRebatePaid",
+      "MCVQualified",
+    ],
+    "reservesBefore": Object {
+      "rA": "194750000000000000000",
+      "rU": "194750000000000000000",
+    },
+    "shareBps": "534",
+    "skimBps": "150",
+    "tier": "T1",
+  },
+  Object {
+    "deltas": Object {
+      "poolAsset": "22379000000000000000",
+      "poolUsdc": "22379000000000000000",
+      "tresAsset": "207000000000000000",
+      "tresUsdc": "207000000000000000",
+      "vaultAsset": "414000000000000000",
+      "vaultUsdc": "414000000000000000",
+    },
+    "deposit": Object {
+      "asset": "23000000000000000000",
+      "usdc": "23000000000000000000",
+    },
+    "events": Array [
+      "MCVRebatePaid",
+      "MCVRebatePaid",
+      "MCVQualified",
+    ],
+    "reservesBefore": Object {
+      "rA": "205585000000000000000",
+      "rU": "205585000000000000000",
+    },
+    "shareBps": "1006",
+    "skimBps": "270",
+    "tier": "T2",
+  },
+  Object {
+    "deltas": Object {
+      "poolAsset": "54862500000000000000",
+      "poolUsdc": "54862500000000000000",
+      "tresAsset": "712500000000000000",
+      "tresUsdc": "712500000000000000",
+      "vaultAsset": "1425000000000000000",
+      "vaultUsdc": "1425000000000000000",
+    },
+    "deposit": Object {
+      "asset": "57000000000000000000",
+      "usdc": "57000000000000000000",
+    },
+    "events": Array [
+      "MCVRebatePaid",
+      "MCVRebatePaid",
+      "MCVQualified",
+    ],
+    "reservesBefore": Object {
+      "rA": "227964000000000000000",
+      "rU": "227964000000000000000",
+    },
+    "shareBps": "2000",
+    "skimBps": "375",
+    "tier": "T3",
+  },
+  Object {
+    "deltas": Object {
+      "poolAsset": "268142500000000000000",
+      "poolUsdc": "268142500000000000000",
+      "tresAsset": "4952500000000000000",
+      "tresUsdc": "4952500000000000000",
+      "vaultAsset": "9905000000000000000",
+      "vaultUsdc": "9905000000000000000",
+    },
+    "deposit": Object {
+      "asset": "283000000000000000000",
+      "usdc": "283000000000000000000",
+    },
+    "events": Array [
+      "MCVRebatePaid",
+      "MCVRebatePaid",
+      "MCVQualified",
+    ],
+    "reservesBefore": Object {
+      "rA": "282826500000000000000",
+      "rU": "282826500000000000000",
+    },
+    "shareBps": "5001",
+    "skimBps": "525",
+    "tier": "T4",
+  },
+]
+`;
