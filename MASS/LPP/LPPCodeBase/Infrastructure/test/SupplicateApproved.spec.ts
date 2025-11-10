@@ -99,7 +99,7 @@ async function getPoolQuotedAmountOut(pool: any, assetToUsdc: boolean, amountIn:
  * Spec
  * ──────────────────────────────────────────────────────────────────────────── */
 
-describe("S4 — First Supplicate (Approved)", () => {
+describe("Supplicate (Approved)", () => {
   it("Treasury-approved address executes rebalance", async () => {
     const env = await deployCore();
     const { other, access, pool, router, hook, deployer } = env;
@@ -319,16 +319,18 @@ describe("S4 — First Supplicate (Approved)", () => {
 
       const r0 = await reserves(pool);
 
-      // Mint some tokens to OTHER
+      // Mint enough to do *both* a transfer and a transferFrom
       const amt = ethers.parseEther("5");
-      await (await env.asset.connect(deployer).mint(other.address, amt)).wait();
-      await (await env.usdc.connect(deployer).mint(other.address, amt)).wait();
+      const twice = amt * 2n;
 
-      // (1) direct transfer into pool address
+      await (await env.asset.connect(deployer).mint(other.address, twice)).wait();
+      await (await env.usdc.connect(deployer).mint(other.address, twice)).wait();
+
+      // (1) direct transfer into pool address (spend first amt)
       await (await asset.connect(other).transfer(poolAddr, amt)).wait();
       await (await usdc.connect(other).transfer(poolAddr, amt)).wait();
 
-      // (2) transferFrom into pool address (approve then pull)
+      // (2) transferFrom into pool address (spend second amt)
       await (await env.asset.connect(other).approve(deployer.address, amt)).wait();
       await (await env.usdc.connect(other).approve(deployer.address, amt)).wait();
       await (await asset.connect(deployer).transferFrom(other.address, poolAddr, amt)).wait();
@@ -339,7 +341,6 @@ describe("S4 — First Supplicate (Approved)", () => {
       expect(r1.a).to.equal(r0.a);
       expect(r1.u).to.equal(r0.u);
 
-      // Snapshot concise confirmation
       expect({
         reservesBefore: { a: r0.a.toString(), u: r0.u.toString() },
         reservesAfter:  { a: r1.a.toString(), u: r1.u.toString() },
