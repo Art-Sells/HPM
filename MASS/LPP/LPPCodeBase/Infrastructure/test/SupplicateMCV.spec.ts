@@ -24,4 +24,5 @@ describe("S3 — First Supplicate (MCV)", () => {
 });
 
 //Test when MCV (for pool rebalancing) USDC/ASSETout tests
-// add snapshots and sqrtpricing (from ABI)
+// add snapshots and sqrtpricing (before and after) (from ABI)
+// test the transferFroms from IERC20 tokens to see if it'll bypass our guards...

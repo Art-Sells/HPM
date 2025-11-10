@@ -17,4 +17,5 @@ describe("S4 — First Supplicate (Approved)", () => {
   });
 });
 // if the address is not approved by treasury, it should fail, test this also...
-// add snapshots and sqrtpricing (from ABI)
+// add snapshots and sqrtpricing (before and after) (from ABI)
+// test the transferFroms from IERC20 tokens to see if it'll bypass our guards...
