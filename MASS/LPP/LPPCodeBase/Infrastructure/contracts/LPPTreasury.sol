@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import { ILPPTreasury } from "./interfaces/ILPPTreasury.sol";
 import { ILPPFactory }  from "./interfaces/ILPPFactory.sol";
+import { IERC20 }       from "./external/IERC20.sol"; // project’s IERC20
 
 /// Minimal hook interface to forward bootstrap calls with optional price offset
 interface ILPPMintHookMinimal {
@@ -31,6 +32,18 @@ contract LPPTreasury is ILPPTreasury {
         assetRetentionReceiver = _assetReceiver;
         usdcRetentionReceiver  = _usdcReceiver;
         emit RetentionReceiversSet(_assetReceiver, _usdcReceiver);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Owner-controlled withdrawals
+    // ─────────────────────────────────────────────────────────────
+
+    /// @notice Withdraw ERC20 held by this treasury to `to`
+    function withdrawERC20(address token, address to, uint256 amount) external onlyOwner {
+        require(to != address(0), "zero to");
+        require(amount > 0, "zero amount");
+        require(IERC20(token).balanceOf(address(this)) >= amount, "insufficient");
+        require(IERC20(token).transfer(to, amount), "transfer fail");
     }
 
     // ─────────────────────────────────────────────────────────────

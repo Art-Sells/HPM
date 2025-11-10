@@ -1,4 +1,3 @@
-// test/SupplicateApproved.spec.ts
 import hre from "hardhat";
 const { ethers } = hre;
 
@@ -80,26 +79,43 @@ async function safeReadSqrtPriceX96(pool: any): Promise<bigint | null> {
 async function getPoolQuotedAmountOut(pool: any, assetToUsdc: boolean, amountIn: bigint) {
   try {
     const ret = await (pool as any).quoteSupplication(assetToUsdc, amountIn);
-    // robust unpack (amountOut could be first entry or named)
     const toBig = (x: any) => BigInt(x.toString());
     if (ret && typeof ret === "object") {
       if ("amountOut" in ret) return toBig(ret.amountOut);
       if ("0" in ret)         return toBig(ret[0]);
     }
-    if (Array.isArray(ret) && ret.length > 0) {
-      return toBig(ret[0]);
-    }
+    if (Array.isArray(ret) && ret.length > 0) return toBig(ret[0]);
     return BigInt(ret.toString());
   } catch {
-    return 0n; // if pool lacks quote, treat as 0 for comparison fallback
+    return 0n;
   }
+}
+
+/** Integer sqrt for BigInt (Babylonian) */
+function isqrt(n: bigint): bigint {
+  if (n <= 0n) return 0n;
+  let x0 = n;
+  let x1 = (n >> 1n) + 1n;
+  while (x1 < x0) {
+    x0 = x1;
+    x1 = (x1 + n / x1) >> 1n;
+  }
+  return x0;
+}
+
+/** Implied sqrtPriceX96 from reserves: sqrt((U<<192)/A) */
+function impliedSqrtPriceX96FromReserves(a: bigint, u: bigint): bigint {
+  if (a === 0n || u === 0n) return 0n;
+  // price = U/A; sqrt(price)*2^96 => sqrt( (U/A) * 2^192 ) = sqrt( (U<<192)/A )
+  const NUM_SHIFTED = u << 192n;
+  return isqrt(NUM_SHIFTED / a);
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Spec
  * ──────────────────────────────────────────────────────────────────────────── */
 
-describe("S4 — First Supplicate (Approved)", () => {
+describe("Supplicate (Approved)", () => {
   it("Treasury-approved address executes rebalance", async () => {
     const env = await deployCore();
     const { other, access, pool, router, hook, deployer } = env;
@@ -115,7 +131,6 @@ describe("S4 — First Supplicate (Approved)", () => {
 
     await (await access.setApprovedSupplicator(other.address, true)).wait();
 
-    // Fund OTHER with input side (asset→usdc)
     const amountIn = ethers.parseEther("1");
     const { asset, usdc } = await getTokensFromPool(pool);
     await mintTo(env, other.address, /*assetToUsdc*/ true, amountIn);
@@ -123,15 +138,16 @@ describe("S4 — First Supplicate (Approved)", () => {
 
     // Before snapshots
     const r0 = await reserves(pool);
-    const s0 = await safeReadSqrtPriceX96(pool);
+    const s0Stored = await safeReadSqrtPriceX96(pool);
+    const s0Implied = impliedSqrtPriceX96FromReserves(r0.a, r0.u);
+
     const poolAddr = await pool.getAddress();
     const b0A = await bal(asset, other.address);
     const b0U = await bal(usdc,  other.address);
 
-    // Optional: compare to pool quote
     const quoted = await getPoolQuotedAmountOut(pool, true, amountIn);
 
-    // Static-call the router for amountOut (if supported)
+    // Static-call (optional)
     let staticOut: bigint | null = null;
     try {
       staticOut = await (router.connect(other) as any).supplicate.staticCall({
@@ -158,19 +174,17 @@ describe("S4 — First Supplicate (Approved)", () => {
 
     // After snapshots
     const r1 = await reserves(pool);
-    const s1 = await safeReadSqrtPriceX96(pool);
+    const s1Stored = await safeReadSqrtPriceX96(pool);
+    const s1Implied = impliedSqrtPriceX96FromReserves(r1.a, r1.u);
+
     const a1 = await bal(asset, other.address);
     const u1 = await bal(usdc,  other.address);
 
     // Basic correctness
     expect(b0A - a1).to.equal(amountIn);     // spent asset
     expect(u1 >= b0U).to.equal(true);        // received USDC
-    if (quoted > 0n) {
-      expect(u1 - b0U).to.equal(quoted);     // align with pool's quote when available
-    }
-    if (staticOut !== null) {
-      expect(u1 - b0U).to.equal(staticOut!); // align with router's staticCall
-    }
+    if (quoted > 0n)      expect(u1 - b0U).to.equal(quoted);
+    if (staticOut !== null) expect(u1 - b0U).to.equal(staticOut!);
 
     // Reserve deltas correspond to user deltas
     const poolAOut = r0.a > r1.a ? r0.a - r1.a : 0n;
@@ -179,6 +193,9 @@ describe("S4 — First Supplicate (Approved)", () => {
     const userUOut = u1 > b0U ? u1 - b0U : 0n;
     expect(poolAOut).to.equal(userAOut);
     expect(poolUOut).to.equal(userUOut);
+
+    // Directional price check (ASSET->USDC reduces U/A ⇒ implied sqrt decreases)
+    expect(s1Implied <= s0Implied).to.equal(true);
 
     // Snapshot concise summary
     expect({
@@ -197,8 +214,8 @@ describe("S4 — First Supplicate (Approved)", () => {
         after:  { a: a1.toString(),  u: u1.toString()  },
       },
       sqrtPriceX96: {
-        before: s0?.toString() ?? null,
-        after:  s1?.toString() ?? null,
+        stored: { before: s0Stored?.toString() ?? null, after: s1Stored?.toString() ?? null },
+        implied: { before: s0Implied.toString(), after: s1Implied.toString() },
       }
     }).to.matchSnapshot("approved — first supplicate summary");
   });
@@ -208,7 +225,6 @@ describe("S4 — First Supplicate (Approved)", () => {
       const env = await deployCore();
       const { other, pool, router, hook, deployer } = env;
 
-      // Seed reserves 100/100
       await (await hook.mintWithRebate({
         pool: await pool.getAddress(),
         to: deployer.address,
@@ -238,7 +254,6 @@ describe("S4 — First Supplicate (Approved)", () => {
       const env = await deployCore();
       const { other, access, pool, router, hook, deployer } = env;
 
-      // Seed reserves
       await (await hook.mintWithRebate({
         pool: await pool.getAddress(),
         to: deployer.address,
@@ -254,8 +269,10 @@ describe("S4 — First Supplicate (Approved)", () => {
       await mintTo(env, other.address, /*assetToUsdc*/ false, amountIn); // fund USDC
       await approveInputForSupplicate(usdc, other, router, pool);
 
-      const s0 = await safeReadSqrtPriceX96(pool);
       const r0 = await reserves(pool);
+      const s0Stored  = await safeReadSqrtPriceX96(pool);
+      const s0Implied = impliedSqrtPriceX96FromReserves(r0.a, r0.u);
+
       const b0A = await bal(asset, other.address);
       const b0U = await bal(usdc,  other.address);
 
@@ -270,24 +287,28 @@ describe("S4 — First Supplicate (Approved)", () => {
         payer: other.address,
       });
 
-      const s1 = await safeReadSqrtPriceX96(pool);
       const r1 = await reserves(pool);
+      const s1Stored  = await safeReadSqrtPriceX96(pool);
+      const s1Implied = impliedSqrtPriceX96FromReserves(r1.a, r1.u);
+
       const a1 = await bal(asset, other.address);
       const u1 = await bal(usdc,  other.address);
 
-      // correctness
       expect(b0U - u1).to.equal(amountIn);     // spent USDC
       expect(a1 >= b0A).to.equal(true);        // received asset
-      if (quoted > 0n) {
-        expect(a1 - b0A).to.equal(quoted);
-      }
+      if (quoted > 0n) expect(a1 - b0A).to.equal(quoted);
 
-      // snapshot
+      // Directional price check (USDC->ASSET increases U/A ⇒ implied sqrt increases)
+      expect(s1Implied >= s0Implied).to.equal(true);
+
       expect({
         direction: "USDC->ASSET",
         amountIn: amountIn.toString(),
         poolQuote: quoted.toString(),
-        sqrtPriceX96: { before: s0?.toString() ?? null, after: s1?.toString() ?? null },
+        sqrtPriceX96: {
+          stored:  { before: s0Stored?.toString() ?? null, after: s1Stored?.toString() ?? null },
+          implied: { before: s0Implied.toString(),         after:  s1Implied.toString() }
+        },
         reserves: {
           before: { a: r0.a.toString(), u: r0.u.toString() },
           after:  { a: r1.a.toString(), u: r1.u.toString() },
@@ -305,7 +326,6 @@ describe("S4 — First Supplicate (Approved)", () => {
       const env = await deployCore();
       const { deployer, other, hook, pool } = env;
 
-      // Seed to create non-zero reserves
       await (await hook.mintWithRebate({
         pool: await pool.getAddress(),
         to: deployer.address,
@@ -319,27 +339,24 @@ describe("S4 — First Supplicate (Approved)", () => {
 
       const r0 = await reserves(pool);
 
-      // Mint some tokens to OTHER
       const amt = ethers.parseEther("5");
-      await (await env.asset.connect(deployer).mint(other.address, amt)).wait();
-      await (await env.usdc.connect(deployer).mint(other.address, amt)).wait();
+      const twice = amt * 2n;
 
-      // (1) direct transfer into pool address
+      await (await env.asset.connect(deployer).mint(other.address, twice)).wait();
+      await (await env.usdc.connect(deployer).mint(other.address, twice)).wait();
+
       await (await asset.connect(other).transfer(poolAddr, amt)).wait();
       await (await usdc.connect(other).transfer(poolAddr, amt)).wait();
 
-      // (2) transferFrom into pool address (approve then pull)
       await (await env.asset.connect(other).approve(deployer.address, amt)).wait();
       await (await env.usdc.connect(other).approve(deployer.address, amt)).wait();
       await (await asset.connect(deployer).transferFrom(other.address, poolAddr, amt)).wait();
       await (await usdc.connect(deployer).transferFrom(other.address, poolAddr, amt)).wait();
 
-      // Reserves must remain unchanged since pool didn't observe/mutate accounting
       const r1 = await reserves(pool);
       expect(r1.a).to.equal(r0.a);
       expect(r1.u).to.equal(r0.u);
 
-      // Snapshot concise confirmation
       expect({
         reservesBefore: { a: r0.a.toString(), u: r0.u.toString() },
         reservesAfter:  { a: r1.a.toString(), u: r1.u.toString() },

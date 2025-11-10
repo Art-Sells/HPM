@@ -5,9 +5,9 @@ yarn hardhat test test/MintMCV.spec.ts
 yarn hardhat test test/PoolMath.spec.ts
 yarn hardhat test test/QuoterAccuracy.spec.ts
 yarn hardhat test test/RebateMath.spec.ts
-yarn hardhat test test/Reentrancy.spec.ts
 yarn hardhat test test/Revocation.spec.ts
 yarn hardhat test test/SupplicateApproved.spec.ts
 yarn hardhat test test/SupplicateMCV.spec.ts
 yarn hardhat test test/TreasuryWithdrawal.spec.ts
 yarn hardhat test test/VestingEpoch.spec.ts
+yarn hardhat test test/Reentrancy.spec.ts
