@@ -1,0 +1,12 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`LPPTreasury — withdrawERC20 only owner can withdraw ERC20 to an arbitrary recipient 1`] = `
+Object {
+  "recipientAfter": "3000000000000000000",
+  "recipientBefore": "0",
+  "token": "0x0165878A594ca255338adfa4d48449f69242Eb8F",
+  "treasuryAfter": "99999900000000000000000000",
+  "treasuryBefore": "99999903000000000000000000",
+  "withdrawn": "3000000000000000000",
+}
+`;
