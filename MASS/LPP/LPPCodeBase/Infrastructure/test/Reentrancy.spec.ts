@@ -4,4 +4,6 @@ describe.skip("Callback / reentrancy safety", () => {
   it("to be implemented with malicious test harness", () => {});
 });
 
-//test if forwarders will allow re-entrancies into both Treasury and LP-MCV Revate Vaults
+//test if forwarders (and other malicious hackers) 
+// will allow re-entrancies into both Treasury and 
+// LP-MCV Revate Vaults
