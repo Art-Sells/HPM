@@ -146,7 +146,8 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
   - Observe how rebates and retentions interact with price stabilization.  
   - Derive potential **new revenue model** if rebate structure sustains arbitrage cycles.
   - if works, keep and delete all "y.|_|", if not, reconfigure.
-- [ ] Add Security Guardrails, then Re-fork bot repo and re-test...  
+- [ ] Test all (and add more edge cases to drain pools/vaults) with malicious ERC20 smart contract code/etc from security/SecurityHardening.md, then add guardrails to failing tests.
+- [ ] Retest all spec tests then retest MEV bot repo then Re-test...  
 
 ---
 

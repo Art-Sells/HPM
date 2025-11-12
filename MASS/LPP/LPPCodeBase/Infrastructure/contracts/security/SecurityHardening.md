@@ -1,92 +1,5 @@
 # LPP Security Hardening & Test Plan
 
-This document enumerates **all guards to add** and **all tests to implement** based solely on the current Solidity you shared. It’s structured as a checklist you can execute incrementally.
-
----
-
-## Contents
-- [Scope](#scope)
-- [Contracts](#contracts)
-- [Guards To Add (Code Changes)](#guards-to-add-code-changes)
-- [Test Matrix (What We Will Test)](#test-matrix-what-we-will-test)
-- [Attack Simulations & Adversarial Fixtures](#attack-simulations--adversarial-fixtures)
-- [Fuzzing & Property Tests](#fuzzing--property-tests)
-- [Governance & Operations Safety](#governance--operations-safety)
-- [Snapshots & Human-Readable Outputs](#snapshots--human-readable-outputs)
-- [How To Run](#how-to-run)
-- [Future Work](#future-work)
-
----
-
-## Scope
-
-We harden:
-- Vesting payouts & schedules
-- Pool swaps/mints/burns
-- Rebate vault & treasury drains
-- Router permissions
-- ERC20 quirks (fee-on-transfer, non-standard returns, ERC777 hooks)
-- Donation/sync mismatches
-- Governance griefing
-- DoS vectors and gas bombs
-
----
-
-## Contracts
-
-- **LPPVesting.sol**
-- **LPPPool.sol**
-- **LPPMintHook.sol**
-- **LPPRebateVault.sol**
-- **LPPTreasury.sol**
-- **LPPRouter.sol**
-- **LPPFactory.sol**
-- **Access / Interfaces / SafeERC20**
-
----
-
-## Guards To Add (Code Changes)
-
-### Global
-- [ ] **ReentrancyGuard** in: `LPPPool`, `LPPMintHook`, `LPPVesting`, `LPPTreasury`, `LPPRebateVault` (withdraw), and any future callback surfaces.
-- [ ] **SafeERC20 (OZ-style)**: replace custom wrapper with low-level call that tolerates no-return tokens; or strictly **allow-list** ERC20s (reject non-standard).
-- [ ] **Fee-aware accounting**: always compute received amounts via **balance deltas** before/after `transferFrom`.
-
-### LPPVesting
-- [ ] Gate `grant()` with `onlyTreasury` (or allow-list issuers).
-- [ ] In `_claim`, **snapshot token list to memory** (prevent mid-loop growth visibility).
-- [ ] Optional: **pagination** `claimRange(beneficiary, start, end)` and/or `claim(token)` to prevent claim DoS via many tokens.
-- [ ] Governance constraints (see Governance section): only-future `startTime`, non-decreasing `epochSeconds`, schedule “monotone dominance” (no front-load).
-
-### LPPPool
-- [ ] Add `sync()` to reconcile reserves to actual balances; call or validate deltas in `supplicate`/`mintFromHook`.
-- [ ] Make `burn` actually **transfer proportional tokens** to `to` and update reserves via **balance deltas**. Add min-liquidity checks.
-- [ ] Reentrancy guard wrap `supplicate`, `mintFromHook`, `bootstrapInitialize`.
-- [ ] Slippage: ensure swap & mint have **user-provided minimums** (mint via Hook param `minLiquidityOut`).
-
-### LPPMintHook
-- [ ] All split calculations (mint/rebate/retention) performed on **received** amounts (post-fee).
-- [ ] Add `minLiquidityOut` / `minNetToPool` parameters to guard value.
-- [ ] Tier hysteresis (require sticking in tier N for T seconds/blocks) to reduce boundary gaming.
-
-### LPPTreasury
-- [ ] `withdrawERC20` marked **nonReentrant**; update internal accounting (if any) **before** external calls.
-- [ ] Consider **pull pattern** (queued withdrawals) for high-assurance flows.
-
-### LPPRebateVault
-- [ ] Add **withdrawERC20** (treasury/owner-authorized) with **nonReentrant**.
-- [ ] Optionally convert to accounting-only vault and **pay rebates directly** to LP-MCV.
-
-### LPPRouter
-- [ ] LP-MCV permission requires **min LP balance** (not 1 wei).
-- [ ] Add **revocation**/blacklist in `AccessManager`.
-- [ ] Optional: time-decayed permission or per-pool epoch freshness.
-
-### LPPFactory
-- [ ] No change required beyond event/audit trails; ensure hook can only be set once (already enforced), emit strong events.
-
----
-
 ## Test Matrix (What We Will Test)
 
 > Each item corresponds to at least one dedicated `describe(...)` block and snapshot.
@@ -105,11 +18,11 @@ We harden:
 - [ ] **Mid-loop token-list growth**: reenter to `grant()` → new token **not processed** in same claim (memory-snapshotted iteration).
 - [ ] **DoS/Gas bomb**: many dust grants; `claim()` heavy → `claimRange` succeeds.
 
-### 3) Pool – Swaps (`supplicate`) & Reentrancy
+### 3) Pool – Supplicates (`supplicate`) & Reentrancy
 - [ ] Reentrancy attacker tries to reenter during outbound `transfer` → guard blocks second entry; reserves consistent.
 - [ ] Donation mismatch: direct token donation to pool → `supplicate` **reverts** or `sync()` reconciles → quotes/amountOut correct.
 - [ ] Fee-on-transfer token as input: reserves and amountOut computed from **received**; invariant respected.
-- [ ] Micro-swap alternating sequences: ensure **no value bleed** (rounding favors pool).
+- [ ] Micro-supplicate alternating sequences: ensure **no value bleed** (rounding favors pool).
 
 ### 4) Pool – Mint & Burn
 - [ ] `mintFromHook` uses **net received** amounts; split math honors rounding; **minLiquidityOut** enforced.
@@ -160,7 +73,7 @@ Each mock includes knobs to toggle behavior at runtime.
 
 ## Fuzzing & Property Tests
 
-- [ ] **Swap invariants**: For randomized sequences of swaps, pool’s total value (asset+usdc under implied price) never decreases beyond a bounded rounding tolerance.
+- [ ] **Supplicate invariants**: For randomized sequences of supplications, pool’s total value (asset+usdc under implied price) never decreases beyond a bounded rounding tolerance.
 - [ ] **Burn conservation**: Sum of reserves + user balances conserved within 1 wei bounds across mint-burn roundtrips.
 - [ ] **Tier boundary fuzz**: random deposits around boundaries; assert tier stability with hysteresis.
 - [ ] **Schedule fuzz**: randomly generated schedules (sum ≤ 10_000) + random epochSeconds; ensure claim monotonicity (claimed never decreases; never exceeds grants).
