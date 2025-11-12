@@ -1,3 +1,4 @@
+// test/VestingEpoch.spec.ts
 import hre from "hardhat";
 const { ethers, network } = hre;
 import { expect } from "./shared/expect.ts";
@@ -19,19 +20,30 @@ function humanizeSeconds(sec: bigint | number) {
   return `${days} days ${hours} hours ${mins} mins`;
 }
 
-function humanizeSchedule(arr: bigint[] | any[]) {
-  return arr.map((x: any) => {
-    const bps = Number(x);
-    return { bps: bps.toString(), percent: `${bps / 100}%` };
+function humanizeSchedule(arr: Array<bigint | number>) {
+  return arr.map((x: bigint | number) => {
+    const bps = typeof x === "bigint" ? Number(x) : x;
+    return { bps: String(bps), percent: `${bps / 100}%` };
   });
+}
+
+function expandScheduleWithTime(epochSecs: bigint, schedule: Array<bigint | number>) {
+  return schedule.map((bps, i) => ({
+    epoch: i,
+    durationSeconds: String(epochSecs),
+    durationHuman: humanizeSeconds(epochSecs),
+    bps: String(typeof bps === "bigint" ? Number(bps) : bps),
+    percent: `${(typeof bps === "bigint" ? Number(bps) : bps) / 100}%`,
+  }));
 }
 
 /** Deploy Vesting + Vault + ERC20s */
 async function deployVestingWithVault(epochSecsOverride?: number) {
   const [deployer] = await ethers.getSigners();
+
   const ERC20 = await ethers.getContractFactory("TestERC20");
   const asset = await ERC20.deploy("ASSET", "AST", deployer.address);
-  const usdc = await ERC20.deploy("USDC", "USDC", deployer.address);
+  const usdc  = await ERC20.deploy("USDC",  "USDC", deployer.address);
   await asset.waitForDeployment();
   await usdc.waitForDeployment();
 
@@ -40,9 +52,9 @@ async function deployVestingWithVault(epochSecsOverride?: number) {
   await vault.waitForDeployment();
 
   const VestingF = await ethers.getContractFactory("LPPVesting");
-  const epochSecs = epochSecsOverride ?? 7 * 24 * 60 * 60; // default 1 week
+  const epochSecs = epochSecsOverride ?? 7 * 24 * 60 * 60; // 1 week default
   const startTime = Math.floor(Date.now() / 1000);
-  const schedule = [2500, 2500, 2500, 2500];
+  const schedule  = [2500, 2500, 2500, 2500];
 
   console.log("🧩 Deploying LPPVesting with:", {
     treasury: deployer.address,
@@ -53,8 +65,8 @@ async function deployVestingWithVault(epochSecsOverride?: number) {
   });
 
   const vesting = await VestingF.deploy(
-    deployer.address,
-    await vault.getAddress(),
+    deployer.address,           // treasury
+    await vault.getAddress(),   // vault
     epochSecs,
     startTime,
     schedule
@@ -83,9 +95,10 @@ describe("Vesting — epochs, percentages, balances, and access control", () => 
       const startEpoch = BigInt(await vesting.currentEpoch());
       const human = humanizeSeconds(epochSecs);
 
-      await increaseTime(Number(epochSecs) - 2);
+      await increaseTime(Number(epochSecs) - 2); // just before boundary
       const beforeBoundary = BigInt(await vesting.currentEpoch());
-      await increaseTime(3);
+
+      await increaseTime(3); // cross boundary
       const afterBoundary = BigInt(await vesting.currentEpoch());
 
       expect({
@@ -100,15 +113,28 @@ describe("Vesting — epochs, percentages, balances, and access control", () => 
   /*─────────────────────────────── 02 — Schedule percentages ───────────────────────────────*/
   describe("02 — Schedule percentages", () => {
     it("returns schedule array that sums to ≤10000 bps (with human breakdown)", async () => {
-      const sched = await vesting.getSchedule();
-      const sum = sched.reduce((a: bigint, b: any) => a + BigInt(b.toString()), 0n);
-      const humanSchedule = humanizeSchedule(sched);
+      const raw = await vesting.getSchedule();
+      const sched = raw.map((x: any) => BigInt(x.toString()));
+      const sum = sched.reduce((a: bigint, b: bigint) => a + b, 0n);
+      const human = humanizeSchedule(sched);
 
       expect({
-        schedule: humanSchedule,
+        schedule: human,
         sumBps: sum.toString(),
         sumPercent: `${Number(sum) / 100}%`,
       }).to.matchSnapshot("vesting—schedule-bps-human");
+    });
+
+    it("returns expanded schedule with per-epoch human duration", async () => {
+      const raw = await vesting.getSchedule();
+      const sched = raw.map((x: any) => BigInt(x.toString()));
+      const epochSecs = BigInt(await vesting.epochSeconds());
+      const expanded = expandScheduleWithTime(epochSecs, sched);
+
+      expect({
+        epochSeconds: `${epochSecs} (${humanizeSeconds(epochSecs)})`,
+        expanded,
+      }).to.matchSnapshot("vesting—schedule-expanded-human");
     });
   });
 
@@ -130,11 +156,12 @@ describe("Vesting — epochs, percentages, balances, and access control", () => 
     });
   });
 
-  /*─────────────────────────────── 04 — Treasury-only mutation controls ─────────────────────────*/
+  /*─────────────────────────────── 04 — Treasury-only mutation controls ────────────────────*/
   describe("04 — Treasury-only mutation controls", () => {
     it("shows old/new epochs and schedules in human terms", async () => {
-      const oldEpoch = await vesting.epochSeconds();
-      const oldSched = await vesting.getSchedule();
+      const oldEpoch = BigInt(await vesting.epochSeconds());
+      const oldSchedRaw = await vesting.getSchedule();
+      const oldSched = oldSchedRaw.map((x: any) => BigInt(x.toString()));
 
       const newEpoch = 2_000_000; // ~23 days
       const newSchedule = [3000, 3000, 2000, 2000];
@@ -142,8 +169,9 @@ describe("Vesting — epochs, percentages, balances, and access control", () => 
       await (await vesting.connect(deployer).setEpochSeconds(newEpoch)).wait();
       await (await vesting.connect(deployer).setSchedule(newSchedule)).wait();
 
-      const afterEpoch = await vesting.epochSeconds();
-      const afterSched = await vesting.getSchedule();
+      const afterEpoch = BigInt(await vesting.epochSeconds());
+      const afterSchedRaw = await vesting.getSchedule();
+      const afterSched = afterSchedRaw.map((x: any) => BigInt(x.toString()));
 
       expect({
         oldEpochSeconds: `${oldEpoch.toString()} (${humanizeSeconds(oldEpoch)})`,
@@ -173,6 +201,59 @@ describe("Vesting — epochs, percentages, balances, and access control", () => 
       }
 
       expect(reverts).to.matchSnapshot("vesting—non-treasury-reverts-human");
+    });
+  });
+
+  /*─────────────────────────────── 05 — Final payout after all epochs ──────────────────────*/
+  describe("05 — LP-MCV payments after vesting completion", () => {
+    it("releases full vested amount to LP-MCV after final epoch (with human snapshot)", async () => {
+      const [deployer, lpMCV] = await ethers.getSigners();
+
+      const amount = ethers.parseEther("100");
+      const tokenAddr = await asset.getAddress();
+      const vaultAddr = await vault.getAddress();
+      const vestingAddr = await vesting.getAddress();
+
+      // 1) Fund the vault so it can pay out
+      await (await asset.mint(vaultAddr, amount)).wait();
+
+      // 2) Impersonate the vault and approve the vesting contract to pull funds
+      await network.provider.send("hardhat_impersonateAccount", [vaultAddr]);
+      await network.provider.send("hardhat_setBalance", [vaultAddr, "0x56BC75E2D63100000"]); // 100 ETH
+      const vaultSigner = await ethers.getSigner(vaultAddr);
+      await (await asset.connect(vaultSigner).approve(vestingAddr, ethers.MaxUint256)).wait();
+
+      // 3) Treasury grants LP-MCV a vesting position
+      await (await vesting.connect(deployer).grant(lpMCV.address, tokenAddr, amount)).wait();
+
+      // 4) Travel through all epochs
+      const schedule = await vesting.getSchedule();
+      const totalEpochs = Number(schedule.length);
+      const epochSecs = Number(await vesting.epochSeconds());
+      await increaseTime(epochSecs * totalEpochs);
+
+      // 5) Claim & assert
+      const b0 = await asset.balanceOf(lpMCV.address);
+      await (await vesting.connect(lpMCV).claim()).wait();
+      const b1 = await asset.balanceOf(lpMCV.address);
+
+      expect(b1 - b0).to.equal(amount);
+
+      // 6) Snapshot in human form
+      expect({
+        payer: vaultAddr,
+        payee: lpMCV.address,
+        token: tokenAddr,
+        totalEpochs,
+        epochSeconds: `${epochSecs} (${humanizeSeconds(epochSecs)})`,
+        totalSeconds: `${epochSecs * totalEpochs} (${humanizeSeconds(epochSecs * totalEpochs)})`,
+        vestedAmount: `${ethers.formatEther(amount)} tokens`,
+        paidNow: `${ethers.formatEther(b1 - b0)} tokens`,
+        allowanceGranted: "yes",
+      }).to.matchSnapshot("vesting—final-payout-LP-MCV-human");
+
+      // 7) Cleanup
+      await network.provider.send("hardhat_stopImpersonatingAccount", [vaultAddr]);
     });
   });
 });

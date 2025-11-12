@@ -9,6 +9,42 @@ Object {
 }
 `;
 
+exports[`Vesting — epochs, percentages, balances, and access control 02 — Schedule percentages returns expanded schedule with per-epoch human duration 1`] = `
+Object {
+  "epochSeconds": "604800 (7 days 0 hours 0 mins)",
+  "expanded": Array [
+    Object {
+      "bps": "2500",
+      "durationHuman": "7 days 0 hours 0 mins",
+      "durationSeconds": "604800",
+      "epoch": 0,
+      "percent": "25%",
+    },
+    Object {
+      "bps": "2500",
+      "durationHuman": "7 days 0 hours 0 mins",
+      "durationSeconds": "604800",
+      "epoch": 1,
+      "percent": "25%",
+    },
+    Object {
+      "bps": "2500",
+      "durationHuman": "7 days 0 hours 0 mins",
+      "durationSeconds": "604800",
+      "epoch": 2,
+      "percent": "25%",
+    },
+    Object {
+      "bps": "2500",
+      "durationHuman": "7 days 0 hours 0 mins",
+      "durationSeconds": "604800",
+      "epoch": 3,
+      "percent": "25%",
+    },
+  ],
+}
+`;
+
 exports[`Vesting — epochs, percentages, balances, and access control 02 — Schedule percentages returns schedule array that sums to ≤10000 bps (with human breakdown) 1`] = `
 Object {
   "schedule": Array [
@@ -95,5 +131,19 @@ Object {
       "percent": "25%",
     },
   ],
+}
+`;
+
+exports[`Vesting — epochs, percentages, balances, and access control 05 — LP-MCV payments after vesting completion releases full vested amount to LP-MCV after final epoch (with human snapshot) 1`] = `
+Object {
+  "allowanceGranted": "yes",
+  "epochSeconds": "2000000 (23 days 3 hours 33 mins)",
+  "paidNow": "100.0 tokens",
+  "payee": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "payer": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+  "token": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+  "totalEpochs": 4,
+  "totalSeconds": "8000000 (92 days 14 hours 13 mins)",
+  "vestedAmount": "100.0 tokens",
 }
 `;

@@ -127,27 +127,6 @@
 - [ ] Treasury retention accounting.  
 - [ ] Vesting unlock & withdrawal sequence. 
 
-##### Bootstrap seeding dynamics
-Equal seed for all pools (via adapter):
-
-- Pool A: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
-- Pool B: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
-- Pool C: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
-
-Primary position (each pool): ultra‑narrow (≈ ±1–2 ticks).
-Fallback position: tiny, very wide range to prevent “no‑liquidity”.
-Mint via NonfungiblePositionManager (wrapped in @/periphery helpers).
-
-Center Offsets (relative to oracle at time of seed):
-
-- Pool A: −10 bps center
-- Pool B: −5 bps center
-- Pool C: +15 bps center
-
-Offsetting without an “anchor” intentionally creates internal spreads so external MEV can arb and then mint (via the atomic flow below).
-
-- Test if prices are off-center, if so, then increase pool seeds
-
 ##### Snapshots (Hardhat)
 | Stage | Description |
 |--------|-------------|
@@ -167,6 +146,8 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
   - Observe how rebates and retentions interact with price stabilization.  
   - Derive potential **new revenue model** if rebate structure sustains arbitrage cycles.
   - if works, keep and delete all "y.|_|", if not, reconfigure.
+- [ ] Test all (and add more edge cases to drain pools/vaults) with malicious ERC20 smart contract code/etc from security/SecurityHardening.md, then add guardrails to failing tests.
+- [ ] Retest all spec tests then retest MEV bot repo then Re-test...  
 
 ---
 
@@ -181,6 +162,7 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
 ### 4. Frontend / API
 - [ ] Router auto-selects optimal LPP pools.  
 - [ ] Badge system: LP-MCV / Approved Supplicator / Unauthorized.  
+- [ ] Vesting (API) and approving contract addresses with Treasury Address, test...
 - [ ] Live **Quoter** integration: pre-display expected output + drift metrics.  
 - [ ] `/state` endpoint: `{ pool, price, liquidity, TVL, positions, rebateTier }`.  
 
@@ -191,4 +173,19 @@ Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and
 - [ ] Deploy on Testnet first (get treasury address and key), test USDC/ASSET using LPP first... if it works... Deploy on Mainnet
 - [ ] Create asset/USDC pools A, B, C → initialize at reference price.  
 - [ ] Seed equal USDC & asset liquidity.  
+- - [ ] Bootstrap seeding dynamics
+- - Equal seed for all pools (via adapter):
+- - - Pool A: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
+- - - Pool B: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
+- - - Pool C: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
+- - - - Primary position (each pool): ultra‑narrow (≈ ±1–2 ticks).
+Fallback position: tiny, very wide range to prevent “no‑liquidity”.
+Mint via NonfungiblePositionManager (wrapped in @/periphery helpers).
+- - Center Offsets (relative to oracle at time of seed):
+- - - Pool A: −10 bps center
+- - - Pool B: −5 bps center
+- - - Pool C: +15 bps center
+- - Offsetting without an “anchor” intentionally creates internal spreads so external MEV can arb and then mint (via the atomic flow below).
+- - Test if prices are off-center, if so, then increase pool seeds
 - [ ] Verify contracts, index Subgraph, launch dashboards, publish docs.  
+
