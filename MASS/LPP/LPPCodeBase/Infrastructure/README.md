@@ -110,22 +110,22 @@
 ### 2. Testing Plan (with Snapshots): ***in progress***
 
 #### Unit Tests
-- [ ] Rebate / retention math precision.  
-- [ ] Equal-value enforcement thresholds.  
-- [ ] Access gating: LP-MCV supplicators & minting, Approved Treasury supplicators, Treasury pool bootstrapping aothorizations only... Everyone else Unauthorized... Only using Private Key from LP Treasury
-- [ ] Revocation enforcement.  
-- [ ] Vesting and epoch cap logic.  
-- [ ] Pool math integrity (price and reserve correctness).  
-- [ ] Callback / reentrancy safety.  
-- [ ] Quoter accuracy: simulated vs. executed deltas.  
+- [X] Rebate / retention math precision.  
+- [X] Equal-value enforcement thresholds.  
+- [X] Access gating: LP-MCV supplicators & minting, Approved Treasury supplicators, Treasury pool bootstrapping aothorizations only... Everyone else Unauthorized... Only using Private Key from LP Treasury
+- [X] Revocation enforcement.  
+- [X] Vesting and epoch cap logic.  
+- [X] Pool math integrity (price and reserve correctness).  
+- [X] Callback / reentrancy safety.  
+- [X] Quoter accuracy: simulated vs. executed deltas.  
 
 #### Integration Tests
-- [ ] Bootstrap tiny liquidity → rebate + retention flows.  
-- [ ] LP-MCV supplicate success path.  
-- [ ] Approved Supplicator supplicate success.  
-- [ ] Unauthorized caller fails.  
-- [ ] Treasury retention accounting.  
-- [ ] Vesting unlock & withdrawal sequence. 
+- [X] Bootstrap tiny liquidity → rebate + retention flows.  
+- [X] LP-MCV supplicate success path.  
+- [X] Approved Supplicator supplicate success.  
+- [X] Unauthorized caller fails.  
+- [X] Treasury retention accounting.  
+- [X] Vesting unlock & withdrawal sequence. 
 
 ##### Snapshots (Hardhat)
 | Stage | Description |
@@ -140,14 +140,15 @@
 Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and router state.
 
 #### Simulation & Bot Testing
-- [ ] **Fork MEV bot repos** and repurpose for MCV analysis:  
+- [ ] **Experiment with Trading bot repos (Hummingbot, etc)** and repurpose for MCV analysis (look at guide/LPPsimulation.md)
   - Simulate arbitrage / rebate opportunities under LPP rules.  
   - Start with micro-liquidity and gradually scale to full capacity.  
   - Observe how rebates and retentions interact with price stabilization.  
   - Derive potential **new revenue model** if rebate structure sustains arbitrage cycles.
-  - if works, keep and delete all "y.|_|", if not, reconfigure.
+  - [ ] If the above works, find a way to remove humans and make it completely autonomous (AI) where (only) the bots store and access private keys, can withdraw and deposit funds, etc (thus creating the first ever AI self-sustaining economy).
+  - if that^ works, keep and delete all "y.|_|", if not, reconfigure.
 - [ ] Test all (and add more edge cases to drain pools/vaults) with malicious ERC20 smart contract code/etc from security/SecurityHardening.md, then add guardrails to failing tests.
-- [ ] Retest all spec tests then retest MEV bot repo then Re-test...  
+- [ ] Retest all spec tests then retest MEV (trading) bot repo then Re-test...  
 
 ---
 
@@ -185,7 +186,7 @@ Mint via NonfungiblePositionManager (wrapped in @/periphery helpers).
 - - - Pool A: −10 bps center
 - - - Pool B: −5 bps center
 - - - Pool C: +15 bps center
-- - Offsetting without an “anchor” intentionally creates internal spreads so external MEV can arb and then mint (via the atomic flow below).
+- - Offsetting without an “anchor” intentionally creates internal spreads so external MEV (Trading Bot) can arb and then mint (via the atomic flow below).
 - - Test if prices are off-center, if so, then increase pool seeds
 - [ ] Verify contracts, index Subgraph, launch dashboards, publish docs.  
 
