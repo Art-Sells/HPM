@@ -140,7 +140,7 @@
 Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and router state.
 
 #### Simulation & Bot Testing
-- [ ] **Experiment with Trading bot repos (Hummingbot, etc)** and repurpose for MCV analysis (look at guide/LPPsimulation.md)
+- [ ] **Fork MEV bot repos** to discover LPP
   - Simulate arbitrage / rebate opportunities under LPP rules.  
   - Start with micro-liquidity and gradually scale to full capacity.  
   - Observe how rebates and retentions interact with price stabilization.  
