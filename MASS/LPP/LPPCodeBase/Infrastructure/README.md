@@ -1,192 +1,208 @@
-# LPP Infrastructure v1 Blueprint
+# LPP Infrastructure v1 — Phase 0 (No Vesting / No Rebates)
 
-## Scope & Principles:
-
-- **MCV (Maximum Contributing Value)** applies **only** to LPs who mint liquidity in equal proportions of **USDC + asset**.  
-- **Approved Supplicators** are external actors authorized by Treasury to rebalance pools but **earn no rebate**.  
-- **Supplicate (rebalance)** can be called **only** by LP-MCVs or Treasury-approved Supplicators.  
-- **Rebates and retentions** apply **only** during the mint process.  
+> **Current focus:** Minimal LPP core for MCV testing.
 
 ---
 
-### A) Roles & Permissions
-- **LP-MCV (MCV)**  
-  - Mints liquidity via LPP periphery with equal USDC & asset.  
-  - Eligible for **rebate + retention** skim during mint.  
-  - Automatically allowed to call `supplicate`.  
-- **Approved Supplicator**  
-  - Explicitly authorized by Treasury to call `supplicate` without LP position.  
-  - No MCV status, no rebates.  
+## 0. Design Snapshot
 
-✅ **Supplicate permission = (is LP-MCV) OR (is Approved Supplicator)**  
-✅ **Rebates apply only to LP-MCV minting**
+### Phase 0 Goals (4 Pools + MEV Testing)
 
----
+Target behavior for Phase 0:
 
-### B) Rebate & Retention Tiers (for LP-MCVs only)
+- **4 pools** with **$2 TVL each**
+- **3 pool orbits** with ±500 bps offsets
+- **100% of pools within ±400–500 bps of reference price**
+- `supplicate`  
+  - **Only Treasury-approved addresses**  
+  - Simple USDC ⇄ ASSET swaps (rebalancing)  
+  - **No fee** at the pool level (pure CFMM)
+- `mcvSupplication`  
+  - Callable by **anyone**
+  - Executes across **3-pool orbit** for USDC ⇄ ASSET cycles
+  - **2.5% fee** taken from profitable mcvSupplication routes  
+  - Of that 2.5%: **0.5% retained by Treasury**, **2.0% available to external MEV / searchers** (PnL)
 
-| Tier | Share of TVL S | Rebate (%) | Retention (%) |
-|:----:|:---------------:|:-----------:|:--------------:|
-| T1 | 5 – < 10 | 1.0 | 0.5 |
-| T2 | 10 – < 20 | 1.8 | 0.9 |
-| T3 | 20 – < 35 | 2.5 | 1.25 |
-| T4 | ≥ 50 (cap) | 3.5 | 1.75 |
+Later, after MEV testing is successful, we scale to:
 
-**Guards**  
-- Centered mint window (± δ%), vest / hold periods, per-epoch caps, tier clamp.
-
----
-
-### C) Core Flows
-
-#### LP-MCV Mint
-1. Caller executes `mintWithRebate(equal USDC, equal asset)`  
-2. MintHook computes tier, applies rebate + retention skim, mints remainder.  
-3. Rebate sent to LP-MCV, retention to Treasury.  
-4. Caller becomes LP-MCV (eligible to supplicate).  
-
-#### Supplication (Rebalance)
-- Callable only by LP-MCV or Approved Supplicator.  
-- Router fetches live quote from `LPPSupplicationQuoter` → executes atomic rebalance using `LPPPool`.  
-- Emits `SupplicateExecuted`.
-
-#### Quoting (View-Only Flow)
-- Any address (frontend, solver, or analytics) can call `LPPSupplicationQuoter.quoteSupplication(pool, direction, amountIn)`  
-- Returns potential output, price impact, and drift metrics before committing capital.  
+- **1,000 pools** with ~$2 each
+- **400 pool orbits** spanning ±500 bps
+- Same basic fee logic (2.5% / 0.5% split), but at LPP-wide scale.
 
 ---
 
-## Progress Checklist
+## 1. Contracts in Scope for Phase 0
 
-### 1. Core Contracts to Build: ***completed and being refactored***
+> Only the pieces we actually need for 4 pools + MEV testing.
 
-- [X] **`LPPFactory`**  
-  - Creates & registers new `LPPPool` instances.  
-  - Stores configuration metadata (tick range spacing, asset types, etc.).  
-  - Exposes registry lookups for Router and MintHook.
+- [ ] **LPPFactory (minimal)**  
+  - Create, track, and register `LPPPool` instances.  
+  - Store list of pools and basic metadata (asset, usdc).  
+  - Enforce:
+    - Only Treasury can create pools.
+    - Only Treasury can update factory-level parameters (if any).
 
-- [X] **`LPPPool`**  
-  - Core liquidity container holding USDC and asset reserves.  
-  - Tracks liquidity positions, pricing function, and pool math (independent of fee growth).  
-  - Interface for mint / burn / quote / supplicate operations.
+- [ ] **LPPPool (simple CFMM, no rebates)**  
+  - Holds **ASSET** and **USDC** reserves.  
+  - Core functions:
+    - `quoteSupplication(bool assetToUsdc, uint256 amountIn) → (uint256 amountOut, int256 priceDriftBps)`  
+    - `supplicate(address payer, address to, bool assetToUsdc, uint256 amountIn, uint256 minAmountOut)`  
+  - No hooks, no rebates, no vesting.  
+  - Pricing:
+    - Minimal x*y-style or your current placeholder CFMM.
+    - Track `reserveAsset`, `reserveUsdc`, `priceX96`, `totalLiquidity`.
+  - Initialization:
+    - `bootstrapInitialize` sets initial reserves and price (including offset in bps per pool).
 
-- [X] **`LPPMintHook`**  
-  - Validates **equal-value deposits** (USDC : asset within 0.10 % tolerance).  
-  - Calculates total TVL share → selects tier → applies in-kind skim:  
-    - `rebate` → to LP-MCV  
-    - `retention` → to Treasury  
-  - Emits:  
-    - `MCVQualified(lp, pool, tier, shareBps)`  
-    - `MCVRebatePaid(to, pool, token, amount, tier)`
+- [ ] **LPPRouter (Phase 0)**  
+  - Entry point for both:
+    - `supplicate` (Treasury-approved addresses only)
+    - `mcvSupplication` (anyone, multi-pool strategy)
+  - Responsibilities:
+    - Permission checks via `LPPAccessManager` or hard-coded Treasury list.
+    - Routing:
+      - `supplicate`: Single-pool call to `LPPPool.supplicate`.
+      - `mcvSupplication`: Multi-pool route (3-pool orbit), computing path and aggregating result.
+    - Fee logic for **mcvSupplication**:
+      - Charge **2.5%** on profitable output.
+      - Route **0.5%** to Treasury.
+      - Keep 2.0% (or configurable share) as MEV/Bot profit.
 
-- [X] **`LPPAccessManager`**  
-  - Registry of Treasury-approved Supplicators.  
-    - `approvedSupplicator[address] → bool`  
-  - Emits `SupplicatorApproved(address who, bool approved)`
+- [ ] **LPPAccessManager (Phase 0)**  
+  - [ ] Tracks **Treasury-approved supplicators**.
+  - [ ] Functions:
+    - `setApprovedSupplicator(address who, bool approved)`
+    - `isApprovedSupplicator(address who) view returns (bool)`
+  - Used by Router only for:
+    - `supplicate` permission checks.
 
-- [X] **`LPPTreasury`**  
-  - Owns AccessManager.  
-  - Receives retention slices from MintHook.  
-  - Manages epoch caps, vest periods, and distribution policies.
+- [ ] **LPPTreasury (Phase 0)**  
+  - [ ] Holds protocol fees from **mcvSupplication** routes.
+  - [ ] Owns/controls:
+    - Factory
+    - AccessManager
+  - [ ] Core functions:
+    - `withdrawERC20(token, to, amount)` (with proper **nonReentrant guard**)  
+    - `setApprovedSupplicator(...)` via AccessManager
+    - Governance-only controls for future phases.
 
-- [X] **`LPPRebateVault`**  
-  - Holds in-kind rebates for LP-MCVs.  
-  - Handles vesting, unlocking, and distribution.
+- [ ] **TestERC20 (temporary for local)**  
+  - Purely for Hardhat testing of ASSET & USDC.
+  - Removed before mainnet deployment.
 
-- [X] **`LPPSupplicationQuoter`**  
-  - Simulates a supplication (rebalance) **without execution**.  
-  - Inputs: `pool`, `amountIn`, `direction (asset→USDC or USDC→asset)`  
-  - Outputs: `expectedAmountOut`, `impactRatio`, `liquidityBefore/After`, and `priceDrift`.  
-  - Used by Router, Frontend, and off-chain solvers to estimate outcomes.  
-  - Emits no state change; pure view logic.  
-
-- [X] **`LPPRouter`**  
-  - Executes verified `supplicate(SupplicateParams)` transactions.  
-  - Checks:  
-    - Caller is LP-MCV **or** Approved Supplicator.  
-  - Optionally calls `LPPSupplicationQuoter` for pre-validation.  
-  - Emits `SupplicateExecuted(caller, pool, assetIn, amountIn, assetOut, amountOut, reason)`.
-
-### 2. Testing Plan (with Snapshots): ***in progress***
-
-#### Unit Tests
-- [X] Rebate / retention math precision.  
-- [X] Equal-value enforcement thresholds.  
-- [X] Access gating: LP-MCV supplicators & minting, Approved Treasury supplicators, Treasury pool bootstrapping aothorizations only... Everyone else Unauthorized... Only using Private Key from LP Treasury
-- [X] Revocation enforcement.  
-- [X] Vesting and epoch cap logic.  
-- [X] Pool math integrity (price and reserve correctness).  
-- [X] Callback / reentrancy safety.  
-- [X] Quoter accuracy: simulated vs. executed deltas.  
-
-#### Integration Tests
-- [X] Bootstrap tiny liquidity → rebate + retention flows.  
-- [X] LP-MCV supplicate success path.  
-- [X] Approved Supplicator supplicate success.  
-- [X] Unauthorized caller fails.  
-- [X] Treasury retention accounting.  
-- [X] Vesting unlock & withdrawal sequence. 
-
-##### Snapshots (Hardhat)
-| Stage | Description |
-|--------|-------------|
-| Bootstrap | Factory + pools deployed & initialized |
-| Mint (MCV) | Equal-value mint with Tier-1 rebate |
-| Supplicate (MCV) | LP-MCV executes rebalance |
-| Supplicate (Approved) | Treasury-approved address executes rebalance |
-| Revocation Guard | Revoked Supplicator reverted |
-| Quoter Validation | Compare quoter output vs. actual execution results |
-
-Each snapshot logs pool state, liquidity, vault balances, treasury holdings, and router state.
-
-#### Simulation & Bot Testing
-- [ ] **Fork MEV bot repos** to test if they will discover LPP (refer to guide/LPPsimulations.md)
-  - Simulate arbitrage / rebate opportunities under LPP rules.  
-  - Start with micro-liquidity and gradually scale to full capacity.  
-  - Observe how rebates and retentions interact with price stabilization.  
-  - Derive potential **new revenue model** if rebate structure sustains arbitrage cycles.
-  - [ ] If the above works, find a way to remove humans and make it completely autonomous (AI) where (only) the bots store and access private keys, can withdraw and deposit funds, etc (thus creating the first ever AI self-sustaining economy).
-  - if that^ works, keep and delete all "y.|_|", if not, reconfigure.
-- [ ] Test all (and add more edge cases to drain pools/vaults) with malicious ERC20 smart contract code/etc from security/SecurityHardening.md, then add guardrails to failing tests.
-- [ ] Retest all spec tests then retest MEV (trading) bot repo then Re-test...  
+> ✅ **Explicitly NOT in Phase 0:** `LPPMintHook`, `LPPRebateVault`, `LPPVesting` and all vesting-related interfaces.
 
 ---
 
-### 3. Subgraph & Events
-- [ ] Index:  
-  - `MCVQualified`, `MCVRebatePaid`, `SupplicatorApproved`, `SupplicateExecuted`, `RebalanceNeeded`.  
-- [ ] Add Quoter view calls for external analytics (no event emission).  
-- [ ] Entities: Pool, Position, LPmcv, Supplicator, RebateEpoch, TreasuryReceipt, QuoteSnapshot, SupplicateAction.  
+## 2. Phase 0 Pool Topology
+
+### 2.1 Base Reference
+
+- Reference price: 1 ASSET ≈ 1 USDC (for local test simplicity).
+- All pools seeded with **$2 TVL** (1 ASSET + 1 USDC in notional terms).
+
+### 2.2 4 Pools, 3 Orbits, Offsets
+
+- [ ] **Pools (each with ~2 units of value):**
+  - Pool A: **center −500 bps**
+  - Pool B: **center −499 bps**
+  - Pool C: **center +499 bps**
+  - Pool D: **center +500 bps**
+
+- [ ] **Orbits (Phase 0):**
+  - Orbit 1: A ↔ B
+  - Orbit 2: B ↔ C
+  - Orbit 3: C ↔ D
+
+- [ ] **Constraints:**
+  - 100% of pools must remain within **±400–500 bps** from reference.
+  - Treated as a tiny “ladder” of internal spreads.
+
+> The future **400 pool orbits** (scaled version) replicate this pattern around a more granular tick ladder.
 
 ---
 
-### 4. Frontend / API
-- [ ] Router auto-selects optimal LPP pools.  
-- [ ] Badge system: LP-MCV / Approved Supplicator / Unauthorized.  
-- [ ] Vesting (API) and approving contract addresses with Treasury Address, test...
-- [ ] Live **Quoter** integration: pre-display expected output + drift metrics.  
-- [ ] `/state` endpoint: `{ pool, price, liquidity, TVL, positions, rebateTier }`.  
+## 3. Core Flows (Phase 0)
+
+### 3.1 `supplicate` (Treasury-approved)
+
+- [ ] Callable only by addresses where `isApprovedSupplicator[caller] == true`.
+- [ ] Execution:
+  1. Router verifies caller permission.
+  2. Router forwards call to single `LPPPool.supplicate` with:
+     - `payer = msg.sender`
+     - `to = caller` or specified recipient
+     - `assetToUsdc` direction
+     - `amountIn`, `minAmountOut`
+  3. Pool performs CFMM swap, updates reserves, emits `Supplicate` event.
+  4. Router emits `SupplicateExecuted` event with reason code (0 = OK).  
+- [ ] No rebate, no extra fee.
+
+Use case: **Treasury maintenance** and simple rebalancing, not profit extraction.
 
 ---
 
-### 5. Deployment Plan
-- [ ] Delete TestERC20 contract
-- [ ] Deploy on Testnet first (get treasury address and key), test USDC/ASSET using LPP first... if it works... Deploy on Mainnet
-- [ ] Create asset/USDC pools A, B, C → initialize at reference price.  
-- [ ] Seed equal USDC & asset liquidity.  
-- - [ ] Bootstrap seeding dynamics
-- - Equal seed for all pools (via adapter):
-- - - Pool A: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
-- - - Pool B: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
-- - - Pool C: USDC = $1, cbBTC ≈ $1 (≈ 0.001 cbBTC)*
-- - - - Primary position (each pool): ultra‑narrow (≈ ±1–2 ticks).
-Fallback position: tiny, very wide range to prevent “no‑liquidity”.
-Mint via NonfungiblePositionManager (wrapped in @/periphery helpers).
-- - Center Offsets (relative to oracle at time of seed):
-- - - Pool A: −10 bps center
-- - - Pool B: −5 bps center
-- - - Pool C: +15 bps center
-- - Offsetting without an “anchor” intentionally creates internal spreads so external MEV (Trading Bot) can arb and then mint (via the atomic flow below).
-- - Test if prices are off-center, if so, then increase pool seeds
-- [ ] Verify contracts, index Subgraph, launch dashboards, publish docs.  
+### 3.2 `mcvSupplication` (Anyone, 3-Pool Orbit)
 
+- [ ] Callable by **any address**.
+- [ ] Execution outline:
+  1. Router computes or receives a pre-computed **3-pool path** (e.g., B → C → D → B).  
+  2. For each hop in the orbit:
+     - Call `LPPPool.supplicate` sequentially, carrying forward the output as the next input.
+  3. At the end, compare final balance vs initial:
+     - If **no profit**, revert or simply return with zero fee.
+     - If **profit > 0**, apply fee:
+       - Compute `fee = profit * 2.5%`
+       - `treasuryCut = fee * 0.5 / 2.5 = profit * 0.5%`
+       - `botProfit = profit - fee + (fee - treasuryCut)` depending on exact model  
+         (we can lock this down in code when we wire the MEV bot).
+
+- [ ] Example route:
+  - Start with 1 USDC in Pool B.
+  - B: USDC → ASSET → amountOut1
+  - C: ASSET → USDC → amountOut2
+  - D: USDC → ASSET → amountOut3
+  - Compare `amountOut3` vs starting value; if > start, we realized a profit.
+
+> This is where **Flashbots searcher code** comes in: it will test thousands of possible small routes and only bundle the profitable ones on-chain.
+
+### 3.3 Test Off Chain
+- [ ] reconfigure all spec tests to test above
+
+---
+
+## 4. MEV / Flashbots Integration (Phase 0)
+
+> Focus: prove that *existing MEV searchers* can see & interact with LPP pools using standard CFMM semantics
+
+- [ ] **Clone Flashbots searcher repo (ethers-provider-flashbots-bundle or variant)**  
+- [ ] **Add LPP to the search universe:**
+  - Pools = [A, B, C, D]
+  - For each pool: track reserves & price via `provider.call` or event streams.
+- [ ] **Searcher logic (minimal):**
+  - Generate candidate 3-pool cycles (3 orbits).
+  - For each candidate:
+    - Simulate `mcvSupplication` entirely off-chain via `callStatic` or manual CFMM math.
+    - Keep only **profit > gas + fee + safety margin**.
+  - Bundle these as transactions to the Flashbots relay.
+- [ ] **Integrate Treasury fee:**
+  - Ensure 0.5% of realized profit is routed to Treasury address.
+  - The remainder is **bot PnL**; pipe this into the searcher’s internal accounting.
+
+Success criteria (Phase 0):
+
+- [ ] At least one **profitable 3-pool orbit** discovered & executed by a Flashbots-style searcher against the devnet / forked network.
+- [ ] Logs show:
+  - Pool reserve changes as expected.
+  - Treasury receives 0.5% cut.
+  - Bot wallet balance increases by net profit.
+
+---
+
+## 5. Delete / Defer (if above is successful)
+
+- [ ] **Prepare for scale-out phase (1,000 pools / 400 orbits and Treasury can withdraw pool amounts (only) no one else):**
+  - Auto-generation of pool ladders around oracle price.
+  - Internal orbit registry (400 orbits).
+  - Same fee model extended LPP-wide.
+  - retest with spec files, add security (test all edge cases) and expand
