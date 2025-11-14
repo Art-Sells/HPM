@@ -1,0 +1,161 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Access gating Permissions: Approved Supplicators only Approved Supplicator can supplicate ASSET->USDC (ABI-verified) 1`] = `
+Object {
+  "pool": "0x2b961E3959b79326A8e7F64Ef0d2d825707669b5",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+}
+`;
+
+exports[`Access gating Permissions: Approved Supplicators only Approved Supplicator can supplicate ASSET->USDC (ABI-verified) 2`] = `101657`;
+
+exports[`Access gating Permissions: Approved Supplicators only Approved Supplicator can supplicate ASSET->USDC (ABI-verified) 3`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "990099009900990099",
+  "amounts": Object {
+    "assetOut": "0",
+    "sumOut": "990099009900990099",
+    "usdcOut": "990099009900990099",
+  },
+  "caller": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "1000000000000000000",
+      "u": "990099009900990099",
+    },
+    "before": Object {
+      "a": "2000000000000000000",
+      "u": "0",
+    },
+    "delta": Object {
+      "a": "0",
+      "sum": "990099009900990099",
+      "u": "990099009900990099",
+    },
+  },
+  "direction": "ASSET->USDC",
+  "gasUsed": "101657",
+  "label": "Approved — ASSET->USDC outcome (Phase 0)",
+  "minOut": "0",
+  "pool": "0x2b961E3959b79326A8e7F64Ef0d2d825707669b5",
+  "reserves": Object {
+    "after": Object {
+      "a": "101000000000000000000",
+      "u": "99009900990099009901",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+    "delta": Object {
+      "a": "0",
+      "sum": "990099009900990099",
+      "u": "990099009900990099",
+    },
+  },
+}
+`;
+
+exports[`Access gating Permissions: Approved Supplicators only Approved Supplicator can supplicate USDC->ASSET (ABI-verified) 1`] = `101690`;
+
+exports[`Access gating Permissions: Approved Supplicators only Approved Supplicator can supplicate USDC->ASSET (ABI-verified) 2`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "990099009900990099",
+  "amounts": Object {
+    "assetOut": "990099009900990099",
+    "sumOut": "990099009900990099",
+    "usdcOut": "0",
+  },
+  "caller": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "990099009900990099",
+      "u": "1000000000000000000",
+    },
+    "before": Object {
+      "a": "0",
+      "u": "2000000000000000000",
+    },
+    "delta": Object {
+      "a": "990099009900990099",
+      "sum": "990099009900990099",
+      "u": "0",
+    },
+  },
+  "direction": "USDC->ASSET",
+  "gasUsed": "101690",
+  "label": "Approved — USDC->ASSET outcome (Phase 0)",
+  "minOut": "0",
+  "pool": "0x330981485Dbd4EAcD7f14AD4e6A1324B48B09995",
+  "reserves": Object {
+    "after": Object {
+      "a": "99009900990099009901",
+      "u": "101000000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+    "delta": Object {
+      "a": "990099009900990099",
+      "sum": "990099009900990099",
+      "u": "0",
+    },
+  },
+}
+`;
+
+exports[`Access gating Permissions: Approved Supplicators only Approved toggling affects Router permission 1`] = `101657`;
+
+exports[`Access gating Permissions: Approved Supplicators only Approved toggling affects Router permission 2`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "990099009900990099",
+  "amounts": Object {
+    "assetOut": "0",
+    "sumOut": "990099009900990099",
+    "usdcOut": "990099009900990099",
+  },
+  "caller": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "1000000000000000000",
+      "u": "990099009900990099",
+    },
+    "before": Object {
+      "a": "2000000000000000000",
+      "u": "0",
+    },
+    "delta": Object {
+      "a": "0",
+      "sum": "990099009900990099",
+      "u": "990099009900990099",
+    },
+  },
+  "direction": "ASSET->USDC",
+  "gasUsed": "101657",
+  "label": "Toggle — approved(other) allowed (Phase 0)",
+  "minOut": "0",
+  "pool": "0x6f296714F25f552834E91f221540976120530367",
+  "reserves": Object {
+    "after": Object {
+      "a": "101000000000000000000",
+      "u": "99009900990099009901",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+    "delta": Object {
+      "a": "0",
+      "sum": "990099009900990099",
+      "u": "990099009900990099",
+    },
+  },
+}
+`;

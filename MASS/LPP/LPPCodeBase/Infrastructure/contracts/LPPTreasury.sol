@@ -3,66 +3,66 @@ pragma solidity ^0.8.24;
 
 import { ILPPTreasury } from "./interfaces/ILPPTreasury.sol";
 import { ILPPFactory }  from "./interfaces/ILPPFactory.sol";
-import { IERC20 }       from "./external/IERC20.sol"; // project’s IERC20
-
-/// Minimal hook interface to forward bootstrap calls with optional price offset
-interface ILPPMintHookMinimal {
-    function bootstrap(address pool, uint256 amtA, uint256 amtU, int256 offsetBps) external;
-}
+import { ILPPPool }     from "./interfaces/ILPPPool.sol";
+import { IERC20 }       from "./external/IERC20.sol";
 
 contract LPPTreasury is ILPPTreasury {
     address public override owner;
-    address public override assetRetentionReceiver;
-    address public override usdcRetentionReceiver;
 
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-    event RetentionReceiversSet(address assetReceiver, address usdcReceiver);
 
-    modifier onlyOwner() { require(msg.sender == owner, "not owner"); _; }
+    modifier onlyOwner() {
+        require(msg.sender == owner, "not owner");
+        _;
+    }
 
-    constructor(address _assetReceiver, address _usdcReceiver) {
+    // simple nonReentrant guard for withdrawals
+    uint256 private _locked;
+    modifier nonReentrant() {
+        require(_locked == 0, "reentrancy");
+        _locked = 1;
+        _;
+        _locked = 0;
+    }
+
+    constructor() {
         owner = msg.sender;
-        assetRetentionReceiver = _assetReceiver;
-        usdcRetentionReceiver  = _usdcReceiver;
         emit OwnershipTransferred(address(0), msg.sender);
-        emit RetentionReceiversSet(_assetReceiver, _usdcReceiver);
     }
 
-    function setRetentionReceivers(address _assetReceiver, address _usdcReceiver) external onlyOwner {
-        assetRetentionReceiver = _assetReceiver;
-        usdcRetentionReceiver  = _usdcReceiver;
-        emit RetentionReceiversSet(_assetReceiver, _usdcReceiver);
+    // -----------------------------------------------------------------------
+    // Ownership
+    // -----------------------------------------------------------------------
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "zero");
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
     }
 
-    // ─────────────────────────────────────────────────────────────
+    // -----------------------------------------------------------------------
     // Owner-controlled withdrawals
-    // ─────────────────────────────────────────────────────────────
-
+    // -----------------------------------------------------------------------
     /// @notice Withdraw ERC20 held by this treasury to `to`
-    function withdrawERC20(address token, address to, uint256 amount) external onlyOwner {
+    function withdrawERC20(address token, address to, uint256 amount)
+        external
+        onlyOwner
+        nonReentrant
+    {
         require(to != address(0), "zero to");
         require(amount > 0, "zero amount");
         require(IERC20(token).balanceOf(address(this)) >= amount, "insufficient");
         require(IERC20(token).transfer(to, amount), "transfer fail");
     }
 
-    // ─────────────────────────────────────────────────────────────
+    // -----------------------------------------------------------------------
     // Factory forwarders (this contract address must equal Factory.treasury)
-    // ─────────────────────────────────────────────────────────────
-
+    // -----------------------------------------------------------------------
     function createPoolViaTreasury(address factory, address asset, address usdc)
         external
         onlyOwner
         returns (address pool)
     {
         pool = ILPPFactory(factory).createPool(asset, usdc);
-    }
-
-    function setPoolHookViaTreasury(address factory, address pool, address hook)
-        external
-        onlyOwner
-    {
-        ILPPFactory(factory).setPoolHook(pool, hook);
     }
 
     /// Forward allow-listing to Factory (Factory requires onlyTreasury)
@@ -73,33 +73,6 @@ contract LPPTreasury is ILPPTreasury {
         ILPPFactory(factory).setAllowedToken(token, allowed);
     }
 
-    /// Bootstrap via hook (offset in bps; can pass 0)
-    function bootstrapViaTreasury(
-        address hook,
-        address pool,
-        uint256 amountAsset,
-        uint256 amountUsdc,
-        int256 offsetBps
-    )
-        external
-        onlyOwner
-    {
-        ILPPMintHookMinimal(hook).bootstrap(pool, amountAsset, amountUsdc, offsetBps);
-    }
-
-    /// Back-compat overload (offset = 0)
-    function bootstrapViaTreasury(
-        address hook,
-        address pool,
-        uint256 amountAsset,
-        uint256 amountUsdc
-    )
-        external
-        onlyOwner
-    {
-        ILPPMintHookMinimal(hook).bootstrap(pool, amountAsset, amountUsdc, 0);
-    }
-
     /// Rotate Factory.treasury to a new address
     function rotateFactoryTreasury(address factory, address newTreasury)
         external
@@ -108,10 +81,37 @@ contract LPPTreasury is ILPPTreasury {
         ILPPFactory(factory).setTreasury(newTreasury);
     }
 
-    // optional: owner transfer helper
-    function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "zero");
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
+    // -----------------------------------------------------------------------
+    // Direct bootstrap (no MintHook, Phase 0)
+    // -----------------------------------------------------------------------
+    /// @notice Bootstrap a pool by sending ASSET + USDC from Treasury and initializing price with offset (bps).
+    function bootstrapViaTreasury(
+        address pool,
+        uint256 amountAsset,
+        uint256 amountUsdc,
+        int256 offsetBps
+    ) public onlyOwner {
+        require(pool != address(0), "zero pool");
+        require(amountAsset > 0 && amountUsdc > 0, "zero amount");
+
+        address asset = ILPPPool(pool).asset();
+        address usdc  = ILPPPool(pool).usdc();
+
+        // Transfer tokens from Treasury to the Pool
+        require(IERC20(asset).transfer(pool, amountAsset), "transfer asset fail");
+        require(IERC20(usdc).transfer(pool, amountUsdc), "transfer usdc fail");
+
+        // Initialize the pool with the provided amounts and offset
+        ILPPPool(pool).bootstrapInitialize(amountAsset, amountUsdc, offsetBps);
+    }
+
+    /// @notice Overload with offset = 0
+    function bootstrapViaTreasury(
+        address pool,
+        uint256 amountAsset,
+        uint256 amountUsdc
+    ) external onlyOwner {
+        // now calls the *public* 4-arg version
+        bootstrapViaTreasury(pool, amountAsset, amountUsdc, 0);
     }
 }
