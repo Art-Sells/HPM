@@ -10,7 +10,7 @@ contract LPPPool is ILPPPool {
 
     address public immutable override treasury; // project-level authority
     address public immutable override factory;  // deploying factory (authorized to set hook)
-    address public override hook;               // LPPMintHook set exactly once
+    address public override hook;               // optional hook (unused in Phase 0, kept for future)
 
     uint256 public override reserveAsset;
     uint256 public override reserveUsdc;
@@ -22,8 +22,10 @@ contract LPPPool is ILPPPool {
     bool public initialized;
 
     modifier nonZero(uint256 x) { require(x > 0, "zero"); _; }
-    modifier onlyHook() { require(msg.sender == hook, "only hook"); _; }
-    modifier onlyTreasuryOrFactory() { require(msg.sender == treasury || msg.sender == factory, "only auth"); _; }
+    modifier onlyTreasuryOrFactory() {
+        require(msg.sender == treasury || msg.sender == factory, "only auth");
+        _;
+    }
 
     constructor(address _asset, address _usdc, address _treasury, address _factory) {
         require(_asset != address(0) && _usdc != address(0) && _treasury != address(0) && _factory != address(0), "zero");
@@ -44,15 +46,17 @@ contract LPPPool is ILPPPool {
         emit HookSet(hook_);
     }
 
+    /// @notice Initialize the pool after Treasury has transferred tokens into this contract.
     function bootstrapInitialize(uint256 amtA, uint256 amtU, int256 offsetBps)
         external
-        onlyHook
+        override
+        onlyTreasuryOrFactory
         nonZero(amtA)
         nonZero(amtU)
     {
         require(!initialized, "already init");
 
-        // Tokens MUST already be transferred to this pool by the hook.
+        // Tokens MUST already be in this pool (sent by Treasury).
         _internalMint(treasury, amtA, amtU);
 
         // base price = usdc/asset in Q96, then apply offset bps
@@ -69,15 +73,15 @@ contract LPPPool is ILPPPool {
         emit Initialized(amtA, amtU);
     }
 
+    /// @notice Mint from a hook or other authority. Not used in Phase 0, but kept for future.
     function mintFromHook(address to, uint256 amtA, uint256 amtU)
         external
         override
-        onlyHook
+        onlyTreasuryOrFactory
         nonZero(amtA)
         nonZero(amtU)
         returns (uint256 liquidityOut)
     {
-        // Tokens MUST already be transferred to this pool by the hook.
         liquidityOut = _internalMint(to, amtA, amtU);
     }
 
