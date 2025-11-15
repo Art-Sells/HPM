@@ -3,13 +3,19 @@ import hre from "hardhat";
 const { ethers } = hre;
 
 import { expect } from "./shared/expect.ts";
-import snapshotGasCost from "./shared/snapshotGasCost.ts";
 import { deployCore } from "./helpers.ts";
 
-import type { TestERC20, LPPPool, LPPRouter } from "../typechain-types/index.ts";
+import type {
+  TestERC20,
+  LPPPool,
+  LPPRouter,
+  LPPTreasury,
+  LPPAccessManager,
+} from "../typechain-types";
+
+/* ---------------- helpers ---------------- */
 
 async function getTokens(env: any): Promise<{ asset: TestERC20; usdc: TestERC20 }> {
-  // deployCore exposes your TestERC20 mocks directly
   return { asset: env.asset as TestERC20, usdc: env.usdc as TestERC20 };
 }
 
@@ -27,26 +33,46 @@ async function snapshotReserves(pool: LPPPool, label: string) {
   }).to.matchSnapshot(label);
 }
 
-async function mintWithRebate(hook: any, pool: LPPPool, to: string, a: bigint, u: bigint) {
-  const tx = await (hook as any).mintWithRebate({
-    pool: await pool.getAddress(),
-    to,
-    amountAssetDesired: a,
-    amountUsdcDesired: u,
-    data: "0x",
-  });
-  const rcpt = await tx.wait();
-  await snapshotGasCost(rcpt!.gasUsed);
-  return rcpt!.gasUsed as bigint;
+/** Mint tokens to Treasury, then bootstrap the pool via Treasury (Phase 0 style). */
+async function bootstrapSeed(
+  treasury: LPPTreasury,
+  pool: LPPPool,
+  asset: TestERC20,
+  usdc: TestERC20,
+  deployer: any,
+  amountAsset: bigint,
+  amountUsdc: bigint,
+  offsetBps: bigint = 0n
+) {
+  const tAddr = await treasury.getAddress();
+
+  if (amountAsset > 0n) {
+    await (await asset.connect(deployer).mint(tAddr, amountAsset)).wait();
+  }
+  if (amountUsdc > 0n) {
+    await (await usdc.connect(deployer).mint(tAddr, amountUsdc)).wait();
+  }
+
+  // Call the 4-arg overload explicitly via signature (avoids ethers v6 ambiguity)
+  const fn4 = (treasury as any)[
+    "bootstrapViaTreasury(address,uint256,uint256,int256)"
+  ] as (
+    pool: string,
+    amountAsset: bigint,
+    amountUsdc: bigint,
+    offsetBps: bigint
+  ) => Promise<any>;
+
+  await fn4(await pool.getAddress(), amountAsset, amountUsdc, offsetBps);
 }
 
-/** IMPORTANT: the POOL does transferFrom(...) inside LPPPool.supplicate → approve the POOL. */
+/** POOL does transferFrom(...) inside LPPPool.supplicate → approve the POOL (and optionally Router) */
 async function fundAndApproveForSupplicate(opts: {
   token: TestERC20;
   minter: any; // deployer (has mint perms in TestERC20)
   payer: any;
   pool: LPPPool;
-  router?: LPPRouter; // optional, harmless to approve as well
+  router?: LPPRouter; // optional
   amount: bigint;
 }) {
   const { token, minter, payer, pool, router, amount } = opts;
@@ -58,17 +84,34 @@ async function fundAndApproveForSupplicate(opts: {
   }
 }
 
+/* ---------------- tests ---------------- */
+
 describe("Pool math integrity", () => {
   describe("Reserves update on mint/supplicate", () => {
     it("reserves move in correct directions for ASSET->USDC", async () => {
-      const env = await deployCore();
-      const { deployer, hook, pool, router } = env;
-      const { asset } = await getTokens(env);
+      const env: any = await deployCore();
+      const { deployer, pool, router, treasury, access } = env;
+      const { asset, usdc } = await getTokens(env);
 
+      // allow deployer to supplicate
+      await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
+
+      // before bootstrap: zero reserves
       const beforeA = await pool.reserveAsset();
       const beforeU = await pool.reserveUsdc();
+      expect(beforeA).to.equal(0n);
+      expect(beforeU).to.equal(0n);
 
-      await mintWithRebate(hook, pool, deployer.address, ethers.parseEther("5"), ethers.parseEther("5"));
+      // seed pool via Treasury: 5 ASSET + 5 USDC
+      await bootstrapSeed(
+        treasury as LPPTreasury,
+        pool as LPPPool,
+        asset,
+        usdc,
+        deployer,
+        ethers.parseEther("5"),
+        ethers.parseEther("5"),
+      );
 
       const midA = await pool.reserveAsset();
       const midU = await pool.reserveUsdc();
@@ -98,18 +141,31 @@ describe("Pool math integrity", () => {
 
       const afterA = await pool.reserveAsset();
       const afterU = await pool.reserveUsdc();
-      expect(afterA).to.be.gt(midA); // pool gains ASSET (from payer)
-      expect(afterU).to.be.lt(midU); // pool loses USDC (to payer)
+
+      // pool gains ASSET (from payer), loses USDC (to payer)
+      expect(afterA).to.be.gt(midA);
+      expect(afterU).to.be.lt(midU);
     });
   });
 
   describe("Directional accounting", () => {
     it("ASSET->USDC: pool deltas == user deltas (token-wise)", async () => {
-      const env = await deployCore();
-      const { deployer, hook, pool, router } = env;
+      const env: any = await deployCore();
+      const { deployer, pool, router, treasury, access } = env;
       const { asset, usdc } = await getTokens(env);
 
-      await mintWithRebate(hook, pool, deployer.address, ethers.parseEther("10"), ethers.parseEther("10"));
+      await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
+
+      // seed pool with 10/10
+      await bootstrapSeed(
+        treasury as LPPTreasury,
+        pool as LPPPool,
+        asset,
+        usdc,
+        deployer,
+        ethers.parseEther("10"),
+        ethers.parseEther("10"),
+      );
 
       // fund + approve ASSET to POOL
       await fundAndApproveForSupplicate({
@@ -150,17 +206,28 @@ describe("Pool math integrity", () => {
       expect(r1.a - r0.a).to.equal(args.amountIn);
       expect(r0.u - r1.u).to.equal(out);
 
-      // pool deltas == user deltas per-leg
+      // pool deltas == user deltas per leg
       expect(r0.a + bA0).to.equal(r1.a + bA1);
       expect(r0.u + bU0).to.equal(r1.u + bU1);
     });
 
     it("USDC->ASSET: pool deltas == user deltas (token-wise)", async () => {
-      const env = await deployCore();
-      const { deployer, hook, pool, router } = env;
+      const env: any = await deployCore();
+      const { deployer, pool, router, treasury, access } = env;
       const { asset, usdc } = await getTokens(env);
 
-      await mintWithRebate(hook, pool, deployer.address, ethers.parseEther("10"), ethers.parseEther("10"));
+      await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
+
+      // seed pool with 10/10
+      await bootstrapSeed(
+        treasury as LPPTreasury,
+        pool as LPPPool,
+        asset,
+        usdc,
+        deployer,
+        ethers.parseEther("10"),
+        ethers.parseEther("10"),
+      );
 
       // fund + approve USDC to POOL
       await fundAndApproveForSupplicate({
@@ -201,32 +268,30 @@ describe("Pool math integrity", () => {
       expect(r1.u - r0.u).to.equal(args.amountIn);
       expect(r0.a - r1.a).to.equal(out);
 
-      // pool deltas == user deltas per-leg
+      // pool deltas == user deltas per leg
       expect(r0.a + bA0).to.equal(r1.a + bA1);
       expect(r0.u + bU0).to.equal(r1.u + bU1);
     });
   });
 
   describe("Validation & slippage", () => {
-    it("reverts on empty reserves (supplicate before mint)", async () => {
-      const env = await deployCore();
+    it("reverts on empty reserves (supplicate before bootstrap)", async () => {
+      const env: any = await deployCore();
       const { deployer, treasury, factory, router, access } = env;
 
-      // prepare a fresh pool with allow-listed random tokens, no bootstrap/mint
       const rand = () => ethers.Wallet.createRandom().address;
       const a = rand();
       const u = rand();
 
-      await (await treasury.allowTokenViaTreasury(await factory.getAddress(), a, true)).wait();
-      await (await treasury.allowTokenViaTreasury(await factory.getAddress(), u, true)).wait();
-      await (await treasury.createPoolViaTreasury(await factory.getAddress(), a, u)).wait();
+      await (await (treasury as LPPTreasury).allowTokenViaTreasury(await factory.getAddress(), a, true)).wait();
+      await (await (treasury as LPPTreasury).allowTokenViaTreasury(await factory.getAddress(), u, true)).wait();
+      await (await (treasury as LPPTreasury).createPoolViaTreasury(await factory.getAddress(), a, u)).wait();
 
       const pools = await factory.getPools();
       const poolAddr = pools[pools.length - 1];
       const pool = (await ethers.getContractAt("LPPPool", poolAddr)) as LPPPool;
 
-      // approver lets deployer trade even though not LP-MCV here
-      await (await access.setApprovedSupplicator(deployer.address, true)).wait();
+      await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
 
       await expect(
         (router.connect(deployer) as any).supplicate({
@@ -241,11 +306,22 @@ describe("Pool math integrity", () => {
     });
 
     it("reverts when minAmountOut too high (slippage)", async () => {
-      const env = await deployCore();
-      const { deployer, hook, pool, router } = env;
-      const { asset } = await getTokens(env);
+      const env: any = await deployCore();
+      const { deployer, pool, router, treasury, access } = env;
+      const { asset, usdc } = await getTokens(env);
 
-      await mintWithRebate(hook, pool, deployer.address, ethers.parseEther("5"), ethers.parseEther("5"));
+      await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
+
+      // seed pool with 5/5
+      await bootstrapSeed(
+        treasury as LPPTreasury,
+        pool as LPPPool,
+        asset,
+        usdc,
+        deployer,
+        ethers.parseEther("5"),
+        ethers.parseEther("5"),
+      );
 
       // fund + approve ASSET to POOL
       await fundAndApproveForSupplicate({
@@ -267,7 +343,7 @@ describe("Pool math integrity", () => {
       };
 
       const quote: bigint = await (router.connect(deployer) as any).supplicate.staticCall(baseArgs);
-      // set minOut = quote + 1 wei to force slippage revert
+
       await expect(
         (router.connect(deployer) as any).supplicate({
           ...baseArgs,
@@ -277,8 +353,10 @@ describe("Pool math integrity", () => {
     });
 
     it("reverts on zero amountIn", async () => {
-      const env = await deployCore();
-      const { deployer, router, pool } = env;
+      const env: any = await deployCore();
+      const { deployer, router, pool, access } = env;
+
+      await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
 
       await expect(
         (router.connect(deployer) as any).supplicate({
@@ -289,19 +367,28 @@ describe("Pool math integrity", () => {
           to: deployer.address,
           payer: deployer.address,
         })
-      ).to.be.reverted; // generic check; reason string may vary
+      ).to.be.reverted; // generic: "zero" from LPPPool
     });
   });
 
   describe("Quote behavior (monotonicity & rounding)", () => {
     it("larger amountIn yields >= amountOut (same direction, same block)", async () => {
-      const env = await deployCore();
-      const { deployer, hook, pool, router } = env;
-      const { asset } = await getTokens(env);
+      const env: any = await deployCore();
+      const { deployer, pool, router, treasury, access } = env;
+      const { asset, usdc } = await getTokens(env);
 
-      await mintWithRebate(hook, pool, deployer.address, ethers.parseEther("20"), ethers.parseEther("20"));
+      await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
 
-      // fund + approve ASSET to POOL
+      await bootstrapSeed(
+        treasury as LPPTreasury,
+        pool as LPPPool,
+        asset,
+        usdc,
+        deployer,
+        ethers.parseEther("20"),
+        ethers.parseEther("20"),
+      );
+
       await fundAndApproveForSupplicate({
         token: asset,
         minter: deployer,
@@ -328,13 +415,22 @@ describe("Pool math integrity", () => {
     });
 
     it("tiny trade produces non-zero output (if reserves are healthy)", async () => {
-      const env = await deployCore();
-      const { deployer, hook, pool, router } = env;
-      const { asset } = await getTokens(env);
+      const env: any = await deployCore();
+      const { deployer, pool, router, treasury, access } = env;
+      const { asset, usdc } = await getTokens(env);
 
-      await mintWithRebate(hook, pool, deployer.address, ethers.parseEther("50"), ethers.parseEther("50"));
+      await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
 
-      // fund + approve ASSET to POOL
+      await bootstrapSeed(
+        treasury as LPPTreasury,
+        pool as LPPPool,
+        asset,
+        usdc,
+        deployer,
+        ethers.parseEther("50"),
+        ethers.parseEther("50"),
+      );
+
       await fundAndApproveForSupplicate({
         token: asset,
         minter: deployer,
@@ -360,11 +456,21 @@ describe("Pool math integrity", () => {
 
   describe("Round-trip sanity (tiny ASSET->USDC then back)", () => {
     it("small forward+reverse returns close to start (within expected loss)", async () => {
-      const env = await deployCore();
-      const { deployer, hook, pool, router } = env;
+      const env: any = await deployCore();
+      const { deployer, pool, router, treasury, access } = env;
       const { asset, usdc } = await getTokens(env);
 
-      await mintWithRebate(hook, pool, deployer.address, ethers.parseEther("40"), ethers.parseEther("40"));
+      await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
+
+      await bootstrapSeed(
+        treasury as LPPTreasury,
+        pool as LPPPool,
+        asset,
+        usdc,
+        deployer,
+        ethers.parseEther("40"),
+        ethers.parseEther("40"),
+      );
 
       // forward: need ASSET minted + approved to POOL
       await fundAndApproveForSupplicate({
@@ -379,7 +485,6 @@ describe("Pool math integrity", () => {
       const who = deployer.address;
       const a0 = BigInt((await asset.balanceOf(who)).toString());
 
-      // forward quote + trade
       const fwdArgs = {
         pool: await pool.getAddress(),
         assetToUsdc: true,
@@ -391,9 +496,9 @@ describe("Pool math integrity", () => {
       const fwdOut: bigint = await (router.connect(deployer) as any).supplicate.staticCall(fwdArgs);
       await (router.connect(deployer) as any).supplicate(fwdArgs);
 
-      // reverse: approve POOL for received USDC
-      await (await (usdc as any).connect(deployer).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
-      await (await (usdc as any).connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
+      // reverse: approve POOL & Router for received USDC
+      await (await usdc.connect(deployer).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
+      await (await usdc.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
 
       const revArgs = {
         pool: await pool.getAddress(),
@@ -408,12 +513,12 @@ describe("Pool math integrity", () => {
 
       const a1 = BigInt((await asset.balanceOf(who)).toString());
 
-      // Expect small loss (due to invariant rounding) — allow a few bps
+      // forward spent 0.2 ASSET, reverse recovered some;
+      // net loss should be small (rounding), not catastrophic
       const spent = ethers.parseEther("0.2");
       const netLoss = (a0 - a1) - (spent - revOut);
-      // At least no catastrophic loss:
+
       expect(netLoss).to.be.gte(0n);
-      // And within 50 bps of the forward size:
       const fiftyBps = (spent * 50n) / 10_000n;
       expect(netLoss).to.be.lte(fiftyBps);
     });
