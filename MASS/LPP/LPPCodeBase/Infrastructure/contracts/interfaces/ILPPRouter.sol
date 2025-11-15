@@ -1,32 +1,32 @@
+// interfaces/ILPPRouter.sol
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
 interface ILPPRouter {
-    // -----------------------------------------------------------------------
-    // Structs
-    // -----------------------------------------------------------------------
-
+    // ---------- Types ----------
     struct SupplicateParams {
         address pool;
-        bool assetToUsdc;
+        bool    assetToUsdc;
         uint256 amountIn;
         uint256 minAmountOut;
-        address payer; // if zero => msg.sender
-        address to;    // if zero => msg.sender
+        address payer;
+        address to;
     }
 
     struct MCVParams {
-        address startPool;   // pool chosen by MEV (e.g. -500 bps center)
-        bool assetToUsdc;    // direction of FIRST hop
-        uint256 amountIn;    // input amount in starting token
-        uint256 minProfit;   // minimum acceptable profit in starting token
-        address payer;       // who provides initial tokens (if zero => msg.sender)
-        address to;          // where net profit is sent (if zero => msg.sender)
+        address startPool;
+        bool    assetToUsdc;
+        uint256 amountIn;
+        address payer;
+        address to;
     }
 
-    // -----------------------------------------------------------------------
-    // Events
-    // -----------------------------------------------------------------------
+    // ---------- Constant getters ----------
+    function BPS_DENOMINATOR() external view returns (uint16);
+    function MCV_FEE_BPS()     external view returns (uint16);
+
+    // ---------- Events ----------
+    event OrbitUpdated(address indexed startPool, address[3] pools);
 
     event SupplicateExecuted(
         address indexed caller,
@@ -35,30 +35,24 @@ interface ILPPRouter {
         uint256 amountIn,
         address tokenOut,
         uint256 amountOut,
-        uint256 reasonCode // phase-0: 0 = OK
+        uint256 profit   // keep if you use it in tests; otherwise set to 0 when emitting
     );
 
-    /// Emitted when the Treasury configures a 3-pool orbit for a given startPool.
-    event OrbitUpdated(address indexed startPool, address[3] pools);
+    // 🔥 Add this:
+    event InputFeeTaken(
+        address indexed pool,
+        address indexed tokenIn,
+        uint256 amountInBase,   // hop input on which fee was computed
+        uint256 totalFee,       // 2.5%
+        uint256 treasuryFee,    // 0.5%
+        uint256 poolsFee        // 2.0%
+    );
 
-    // -----------------------------------------------------------------------
-    // External functions
-    // -----------------------------------------------------------------------
+    // ---------- Admin ----------
+    function setOrbit(address startPool, address[3] calldata pools_) external;
+    function getOrbit(address startPool) external view returns (address[3] memory pools);
 
-    function supplicate(SupplicateParams calldata p)
-        external
-        returns (uint256 amountOut);
-
-    function mcvSupplication(MCVParams calldata params)
-        external
-        returns (
-            uint256 finalAmountOut,
-            uint256 grossProfit,
-            uint256 fee,
-            uint256 treasuryCut
-        );
-
-    // Constants
-    function BPS_DENOMINATOR() external view returns (uint16);
-    function MCV_FEE_BPS() external view returns (uint16);
+    // ---------- Actions ----------
+    function supplicate(SupplicateParams calldata p) external returns (uint256 amountOut);
+    function mcvSupplication(MCVParams calldata params) external returns (uint256 finalAmountOut);
 }

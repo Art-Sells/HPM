@@ -1,4 +1,6 @@
 // // Treasury can withdraw all funds from pools (to stop test)
+// and Treasury (and only treasury) can change the fees and amount
+// it takes from fees
 
 
 

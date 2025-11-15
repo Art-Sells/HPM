@@ -201,6 +201,6 @@ Success criteria (Phase 0):
 
 - [ ] **Prepare for scale-out phase (1,000 pools / 400 orbits and Treasury can withdraw pool amounts (only) no one else):**
   - Auto-generation of pool ladders around oracle price.
-  - Internal orbit registry (400 orbits).
+  - Internal orbit registry (500 orbits) and lever to turn off pool orbits.
   - Same fee model extended LPP-wide.
   - retest with spec files, add security (test all edge cases) and expand

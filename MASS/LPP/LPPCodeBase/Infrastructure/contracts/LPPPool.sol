@@ -5,6 +5,9 @@ import { IERC20 } from "./external/IERC20.sol";
 import { ILPPPool } from "./interfaces/ILPPPool.sol";
 
 contract LPPPool is ILPPPool {
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Immutable wiring
+    // ─────────────────────────────────────────────────────────────────────────────
     address public immutable override asset;
     address public immutable override usdc;
 
@@ -12,6 +15,9 @@ contract LPPPool is ILPPPool {
     address public immutable override factory;  // deploying factory (authorized to set hook)
     address public override hook;               // optional hook (unused in Phase 0, kept for future)
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // State
+    // ─────────────────────────────────────────────────────────────────────────────
     uint256 public override reserveAsset;
     uint256 public override reserveUsdc;
 
@@ -21,12 +27,18 @@ contract LPPPool is ILPPPool {
 
     bool public initialized;
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Modifiers
+    // ─────────────────────────────────────────────────────────────────────────────
     modifier nonZero(uint256 x) { require(x > 0, "zero"); _; }
     modifier onlyTreasuryOrFactory() {
         require(msg.sender == treasury || msg.sender == factory, "only auth");
         _;
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Ctor
+    // ─────────────────────────────────────────────────────────────────────────────
     constructor(address _asset, address _usdc, address _treasury, address _factory) {
         require(_asset != address(0) && _usdc != address(0) && _treasury != address(0) && _factory != address(0), "zero");
         asset = _asset;
@@ -36,9 +48,15 @@ contract LPPPool is ILPPPool {
         _priceX96 = 1 << 96;
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Views
+    // ─────────────────────────────────────────────────────────────────────────────
     function priceX96() external view override returns (uint256) { return _priceX96; }
     function liquidityOf(address who) external view override returns (uint256) { return _liq[who]; }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Governance wiring
+    // ─────────────────────────────────────────────────────────────────────────────
     function setHook(address hook_) external override onlyTreasuryOrFactory {
         require(hook == address(0), "hook set");
         require(hook_ != address(0), "zero hook");
@@ -97,6 +115,9 @@ contract LPPPool is ILPPPool {
         emit Mint(to, amountAssetDesired, amountUsdcDesired, liquidityOut);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Burns
+    // ─────────────────────────────────────────────────────────────────────────────
     function burn(address to, uint256 liquidity)
         external
         override
@@ -120,6 +141,9 @@ contract LPPPool is ILPPPool {
         emit Burn(to, liquidity, amountAssetOut, amountUsdcOut);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Quotes & Supplication (placeholder CFMM math)
+    // ─────────────────────────────────────────────────────────────────────────────
     function quoteSupplication(bool assetToUsdc, uint256 amountIn)
         external
         view
@@ -165,5 +189,40 @@ contract LPPPool is ILPPPool {
         }
 
         emit Supplicate(msg.sender, assetToUsdc, amountIn, amountOut);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Donations (required by ILPPPool)
+    // ─────────────────────────────────────────────────────────────────────────────
+    /// @notice Increase reserves without minting LP shares.
+    ///         Works whether tokens were already sent to the pool OR will be pulled here.
+    ///         - If the pool already holds the `amount`, we just reconcile reserves.
+    ///         - Otherwise, we pull exactly `amount` from the caller and then reconcile.
+    function donateToReserves(bool isUsdc, uint256 amount)
+        external
+        override
+        nonZero(amount)
+    {
+        if (isUsdc) {
+            uint256 beforeRes = reserveUsdc;
+            uint256 bal = IERC20(usdc).balanceOf(address(this));
+            if (bal < beforeRes + amount) {
+                // pull the shortfall (exact `amount`) from caller
+                require(IERC20(usdc).transferFrom(msg.sender, address(this), amount), "donate usdc pull fail");
+                bal = IERC20(usdc).balanceOf(address(this));
+            }
+            require(bal >= beforeRes + amount, "donate usdc shortage");
+            reserveUsdc = beforeRes + amount;
+        } else {
+            uint256 beforeRes = reserveAsset;
+            uint256 bal = IERC20(asset).balanceOf(address(this));
+            if (bal < beforeRes + amount) {
+                require(IERC20(asset).transferFrom(msg.sender, address(this), amount), "donate asset pull fail");
+                bal = IERC20(asset).balanceOf(address(this));
+            }
+            require(bal >= beforeRes + amount, "donate asset shortage");
+            reserveAsset = beforeRes + amount;
+        }
+        // no LP minted, totalLiquidity unchanged by design
     }
 }

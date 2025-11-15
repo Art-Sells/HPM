@@ -8,6 +8,7 @@ interface ILPPPool {
     event Mint(address indexed lp, uint256 amountAsset, uint256 amountUsdc, uint256 liquidity);
     event Burn(address indexed lp, uint256 liquidity, uint256 amountAssetOut, uint256 amountUsdcOut);
     event Supplicate(address indexed caller, bool assetToUsdc, uint256 amountIn, uint256 amountOut);
+    event Donation(bool isUsdc, uint256 amount);
 
     // Token getters
     function asset() external view returns (address);
@@ -50,4 +51,9 @@ interface ILPPPool {
     function supplicate(address payer, address to, bool assetToUsdc, uint256 amountIn, uint256 minAmountOut)
         external
         returns (uint256 amountOut);
+
+    /// Credit reserves with tokens already transferred to this pool.
+    /// isUsdc = true  => credit USDC side
+    /// isUsdc = false => credit ASSET side
+    function donateToReserves(bool isUsdc, uint256 amount) external;
 }
