@@ -2,50 +2,53 @@
 pragma solidity ^0.8.24;
 
 interface ILPPRouter {
-    event SupplicateExecuted(
-        address indexed caller,
-        address indexed pool,
-        address assetIn,
-        uint256 amountIn,
-        address assetOut,
-        uint256 amountOut,
-        uint8 reason
-    );
+    // -----------------------------------------------------------------------
+    // Structs
+    // -----------------------------------------------------------------------
 
-    /// @notice Single-pool supplication (Phase 0: Treasury-approved addresses only).
     struct SupplicateParams {
         address pool;
         bool assetToUsdc;
         uint256 amountIn;
         uint256 minAmountOut;
-        address to;
-        address payer; // who provides the input tokens; defaults to msg.sender if zero
+        address payer; // if zero => msg.sender
+        address to;    // if zero => msg.sender
     }
 
-    /// @notice One hop in a fixed 3-pool orbit.
-    struct OrbitHop {
-        address pool;
-        bool assetToUsdc;
-    }
-
-    /// @notice Params for Phase 0 MCV-style 3-pool orbit.
     struct MCVParams {
-        OrbitHop[3] hops;   // exactly 3 hops
-        uint256 amountIn;   // starting amount in the first hop's input token
-        uint256 minProfit;  // required profit in the same token as amountIn
-        address payer;      // who provides the starting tokens (defaults to msg.sender if zero)
-        address to;         // final recipient of net proceeds (defaults to msg.sender if zero)
+        address startPool;   // pool chosen by MEV (e.g. -500 bps center)
+        bool assetToUsdc;    // direction of FIRST hop
+        uint256 amountIn;    // input amount in starting token
+        uint256 minProfit;   // minimum acceptable profit in starting token
+        address payer;       // who provides initial tokens (if zero => msg.sender)
+        address to;          // where net profit is sent (if zero => msg.sender)
     }
 
-    /// @notice Simple one-pool supplication.
-    function supplicate(SupplicateParams calldata params) external returns (uint256 amountOut);
+    // -----------------------------------------------------------------------
+    // Events
+    // -----------------------------------------------------------------------
 
-    /// @notice 3-pool orbit "MCV supplication" (Phase 0): open to anyone.
-    /// @dev Applies a protocol fee on profit and pays it to the Treasury.
-    /// @return finalAmountOut Final amount after all 3 hops.
-    /// @return grossProfit    finalAmountOut - amountIn (0 if no profit).
-    /// @return fee            protocol fee charged on grossProfit.
-    /// @return treasuryCut    amount transferred to the Treasury.
+    event SupplicateExecuted(
+        address indexed caller,
+        address indexed pool,
+        address indexed tokenIn,
+        uint256 amountIn,
+        address tokenOut,
+        uint256 amountOut,
+        uint256 reasonCode // phase-0: 0 = OK
+    );
+
+    /// Emitted when the Treasury configures a 3-pool orbit for a given startPool.
+    event OrbitUpdated(address indexed startPool, address[3] pools);
+
+    // -----------------------------------------------------------------------
+    // External functions
+    // -----------------------------------------------------------------------
+
+    function supplicate(SupplicateParams calldata p)
+        external
+        returns (uint256 amountOut);
+
     function mcvSupplication(MCVParams calldata params)
         external
         returns (
@@ -54,4 +57,8 @@ interface ILPPRouter {
             uint256 fee,
             uint256 treasuryCut
         );
+
+    // Constants
+    function BPS_DENOMINATOR() external view returns (uint16);
+    function MCV_FEE_BPS() external view returns (uint16);
 }
