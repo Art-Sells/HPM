@@ -11,9 +11,10 @@ import type {
   TestERC20,
   LPPPool,
   LPPRouter,
-  LPPMintHook,
   LPPSupplicationQuoter,
-} from "../typechain-types/index.ts";
+  LPPTreasury,
+  LPPAccessManager,
+} from "../typechain-types";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Config / constants
@@ -87,6 +88,46 @@ async function mintToForInput(
   } else {
     await (await env.usdc.connect(minter).mint(payerAddr, amount)).wait();
   }
+}
+/** Seed pool via Treasury.bootstrapViaTreasury (Phase 0 style) */
+async function bootstrapSeed(
+  treasury: LPPTreasury,
+  pool: LPPPool,
+  asset: TestERC20,
+  usdc: TestERC20,
+  deployer: any,
+  amountAsset: bigint,
+  amountUsdc: bigint,
+  offsetBps: bigint = 0n
+) {
+  // --- NEW: make it idempotent (don't re-bootstrap an initialized pool) ---
+  const currentA = BigInt((await pool.reserveAsset()).toString());
+  const currentU = BigInt((await pool.reserveUsdc()).toString());
+  if (currentA > 0n || currentU > 0n) {
+    // already initialized; nothing to do
+    return;
+  }
+  // ------------------------------------------------------------------------ //
+
+  const tAddr = await treasury.getAddress();
+
+  if (amountAsset > 0n) {
+    await (await asset.connect(deployer).mint(tAddr, amountAsset)).wait();
+  }
+  if (amountUsdc > 0n) {
+    await (await usdc.connect(deployer).mint(tAddr, amountUsdc)).wait();
+  }
+
+  const fn4 = (treasury as any)[
+    "bootstrapViaTreasury(address,uint256,uint256,int256)"
+  ] as (
+    poolAddr: string,
+    amtA: bigint,
+    amtU: bigint,
+    off: bigint
+  ) => Promise<any>;
+
+  await fn4(await pool.getAddress(), amountAsset, amountUsdc, offsetBps);
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -241,38 +282,48 @@ async function snapshotTradeAndCompare(opts: {
   label: string;
   env: {
     deployer: any;
-    hook: LPPMintHook;
     router: LPPRouter;
     pool: LPPPool;
     asset: TestERC20;
     usdc: TestERC20;
+    treasury: LPPTreasury;
+    access: LPPAccessManager;
   };
   assetToUsdc: boolean;
   amountIn: bigint;
   minOut?: bigint;
   requireNonZeroOut?: boolean; // default true
-  snapshotGas?: boolean;       // NEW: default true
+  snapshotGas?: boolean;       // default true
 }) {
   const { label, env, assetToUsdc, amountIn } = opts;
   const minOut = opts.minOut ?? 0n;
   const requireNonZeroOut = opts.requireNonZeroOut ?? true;
   const snapshotGas = opts.snapshotGas ?? true;
 
-  const { deployer, hook, router, pool } = env;
+  const { deployer, router, pool, asset, usdc, treasury, access } = env;
   const who = deployer;
 
-  await (await (hook as any).mintWithRebate({
-    pool: await pool.getAddress(),
-    to: who.address,
-    amountAssetDesired: ethers.parseEther("100"),
-    amountUsdcDesired:  ethers.parseEther("100"),
-    data: "0x",
-  })).wait();
+  // allow deployer to use supplicate
+  await (await access.setApprovedSupplicator(who.address, true)).wait();
+
+  // seed pool with healthy reserves via Treasury (e.g. 100 / 100)
+  await bootstrapSeed(
+    treasury,
+    pool,
+    asset,
+    usdc,
+    deployer,
+    ethers.parseEther("100"),
+    ethers.parseEther("100"),
+    0n
+  );
 
   const tokens = await getTokensFromPool(pool);
 
-  await mintToForInput(env, who, assetToUsdc, amountIn);
+  // mint input to payer
+  await mintToForInput({ asset, usdc, deployer }, who, assetToUsdc, amountIn);
 
+  // approve Router + Pool
   if (assetToUsdc) {
     await approveInputForSupplicate(tokens.asset, who, router, pool);
   } else {
@@ -386,7 +437,7 @@ async function snapshotTradeAndCompare(opts: {
  * Spec
  * ──────────────────────────────────────────────────────────────────────────── */
 
-describe("Quoter accuracy & sqrt pricing snapshots", () => {
+describe("Quoter accuracy & sqrt pricing snapshots (Phase 0, no hooks)", () => {
   it("ABI shape present on Quoter and Pool (quoteSupplication)", async () => {
     const { pool } = await deployCore();
 
@@ -399,7 +450,7 @@ describe("Quoter accuracy & sqrt pricing snapshots", () => {
   });
 
   it("ASSET->USDC: quote aligns with execution; snapshots deltas & sqrt", async () => {
-    const env = await deployCore();
+    const env: any = await deployCore();
     await snapshotReserves(env.pool, "pre — A->U");
     await snapshotTradeAndCompare({
       label: "A->U",
@@ -411,7 +462,7 @@ describe("Quoter accuracy & sqrt pricing snapshots", () => {
   });
 
   it("USDC->ASSET: quote aligns with execution; snapshots deltas & sqrt", async () => {
-    const env = await deployCore();
+    const env: any = await deployCore();
     await snapshotReserves(env.pool, "pre — U->A");
     await snapshotTradeAndCompare({
       label: "U->A",
@@ -424,14 +475,21 @@ describe("Quoter accuracy & sqrt pricing snapshots", () => {
 
   describe("Monotonicity (same block): larger amountIn → >= amountOut", () => {
     it("ASSET->USDC via quoter", async () => {
-      const { deployer, hook, pool } = await deployCore();
-      await (await (hook as any).mintWithRebate({
-        pool: await pool.getAddress(),
-        to: deployer.address,
-        amountAssetDesired: ethers.parseEther("100"),
-        amountUsdcDesired:  ethers.parseEther("100"),
-        data: "0x",
-      })).wait();
+      const env: any = await deployCore();
+      const { deployer, pool, treasury, access, asset, usdc } = env;
+
+      await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
+
+      await bootstrapSeed(
+        treasury as LPPTreasury,
+        pool as LPPPool,
+        asset as TestERC20,
+        usdc as TestERC20,
+        deployer,
+        ethers.parseEther("100"),
+        ethers.parseEther("100"),
+        0n
+      );
 
       const QuoterF = await ethers.getContractFactory("LPPSupplicationQuoter");
       const quoter = (await QuoterF.deploy()) as unknown as LPPSupplicationQuoter;
@@ -454,14 +512,21 @@ describe("Quoter accuracy & sqrt pricing snapshots", () => {
     });
 
     it("USDC->ASSET via quoter", async () => {
-      const { deployer, hook, pool } = await deployCore();
-      await (await (hook as any).mintWithRebate({
-        pool: await pool.getAddress(),
-        to: deployer.address,
-        amountAssetDesired: ethers.parseEther("100"),
-        amountUsdcDesired:  ethers.parseEther("100"),
-        data: "0x",
-      })).wait();
+      const env: any = await deployCore();
+      const { deployer, pool, treasury, access, asset, usdc } = env;
+
+      await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
+
+      await bootstrapSeed(
+        treasury as LPPTreasury,
+        pool as LPPPool,
+        asset as TestERC20,
+        usdc as TestERC20,
+        deployer,
+        ethers.parseEther("100"),
+        ethers.parseEther("100"),
+        0n
+      );
 
       const QuoterF = await ethers.getContractFactory("LPPSupplicationQuoter");
       const quoter = (await QuoterF.deploy()) as unknown as LPPSupplicationQuoter;
@@ -486,22 +551,27 @@ describe("Quoter accuracy & sqrt pricing snapshots", () => {
 
   describe("Tiny-trade behavior", () => {
     it("Healthy reserves: tiny input yields non-zero output (A->U)", async () => {
-      const env = await deployCore();
-      const { deployer, hook, pool, router } = env;
+      const env: any = await deployCore();
+      const { deployer, pool, router, treasury, access, asset, usdc } = env;
 
-      await (await (hook as any).mintWithRebate({
-        pool: await pool.getAddress(),
-        to: deployer.address,
-        amountAssetDesired: ethers.parseEther("100"),
-        amountUsdcDesired:  ethers.parseEther("100"),
-        data: "0x",
-      })).wait();
+      await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
+
+      await bootstrapSeed(
+        treasury as LPPTreasury,
+        pool as LPPPool,
+        asset as TestERC20,
+        usdc as TestERC20,
+        deployer,
+        ethers.parseEther("100"),
+        ethers.parseEther("100"),
+        0n
+      );
 
       const probed = await findSmallestNonZeroAmount({ pool, assetToUsdc: true });
       const amountIn = (probed ?? 1n);
 
       const tokens = await getTokensFromPool(pool);
-      await mintToForInput(env, deployer, true, amountIn);
+      await mintToForInput({ asset, usdc, deployer }, deployer, true, amountIn);
       await approveInputForSupplicate(tokens.asset, deployer, router, pool);
 
       await snapshotTradeAndCompare({
@@ -511,27 +581,32 @@ describe("Quoter accuracy & sqrt pricing snapshots", () => {
         amountIn,
         minOut: 0n,
         requireNonZeroOut: probed !== null,
-        snapshotGas: false, // ← avoid gas snapshot jitter
+        snapshotGas: false,
       });
     });
 
     it("Healthy reserves: tiny input yields non-zero output (U->A)", async () => {
-      const env = await deployCore();
-      const { deployer, hook, pool, router } = env;
+      const env: any = await deployCore();
+      const { deployer, pool, router, treasury, access, asset, usdc } = env;
 
-      await (await (hook as any).mintWithRebate({
-        pool: await pool.getAddress(),
-        to: deployer.address,
-        amountAssetDesired: ethers.parseEther("100"),
-        amountUsdcDesired:  ethers.parseEther("100"),
-        data: "0x",
-      })).wait();
+      await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
+
+      await bootstrapSeed(
+        treasury as LPPTreasury,
+        pool as LPPPool,
+        asset as TestERC20,
+        usdc as TestERC20,
+        deployer,
+        ethers.parseEther("100"),
+        ethers.parseEther("100"),
+        0n
+      );
 
       const probed = await findSmallestNonZeroAmount({ pool, assetToUsdc: false });
       const amountIn = (probed ?? 1n);
 
       const tokens = await getTokensFromPool(pool);
-      await mintToForInput(env, deployer, false, amountIn);
+      await mintToForInput({ asset, usdc, deployer }, deployer, false, amountIn);
       await approveInputForSupplicate(tokens.usdc, deployer, router, pool);
 
       await snapshotTradeAndCompare({
@@ -541,7 +616,7 @@ describe("Quoter accuracy & sqrt pricing snapshots", () => {
         amountIn,
         minOut: 0n,
         requireNonZeroOut: probed !== null,
-        snapshotGas: false, // ← avoid gas snapshot jitter
+        snapshotGas: false,
       });
     });
   });

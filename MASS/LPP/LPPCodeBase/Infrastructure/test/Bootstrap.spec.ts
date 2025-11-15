@@ -15,9 +15,10 @@ import type {
 
 /* ---------------- math + price helpers ---------------- */
 
-const Q96 = 1n << 96n;
+const Q96  = 1n << 96n;
 const Q192 = 1n << 192n;
 
+// integer sqrt
 function isqrt(n: bigint): bigint {
   if (n <= 0n) return 0n;
   let x = n;
@@ -29,6 +30,7 @@ function isqrt(n: bigint): bigint {
   return x;
 }
 
+// priceX96 is linear Q96 price (asset / USDC)
 function toSqrtPriceX96(priceX96: bigint): bigint {
   return isqrt(priceX96 << 96n);
 }
@@ -43,49 +45,49 @@ function driftBpsFromPriceX96(priceX96: bigint): string {
 async function addr(x: any): Promise<string> {
   if (!x) return "";
   if (typeof x === "string") return x;
-  if ("getAddress" in x) return x.getAddress();
-  if ("address" in x) return x.address;
+  if ("getAddress" in x && typeof x.getAddress === "function") return await x.getAddress();
+  if ("address" in x) return (x as any).address as string;
   return "";
 }
 
-/** Reserve-only snapshot */
-async function snapshotReserves(pool: LPPPool, label: string) {
-  const a = await (pool as any).reserveAsset();
-  const u = await (pool as any).reserveUsdc();
-  expect({
-    pool: await pool.getAddress(),
+/** Reserve-only parity snapshot (no ERC20 balance peeks) */
+async function snapshotParity(pool: LPPPool, label: string) {
+  const details = {
+    addresses: { pool: await addr(pool) },
     reserves: {
-      asset: a.toString(),
-      usdc: u.toString(),
+      asset: ((await (pool as any).reserveAsset()) as bigint).toString(),
+      usdc:  ((await (pool as any).reserveUsdc())  as bigint).toString(),
     },
-  }).to.matchSnapshot(label);
+  };
+  expect(details).to.matchSnapshot(`${label} — DETAILS`);
 }
 
-/** Price & drift snapshot */
-async function snapshotPrice(pool: LPPPool, label: string) {
-  const px = await (pool as any).priceX96();
-  const sqrtAperU = toSqrtPriceX96(px);
-  const sqrtUperA = sqrtAperU === 0n ? 0n : Q192 / sqrtAperU;
+/** Price detail snapshot (linear + sqrt + drift + reserves) */
+async function snapshotPriceDetail(pool: LPPPool, label: string) {
+  const px = (await (pool as any).priceX96()) as bigint;
 
-  const resA = await (pool as any).reserveAsset();
-  const resU = await (pool as any).reserveUsdc();
+  const sqrtAssetPerUsdcX96 = toSqrtPriceX96(px);
+  const sqrtUsdcPerAssetX96 = sqrtAssetPerUsdcX96 === 0n ? 0n : (Q192 / sqrtAssetPerUsdcX96);
+
+  const resA = (await (pool as any).reserveAsset()) as bigint;
+  const resU = (await (pool as any).reserveUsdc()) as bigint;
 
   expect({
     pool: await pool.getAddress(),
-    priceX96: px.toString(),
-    driftBps: driftBpsFromPriceX96(px),
+    priceX96: px.toString(),                 // asset / USDC (linear Q96)
+    driftBps: driftBpsFromPriceX96(px),      // relative to 1.0
     sqrtPrices: {
-      sqrtAssetPerUsdcX96: sqrtAperU.toString(),
-      sqrtUsdcPerAssetX96: sqrtUperA.toString(),
+      sqrtAssetPerUsdcX96: sqrtAssetPerUsdcX96.toString(),
+      sqrtUsdcPerAssetX96: sqrtUsdcPerAssetX96.toString(),
     },
     reserves: {
       asset: resA.toString(),
-      usdc: resU.toString(),
+      usdc:  resU.toString(),
     },
   }).to.matchSnapshot(label);
 }
 
-/* ---------------- helpers ---------------- */
+/* ---------------- local helpers (ERC20-aware) ---------------- */
 
 async function allowPairViaTreasury(
   treasury: LPPTreasury,
@@ -93,129 +95,255 @@ async function allowPairViaTreasury(
   a: string,
   u: string
 ) {
-  await (await treasury.allowTokenViaTreasury(await factory.getAddress(), a, true)).wait();
-  await (await treasury.allowTokenViaTreasury(await factory.getAddress(), u, true)).wait();
+  await (await (treasury as any)["allowTokenViaTreasury(address,address,bool)"](
+    await factory.getAddress(),
+    a,
+    true
+  )).wait();
+
+  await (await (treasury as any)["allowTokenViaTreasury(address,address,bool)"](
+    await factory.getAddress(),
+    u,
+    true
+  )).wait();
 }
 
-async function newPoolViaTreasury(
+async function newPoolViaTreasuryWithTokens(
   treasury: LPPTreasury,
   factory: LPPFactory,
-  asset: string,
-  usdc: string
-) {
-  await allowPairViaTreasury(treasury, factory, asset, usdc);
-  const tx = await treasury.createPoolViaTreasury(await factory.getAddress(), asset, usdc);
+  assetAddr: string,
+  usdcAddr: string
+): Promise<LPPPool> {
+  await allowPairViaTreasury(treasury, factory, assetAddr, usdcAddr);
+
+  const tx = await (treasury as any)["createPoolViaTreasury(address,address,address)"](
+    await factory.getAddress(),
+    assetAddr,
+    usdcAddr
+  );
   const rcpt = await tx.wait();
   await snapshotGasCost(rcpt!.gasUsed);
 
-  const pools = await factory.getPools();
-  const poolAddr = pools[pools.length - 1];
-  return await ethers.getContractAt("LPPPool", poolAddr);
+  const pools = await (factory as any).getPools();
+  const poolAddr = pools[pools.length - 1] as string;
+  return (await ethers.getContractAt("LPPPool", poolAddr)) as unknown as LPPPool;
 }
 
-async function fundTreasury(
+/** 4-arg version with offset bps: bootstrapViaTreasury(address,uint256,uint256,int256) */
+async function bootstrapViaTreasury(
+  treasury: LPPTreasury,
+  pool: LPPPool,
+  amountAsset: bigint,
+  amountUsdc: bigint,
+  offsetBps: bigint
+) {
+  const fn = (treasury as any)[
+    "bootstrapViaTreasury(address,uint256,uint256,int256)"
+  ] as (
+    pool: string,
+    amountAsset: bigint,
+    amountUsdc: bigint,
+    offsetBps: bigint
+  ) => Promise<any>;
+
+  const tx = await fn(
+    await pool.getAddress(),
+    amountAsset,
+    amountUsdc,
+    offsetBps
+  );
+  const rcpt = await tx.wait();
+  await snapshotGasCost(rcpt!.gasUsed);
+}
+
+/** 3-arg overload: bootstrapViaTreasury(address,uint256,uint256) */
+/** 3-arg overload: bootstrapViaTreasury(address,uint256,uint256) */
+async function threeArgBootstrap(
+  treasury: LPPTreasury | any,
+  pool: LPPPool,
+  amountAsset: bigint,
+  amountUsdc: bigint
+) {
+  const fn3 = (treasury as any)[
+    "bootstrapViaTreasury(address,uint256,uint256)"
+  ] as (
+    pool: string,
+    amountAsset: bigint,
+    amountUsdc: bigint
+  ) => Promise<any>;
+
+  return fn3(
+    await pool.getAddress(),   // <<--- await the Promise<string> here
+    amountAsset,
+    amountUsdc
+  );
+}
+
+/** Mint tokens to Treasury so it can bootstrap pools */
+async function fundTreasuryForBootstrap(
   asset: TestERC20,
   usdc: TestERC20,
   deployer: any,
   treasury: LPPTreasury,
-  amtA: bigint,
-  amtU: bigint
+  totalAsset: bigint,
+  totalUsdc: bigint
 ) {
-  const t = await treasury.getAddress();
-  await (await asset.connect(deployer).mint(t, amtA)).wait();
-  await (await usdc.connect(deployer).mint(t, amtU)).wait();
+  const tAddr = await treasury.getAddress();
+
+  if (totalAsset > 0n) {
+    await (await asset.connect(deployer).mint(tAddr, totalAsset)).wait();
+  }
+  if (totalUsdc > 0n) {
+    await (await usdc.connect(deployer).mint(tAddr, totalUsdc)).wait();
+  }
 }
 
-/* ---------------- TESTS ---------------- */
+/* ---------------- tests ---------------- */
 
-describe("Bootstrap (Phase 0)", () => {
+describe("Bootstrap", () => {
+  it("bootstrap initializes reserves and price", async () => {
+    const e: any = await deployCore(); // cast to any to avoid TS complaining about shape
 
-  it("Factory + single pool deployed correctly", async () => {
-    const e = await deployCore();
+    const pool = e.pool as LPPPool;
+    const treasury = e.treasury as LPPTreasury;
+    const asset = e.asset as TestERC20;
+    const usdc = e.usdc as TestERC20;
+    const deployer = e.deployer;
 
-    expect({
-      factory: await addr(e.factory),
-      pool: await addr(e.pool),
-      reserves: {
-        asset: (await e.pool.reserveAsset()).toString(),
-        usdc: (await e.pool.reserveUsdc()).toString(),
-      },
-    }).to.matchSnapshot("Deploy — Factory + Pool");
+    // Before bootstrap: expect zero reserves
+    const beforeA = (await (pool as any).reserveAsset()) as bigint;
+    const beforeU = (await (pool as any).reserveUsdc()) as bigint;
 
-    await snapshotPrice(e.pool, "Deploy — Baseline price");
+    expect(beforeA).to.equal(0n);
+    expect(beforeU).to.equal(0n);
+
+    // Mint funds to Treasury and bootstrap
+    const amtA = ethers.parseEther("1");
+    const amtU = ethers.parseEther("1");
+
+    await fundTreasuryForBootstrap(asset, usdc, deployer, treasury, amtA, amtU);
+
+    await bootstrapViaTreasury(treasury, pool, amtA, amtU, 0n);
+
+    const afterA = (await (pool as any).reserveAsset()) as bigint;
+    const afterU = (await (pool as any).reserveUsdc()) as bigint;
+
+    expect(afterA).to.equal(amtA);
+    expect(afterU).to.equal(amtU);
+
+    await snapshotParity(pool, "Bootstrap — post-bootstrap parity");
+    await snapshotPriceDetail(pool, "Bootstrap — Baseline price fields");
   });
 
-  it("cannot bootstrap twice", async () => {
-    const e = await deployCore();
+  it("cannot bootstrap twice (idempotency enforced)", async () => {
+    const e: any = await deployCore();
 
-    await expect(
-      e.treasury.bootstrapViaTreasury(
-        await e.pool.getAddress(),
-        1n,
-        1n
-      )
-    ).to.be.revertedWith("already init");
-  });
-
-  it("only treasury owner can bootstrap", async () => {
-    const e = await deployCore();
-    const [ , notOwner ] = await ethers.getSigners();
-
-    await expect(
-      e.treasury.connect(notOwner).bootstrapViaTreasury(
-        await e.pool.getAddress(),
-        1n,
-        1n
-      )
-    ).to.be.revertedWith("not owner");
-  });
-
-  it("bootstrap with zero amounts reverts", async () => {
-    const e = await deployCore();
-
-    const pool2 = await newPoolViaTreasury(
-      e.treasury,
-      e.factory,
-      await e.asset.getAddress(),
-      await e.usdc.getAddress()
-    );
-
-    await fundTreasury(e.asset, e.usdc, e.deployer, e.treasury, 10n, 10n);
-
-    await expect(
-      e.treasury.bootstrapViaTreasury(await pool2.getAddress(), 0n, 10n)
-    ).to.be.revertedWith("zero amount");
-
-    await expect(
-      e.treasury.bootstrapViaTreasury(await pool2.getAddress(), 10n, 0n)
-    ).to.be.revertedWith("zero amount");
-  });
-
-  it("offset bootstrap for four pools shows correct drift", async () => {
-    const e = await deployCore();
-
-    const asset = await e.asset.getAddress();
-    const usdc = await e.usdc.getAddress();
-
-    const poolA = await newPoolViaTreasury(e.treasury, e.factory, asset, usdc);
-    const poolB = await newPoolViaTreasury(e.treasury, e.factory, asset, usdc);
-    const poolC = await newPoolViaTreasury(e.treasury, e.factory, asset, usdc);
-    const poolD = await newPoolViaTreasury(e.treasury, e.factory, asset, usdc);
+    const pool = e.pool as LPPPool;
+    const treasury = e.treasury as LPPTreasury;
+    const asset = e.asset as TestERC20;
+    const usdc = e.usdc as TestERC20;
+    const deployer = e.deployer;
 
     const amtA = ethers.parseEther("1");
     const amtU = ethers.parseEther("1");
 
-    await fundTreasury(e.asset, e.usdc, e.deployer, e.treasury, amtA * 4n, amtU * 4n);
+    await fundTreasuryForBootstrap(asset, usdc, deployer, treasury, amtA * 2n, amtU * 2n);
+    await bootstrapViaTreasury(treasury, pool, amtA, amtU, 0n);
 
-    await e.treasury.bootstrapViaTreasury(await poolA.getAddress(), amtA, amtU, -500n);
-    await e.treasury.bootstrapViaTreasury(await poolB.getAddress(), amtA, amtU, -499n);
-    await e.treasury.bootstrapViaTreasury(await poolC.getAddress(), amtA, amtU,  499n);
-    await e.treasury.bootstrapViaTreasury(await poolD.getAddress(), amtA, amtU,  500n);
-
-    await snapshotPrice(poolA, "Offset — Pool A (-500)");
-    await snapshotPrice(poolB, "Offset — Pool B (-499)");
-    await snapshotPrice(poolC, "Offset — Pool C (+499)");
-    await snapshotPrice(poolD, "Offset — Pool D (+500)");
+    // Second call (3-arg overload) should revert with "already init"
+    await expect(
+      threeArgBootstrap(treasury, pool, amtA, amtU)
+    ).to.be.revertedWith("already init");
   });
 
+  it("only Treasury owner can call bootstrapViaTreasury", async () => {
+    const e: any = await deployCore();
+
+    const pool = e.pool as LPPPool;
+    const treasury = e.treasury as LPPTreasury;
+    const asset = e.asset as TestERC20;
+    const usdc = e.usdc as TestERC20;
+    const deployer = e.deployer;
+    const [, notOwner] = await ethers.getSigners();
+
+    const amtA = ethers.parseEther("1");
+    const amtU = ethers.parseEther("1");
+
+    await fundTreasuryForBootstrap(asset, usdc, deployer, treasury, amtA, amtU);
+
+    await expect(
+      threeArgBootstrap(treasury.connect(notOwner), pool, amtA, amtU)
+    ).to.be.revertedWith("not owner");
+  });
+
+  it("bootstrap with zero amounts is rejected", async () => {
+    const e: any = await deployCore();
+
+    const pool = e.pool as LPPPool;
+    const treasury = e.treasury as LPPTreasury;
+    const asset = e.asset as TestERC20;
+    const usdc = e.usdc as TestERC20;
+    const deployer = e.deployer;
+
+    const amtA = ethers.parseEther("1");
+    const amtU = ethers.parseEther("1");
+
+    await fundTreasuryForBootstrap(asset, usdc, deployer, treasury, amtA, amtU);
+
+    await expect(
+      threeArgBootstrap(treasury, pool, 0n, amtU)
+    ).to.be.revertedWith("zero amount");
+
+    await expect(
+      threeArgBootstrap(treasury, pool, amtA, 0n)
+    ).to.be.revertedWith("zero amount");
+  });
+});
+
+describe("Offset bootstrap seeding", () => {
+  it("seeds four pools off-center and snapshots drift (bps)", async () => {
+    const e: any = await deployCore();
+
+    const treasury = e.treasury as LPPTreasury;
+    const factory  = e.factory as LPPFactory;
+    const asset    = e.asset as TestERC20;
+    const usdc     = e.usdc as TestERC20;
+    const deployer = e.deployer;
+
+    const assetAddr = await asset.getAddress();
+    const usdcAddr  = await usdc.getAddress();
+
+    // Create four pools:
+    //  - Pool A: center -500 bps
+    //  - Pool B: center -499 bps
+    //  - Pool C: center +499 bps
+    //  - Pool D: center +500 bps
+    const poolA = await newPoolViaTreasuryWithTokens(treasury, factory, assetAddr, usdcAddr);
+    const poolB = await newPoolViaTreasuryWithTokens(treasury, factory, assetAddr, usdcAddr);
+    const poolC = await newPoolViaTreasuryWithTokens(treasury, factory, assetAddr, usdcAddr);
+    const poolD = await newPoolViaTreasuryWithTokens(treasury, factory, assetAddr, usdcAddr);
+
+    const amtA = ethers.parseEther("1"); // 1 ASSET
+    const amtU = ethers.parseEther("1"); // 1 USDC
+
+    // Fund Treasury once with enough for all four boots (4 pools * (1,1))
+    await fundTreasuryForBootstrap(
+      asset,
+      usdc,
+      deployer,
+      treasury,
+      amtA * 4n,
+      amtU * 4n
+    );
+
+    await bootstrapViaTreasury(treasury, poolA, amtA, amtU, -500n);
+    await bootstrapViaTreasury(treasury, poolB, amtA, amtU, -499n);
+    await bootstrapViaTreasury(treasury, poolC, amtA, amtU,  499n);
+    await bootstrapViaTreasury(treasury, poolD, amtA, amtU,  500n);
+
+    await snapshotPriceDetail(poolA, "Offset seed — Pool A (-500 bps)");
+    await snapshotPriceDetail(poolB, "Offset seed — Pool B (-499 bps)");
+    await snapshotPriceDetail(poolC, "Offset seed — Pool C (+499 bps)");
+    await snapshotPriceDetail(poolD, "Offset seed — Pool D (+500 bps)");
+  });
 });
