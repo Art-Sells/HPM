@@ -10,23 +10,22 @@ contract LPPRouter is ILPPRouter {
     ILPPAccessManager public immutable access;
     address public immutable treasury;
 
-    // Exposed as constants that satisfy ILPPRouter getters
+    // ILPPRouter constants
     uint16 public constant override BPS_DENOMINATOR = 10_000;
     uint16 public constant override MCV_FEE_BPS      = 250; // 2.5%
-    uint16 public constant TREASURY_CUT_BPS          = 50;  // 0.5% (of hop output)
-    uint16 public constant POOLS_CUT_BPS             = 200; // 2.0% (of hop output)
+    uint16 public constant TREASURY_CUT_BPS          = 50;  // 0.5% (of input)
+    uint16 public constant POOLS_CUT_BPS             = 200; // 2.0% (of input)
 
     struct OrbitConfig { address[3] pools; bool initialized; }
     mapping(address => OrbitConfig) private _orbitOf;
 
-    // Keep only this event locally (others like OrbitUpdated are assumed declared in ILPPRouter)
     event FeeTaken(
         address indexed pool,
-        address indexed token,
-        uint256 grossOut,
-        uint256 totalFee,
-        uint256 treasuryFee,
-        uint256 poolsFee
+        address indexed token,      // fee token (input token of hop)
+        uint256 amountBase,         // hop amountIn on which fee was computed
+        uint256 totalFee,           // 2.5%
+        uint256 treasuryFee,        // 0.5%
+        uint256 poolsFee            // 2.0%
     );
 
     modifier onlyTreasury() {
@@ -41,9 +40,9 @@ contract LPPRouter is ILPPRouter {
         treasury = treasury_;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
     // Orbit config
-    // ─────────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
 
     function setOrbit(address startPool, address[3] calldata pools_) external onlyTreasury {
         require(startPool != address(0), "orbit: zero start");
@@ -52,7 +51,7 @@ contract LPPRouter is ILPPRouter {
             "orbit: zero pool"
         );
 
-        // Enforce same asset/usdc across all hops
+        // Enforce same pair across all three pools
         address a0 = ILPPPool(pools_[0]).asset();
         address u0 = ILPPPool(pools_[0]).usdc();
         require(ILPPPool(pools_[1]).asset() == a0 && ILPPPool(pools_[1]).usdc() == u0, "orbit: mismatched pair");
@@ -68,22 +67,26 @@ contract LPPRouter is ILPPRouter {
         return cfg.pools;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Single-pool supplicate (approved-only)
-    // ─────────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
+    // Single-pool supplicate (approved-only) — FEE ON INPUT
+    // ─────────────────────────────────────────────────────────────
 
     function supplicate(SupplicateParams calldata p)
         external
         override
-        returns (uint256 amountOutNet)
+        returns (uint256 amountOut /* gross */)
     {
         require(access.isApprovedSupplicator(msg.sender), "not permitted");
 
         address payer = p.payer == address(0) ? msg.sender : p.payer;
         address to    = p.to    == address(0) ? msg.sender : p.to;
 
-        // Route pool’s output to router so we can take fees
-        uint256 grossOut = ILPPPool(p.pool).supplicate(
+        // Take fee on INPUT token first (from external payer)
+        address tokenIn = p.assetToUsdc ? ILPPPool(p.pool).asset() : ILPPPool(p.pool).usdc();
+        _takeInputFeeAndDonate(p.pool, tokenIn, payer, p.amountIn, /*payerIsRouter*/ false);
+
+        // Execute swap: pool pulls `amountIn` from payer, sends GROSS out to router
+        amountOut = ILPPPool(p.pool).supplicate(
             payer,
             address(this),
             p.assetToUsdc,
@@ -91,20 +94,16 @@ contract LPPRouter is ILPPRouter {
             p.minAmountOut
         );
 
+        // Pass GROSS through to recipient (no output skim)
         address tokenOut = p.assetToUsdc ? ILPPPool(p.pool).usdc() : ILPPPool(p.pool).asset();
-        amountOutNet = _skimAndDistributeFees_OutputSide(p.pool, tokenOut, grossOut);
+        IERC20(tokenOut).transfer(to, amountOut);
 
-        // Send net to recipient
-        IERC20(tokenOut).transfer(to, amountOutNet);
-
-        // Optional bookkeeping event in ILPPRouter
-        address tokenIn = p.assetToUsdc ? ILPPPool(p.pool).asset() : ILPPPool(p.pool).usdc();
-        emit SupplicateExecuted(msg.sender, p.pool, tokenIn, p.amountIn, tokenOut, amountOutNet, 0);
+        emit SupplicateExecuted(msg.sender, p.pool, tokenIn, p.amountIn, tokenOut, amountOut, 0);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // 3-hop MCV orbit (fee per hop, no internal profit accounting here)
-    // ─────────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
+    // 3-hop MCV orbit — fee on hop-0 input only (external payer)
+    // ─────────────────────────────────────────────────────────────
 
     function mcvSupplication(MCVParams calldata params)
         external
@@ -114,7 +113,6 @@ contract LPPRouter is ILPPRouter {
         require(params.amountIn > 0, "zero input");
         OrbitConfig memory cfg = _orbitOf[params.startPool];
         require(cfg.initialized, "orbit: not configured");
-
         address[3] memory orbit = cfg.pools;
 
         bool dir = params.assetToUsdc;
@@ -122,85 +120,92 @@ contract LPPRouter is ILPPRouter {
         address payer  = params.payer == address(0) ? msg.sender : params.payer;
         address to     = params.to    == address(0) ? msg.sender : params.to;
 
-        // hop 0: payer -> pool0 -> router
-        amount = _executeHopWithFees(orbit[0], dir, amount, payer);
+        // hop 0 (external payer): fee on input
+        amount = _executeHop_InputFeeThenSwap(orbit[0], dir, amount, payer, /*chargeInputFee*/ true);
 
-        // hop 1: router -> pool1 -> router (flip)
+        // hop 1 (router payer): skip input fee for now (to avoid starving amount mid-orbit)
         dir = !dir;
-        amount = _executeHopWithFees(orbit[1], dir, amount, address(this));
+        amount = _executeHop_InputFeeThenSwap(orbit[1], dir, amount, address(this), /*chargeInputFee*/ false);
 
-        // hop 2: router -> pool2 -> router (flip)
+        // hop 2 (router payer): skip input fee for now
         dir = !dir;
-        amount = _executeHopWithFees(orbit[2], dir, amount, address(this));
+        amount = _executeHop_InputFeeThenSwap(orbit[2], dir, amount, address(this), /*chargeInputFee*/ false);
 
         finalAmountOut = amount;
 
-        // last hop’s output token (depends on dir after flip)
+        // deliver final tokens
         address endToken = dir ? ILPPPool(orbit[2]).usdc() : ILPPPool(orbit[2]).asset();
         IERC20(endToken).transfer(to, finalAmountOut);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // internals
-    // ─────────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
+    // Internals
+    // ─────────────────────────────────────────────────────────────
 
-    function _executeHopWithFees(
+    function _executeHop_InputFeeThenSwap(
         address pool,
         bool assetToUsdc,
         uint256 amountIn,
-        address payer
-    ) internal returns (uint256 netOut) {
+        address payer,
+        bool chargeInputFee
+    ) internal returns (uint256 grossOut) {
         require(pool != address(0), "zero pool");
         require(amountIn > 0, "zero hop amount");
 
-        address tokenIn  = assetToUsdc ? ILPPPool(pool).asset() : ILPPPool(pool).usdc();
-        address tokenOut = assetToUsdc ? ILPPPool(pool).usdc()  : ILPPPool(pool).asset();
+        address tokenIn = assetToUsdc ? ILPPPool(pool).asset() : ILPPPool(pool).usdc();
 
+        if (chargeInputFee) {
+            // external payer (not the router)
+            _takeInputFeeAndDonate(pool, tokenIn, payer, amountIn, /*payerIsRouter*/ false);
+        }
+
+        // If router is the payer, ensure approval for pull
         if (payer == address(this)) {
             IERC20(tokenIn).approve(pool, amountIn);
         }
 
-        uint256 grossOut = ILPPPool(pool).supplicate(
+        grossOut = ILPPPool(pool).supplicate(
             payer,
             address(this),
             assetToUsdc,
             amountIn,
             0
         );
-
-        netOut = _skimAndDistributeFees_OutputSide(pool, tokenOut, grossOut);
-        // router now holds netOut of tokenOut for the next hop
+        // No output skim; returned amount becomes next hop's input
     }
 
-    /// @dev Fee-on-output model:
-    ///  - We hold `grossOut` tokens at the router.
-    ///  - We send `treasuryFt` to the treasury.
-    ///  - We **transfer `poolsFt` to the pool, then call donateToReserves(...)**
-    ///    so accounting reserves increase (no LP minted).
-    ///  - Return net to continue or to the final recipient.
-    function _skimAndDistributeFees_OutputSide(
+    /// @dev Pull fee on INPUT token, split treasury/pools, credit pools via donateToReserves.
+    function _takeInputFeeAndDonate(
         address pool,
-        address tokenOut,
-        uint256 grossOut
-    ) internal returns (uint256 netOut) {
-        if (grossOut == 0) return 0;
+        address tokenIn,
+        address payer,
+        uint256 amountInBase,
+        bool payerIsRouter
+    ) internal {
+        if (MCV_FEE_BPS == 0) return;
 
-        uint256 totalFee   = (grossOut * MCV_FEE_BPS) / BPS_DENOMINATOR;      // 2.5%
-        uint256 treasuryFt = (grossOut * TREASURY_CUT_BPS) / BPS_DENOMINATOR; // 0.5%
-        uint256 poolsFt    = totalFee - treasuryFt;                            // 2.0%
+        uint256 totalFee   = (amountInBase * MCV_FEE_BPS) / BPS_DENOMINATOR;      // 2.5%
+        if (totalFee == 0) return;
 
-        // Pay treasury from router balance
-        if (treasuryFt > 0) IERC20(tokenOut).transfer(treasury, treasuryFt);
+        uint256 treasuryFt = (amountInBase * TREASURY_CUT_BPS) / BPS_DENOMINATOR; // 0.5%
+        uint256 poolsFt    = totalFee - treasuryFt;                                // 2.0%
 
-        // Move pools cut to the pool, then reconcile reserves via donateToReserves
-        if (poolsFt > 0) {
-            IERC20(tokenOut).transfer(pool, poolsFt);
-            bool isUsdc = (tokenOut == ILPPPool(pool).usdc());
-            ILPPPool(pool).donateToReserves(isUsdc, poolsFt);
+        // Source the fee
+        if (payerIsRouter) {
+            // Not used in current flow (we skip inter-hop fees). Left for future pre-funded path.
+            // If enabled later: ensure router holds tokenIn >= amountInBase + totalFee, then:
+            // IERC20(tokenIn).transfer(treasury, treasuryFt); IERC20(tokenIn).transfer(pool, poolsFt);
+        } else {
+            // Pull from external payer
+            IERC20(tokenIn).transferFrom(payer, address(this), totalFee);
+            if (treasuryFt > 0) IERC20(tokenIn).transfer(treasury, treasuryFt);
+            if (poolsFt > 0) {
+                IERC20(tokenIn).transfer(pool, poolsFt);
+                bool isUsdc = (tokenIn == ILPPPool(pool).usdc());
+                ILPPPool(pool).donateToReserves(isUsdc, poolsFt);
+            }
         }
 
-        emit FeeTaken(pool, tokenOut, grossOut, totalFee, treasuryFt, poolsFt);
-
-        netOut = grossOut - totalFee;
+        emit FeeTaken(pool, tokenIn, amountInBase, totalFee, treasuryFt, poolsFt);
     }
 }

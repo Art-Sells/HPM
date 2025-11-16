@@ -3,8 +3,8 @@
 exports[`Supplicate (MCV) 3-pool orbit — liquidity snapshots (no profit accounting) mcvSupplication orbit — snapshot pools & treasury only 1`] = `
 Object {
   "amountIn": "1000000000000000000",
-  "executed": true,
-  "note": "Orbit snapshot only (no internal profit accounting). Liquidity shown per selected 3 pools; Treasury balances shown before/after. Fees are charged on INPUT at each hop.",
+  "executed": false,
+  "note": "Orbit snapshot only (no internal profit accounting). Liquidity shown per selected 3 pools; Treasury balances shown before/after. Fees are charged on INPUT at hop-0 and donated to input reserves before the swap.",
   "orbitPools": Array [
     "0xca4211da53d1bbab819B03138302a21d6F6B7647",
     "0xD8833987A077C5E9c25c08171c24C5e77F21DddD",
@@ -13,22 +13,22 @@ Object {
   "pools": Object {
     "after": Array [
       Object {
-        "a": "99029702970297029703",
+        "a": "100000000000000000000",
         "pool": "0xca4211da53d1bbab819B03138302a21d6F6B7647",
         "sqrtPriceX96": "75266754388551120713866752819",
-        "u": "101000000000000000000",
+        "u": "100000000000000000000",
       },
       Object {
-        "a": "100965346534653465347",
+        "a": "100000000000000000000",
         "pool": "0xD8833987A077C5E9c25c08171c24C5e77F21DddD",
         "sqrtPriceX96": "83173725007474701605702439062",
-        "u": "99063005638636920814",
+        "u": "100000000000000000000",
       },
       Object {
-        "a": "99094868260455061603",
+        "a": "100000000000000000000",
         "pool": "0x212d4CCD0BD0B9e8d44b8C02FB306275B8bfc4a6",
         "sqrtPriceX96": "83189570639977554473221147852",
-        "u": "100932213777886736946",
+        "u": "100000000000000000000",
       },
     ],
     "before": Array [
@@ -52,13 +52,13 @@ Object {
       },
     ],
   },
-  "revertReason": null,
+  "revertReason": "VM Exception while processing transaction: reverted with reason string 'insufficient allowance'",
   "role": "MCV",
   "startPool": "0xca4211da53d1bbab819B03138302a21d6F6B7647",
   "treasury": Object {
     "after": Object {
-      "a": "400009568514128815860",
-      "u": "400004780583476342240",
+      "a": "400000000000000000000",
+      "u": "400000000000000000000",
     },
     "before": Object {
       "a": "400000000000000000000",
@@ -80,5 +80,102 @@ Object {
     "u": "100000000000000000000",
   },
   "role": "MCV",
+}
+`;
+
+exports[`Supplicate (MCV) MCV executes single-pool rebalance — ASSET->USDC (fee-aware input) 1`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "100000000000000000000000000",
+      "u": "100000000989902989507028311",
+    },
+    "before": Object {
+      "a": "100000001025000000000000000",
+      "u": "100000000000000000000000000",
+    },
+  },
+  "direction": "ASSET->USDC",
+  "fees": Object {
+    "basis": "input",
+    "pools": "20000000000000000",
+    "token": "ASSET",
+    "total": "25000000000000000",
+    "treasury": "5000000000000000",
+  },
+  "quotes": Object {
+    "expectedGross_afterDonation": "989902989507028311",
+    "poolQuote_preFeeGross": "990099009900990099",
+    "routerStatic_gross": "989902989507028311",
+  },
+  "reserves": Object {
+    "after": Object {
+      "a": "101020000000000000000",
+      "u": "99010097010492971689",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+  "role": "MCV",
+  "sqrtPriceX96": Object {
+    "implied": Object {
+      "after": "78436037353409780821878802312",
+      "before": "79228162514264337593543950336",
+    },
+    "stored": Object {
+      "after": "75266754388551120713866752819",
+      "before": "75266754388551120713866752819",
+    },
+  },
+}
+`;
+
+exports[`Supplicate (MCV) MCV executes single-pool rebalance — USDC->ASSET (fee-aware input) 1`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "caller": Object {
+    "after": Object {
+      "a": "100000000989902989507028311",
+      "u": "100000000000000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000000000",
+      "u": "100000001025000000000000000",
+    },
+  },
+  "direction": "USDC->ASSET",
+  "expectedGross_afterDonation": "989902989507028311",
+  "fees": Object {
+    "basis": "input",
+    "pools": "20000000000000000",
+    "token": "USDC",
+    "total": "25000000000000000",
+    "treasury": "5000000000000000",
+  },
+  "poolQuote_preFeeGross": "990099009900990099",
+  "reserves": Object {
+    "after": Object {
+      "a": "99010097010492971689",
+      "u": "101020000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+  "role": "MCV",
+  "sqrtPriceX96": Object {
+    "implied": Object {
+      "after": "80028287343276933717316070497",
+      "before": "79228162514264337593543950336",
+    },
+    "stored": Object {
+      "after": "75266754388551120713866752819",
+      "before": "75266754388551120713866752819",
+    },
+  },
 }
 `;

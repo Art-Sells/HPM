@@ -93,6 +93,16 @@ function impliedSqrtPriceX96FromReserves(a: bigint, u: bigint): bigint {
   return isqrt(NUM_SHIFTED / a);
 }
 
+/** CFMM gross out with an extra amount credited to the input reserve *before* the trade */
+function grossOutWithPreAddedInput(
+  amountIn: bigint,
+  reserveIn: bigint,
+  reserveOut: bigint,
+  extraInputBeforeSwap: bigint
+): bigint {
+  return (amountIn * reserveOut) / (reserveIn + extraInputBeforeSwap + amountIn);
+}
+
 /** Bootstrap ONE pool with 100/100 and a price offset (bps). */
 async function bootstrapPoolAtOffset(
   treasury: any,
@@ -198,7 +208,7 @@ describe("Supplicate (MCV)", () => {
     const amountIn = ethers.parseEther("1");
     const { asset, usdc } = await getTokensFromPool(pool);
 
-    // fund input side (asset -> usdc)
+    // fund input side (asset -> usdc), including the input-side fee
     await (await env.asset.connect(deployer).mint(deployer.address, amountIn + feeFromInput(amountIn))).wait();
     await approveInputForSupplicate(asset, deployer, router, pool);
 
@@ -208,12 +218,12 @@ describe("Supplicate (MCV)", () => {
     const s0Implied = impliedSqrtPriceX96FromReserves(r0.a, r0.u);
     const b0A = await bal(asset, deployer.address);
     const b0U = await bal(usdc,  deployer.address);
-    const t0A = await bal(asset, await treasury.getAddress()); // treasury now accrues ASSET in A->U
+    const t0A = await bal(asset, await treasury.getAddress()); // treasury accrues ASSET in A->U
 
-    // --- quotes (gross out) ---
-    const quotedGross = await getPoolQuotedAmountOut(pool, true, amountIn);
+    // Pre-fee quote (for reference only; not used for equality check)
+    const quotedPreFeeGross = await getPoolQuotedAmountOut(pool, true, amountIn);
 
-    // router.staticCall should also return gross (no output skim)
+    // Router.staticCall should reflect the *post-donation* reserves path (gross out)
     let staticGross: bigint | null = null;
     try {
       staticGross = await (router.connect(deployer) as any).supplicate.staticCall({
@@ -225,6 +235,14 @@ describe("Supplicate (MCV)", () => {
         payer: deployer.address,
       });
     } catch { staticGross = null; }
+
+    // Expected gross with input fee donation to input reserve (pools 2.0%)
+    const expectedGross = grossOutWithPreAddedInput(
+      amountIn,
+      r0.a,            // input reserve = ASSET
+      r0.u,            // output reserve = USDC
+      poolsCutFromInput(amountIn) // extra ASSET donated before swap
+    );
 
     // --- execute ---
     await expect(
@@ -246,18 +264,17 @@ describe("Supplicate (MCV)", () => {
     const u1 = await bal(usdc,  deployer.address);
     const t1A = await bal(asset, await treasury.getAddress());
 
-    // --- user deltas (user receives GROSS out) ---
-    expect(b0A - a1).to.equal(amountIn + feeFromInput(amountIn)); // paid trade + fee
+    // --- user deltas (user receives GROSS out; fee paid in ASSET)
+    expect(b0A - a1).to.equal(amountIn + feeFromInput(amountIn));
     const userUOut = u1 > b0U ? u1 - b0U : 0n;
 
-    // compare to expectations (±1 wei)
-    expectApproxEq(userUOut, quotedGross);
+    // compare to expected path (±1 wei)
+    expectApproxEq(userUOut, expectedGross);
     if (staticGross !== null) expectApproxEq(userUOut, staticGross!);
 
-    // --- pool vs user deltas (fee-aware ON INPUT) ---
-    // Pool USDC dispensed (gross)
+    // --- pool vs user deltas (fee-aware ON INPUT)
     const poolUOutGross = r0.u > r1.u ? r0.u - r1.u : 0n;
-    expectApproxEq(poolUOutGross, quotedGross);
+    expectApproxEq(poolUOutGross, expectedGross);
 
     // Input-side pool reserve (ASSET) increases by amountIn + poolsFee
     const poolsFeeA = poolsCutFromInput(amountIn);
@@ -278,8 +295,9 @@ describe("Supplicate (MCV)", () => {
       direction: "ASSET->USDC",
       amountIn: amountIn.toString(),
       quotes: {
-        poolQuote_gross: quotedGross.toString(),
+        poolQuote_preFeeGross: quotedPreFeeGross.toString(),
         routerStatic_gross: staticGross?.toString() ?? null,
+        expectedGross_afterDonation: expectedGross.toString(),
       },
       reserves: {
         before: { a: r0.a.toString(), u: r0.u.toString() },
@@ -300,7 +318,7 @@ describe("Supplicate (MCV)", () => {
         stored:  { before: s0Stored?.toString() ?? null, after: s1Stored?.toString() ?? null },
         implied: { before: s0Implied.toString(),          after: s1Implied.toString()          },
       },
-    }).to.matchSnapshot("MCV — first supplicate A->U (fee-on-input)");
+    }).to.matchSnapshot("MCV — first supplicate A->U (fee-on-input, donated-before-swap)");
   });
 
   it("MCV executes single-pool rebalance — USDC->ASSET (fee-aware input)", async () => {
@@ -331,8 +349,16 @@ describe("Supplicate (MCV)", () => {
     const b0U = await bal(usdc,  deployer.address);
     const t0U = await bal(usdc,  await treasury.getAddress()); // treasury accrues USDC in U->A
 
-    // Quote (gross)
-    const quoted = await getPoolQuotedAmountOut(pool, false, amountIn);
+    // Pre-fee quote (for reference only)
+    const quotedPreFeeGross = await getPoolQuotedAmountOut(pool, false, amountIn);
+
+    // Expected gross with donation of pools 2.0% to USDC reserve before swap
+    const expectedGross = grossOutWithPreAddedInput(
+      amountIn,
+      r0.u,            // input reserve = USDC
+      r0.a,            // output reserve = ASSET
+      poolsCutFromInput(amountIn) // extra USDC donated before swap
+    );
 
     // Execute
     await (router.connect(deployer) as any).supplicate({
@@ -352,14 +378,14 @@ describe("Supplicate (MCV)", () => {
     const u1 = await bal(usdc,  deployer.address);
     const t1U = await bal(usdc,  await treasury.getAddress());
 
-    // Caller deltas (gross out to user in ASSET; fee paid in USDC)
+    // Caller deltas (gross out in ASSET; fee paid in USDC)
     expect(b0U - u1).to.equal(amountIn + feeFromInput(amountIn));
     const userAOut = a1 > b0A ? a1 - b0A : 0n;
-    expectApproxEq(userAOut, quoted);
+    expectApproxEq(userAOut, expectedGross);
 
     // Pool vs user deltas (fee-aware on input)
     const poolAOutGross = r0.a > r1.a ? r0.a - r1.a : 0n;
-    expectApproxEq(poolAOutGross, quoted);
+    expectApproxEq(poolAOutGross, expectedGross);
 
     // Input-side pool reserve (USDC) increases by amountIn + poolsFee
     const poolsFeeU = poolsCutFromInput(amountIn);
@@ -378,7 +404,8 @@ describe("Supplicate (MCV)", () => {
       role: "MCV",
       direction: "USDC->ASSET",
       amountIn: amountIn.toString(),
-      poolQuote_gross: quoted.toString(),
+      poolQuote_preFeeGross: quotedPreFeeGross.toString(),
+      expectedGross_afterDonation: expectedGross.toString(),
       fees: {
         basis: "input",
         total: feeFromInput(amountIn).toString(),
@@ -398,7 +425,7 @@ describe("Supplicate (MCV)", () => {
         before: { a: b0A.toString(), u: b0U.toString() },
         after:  { a: a1.toString(),  u: u1.toString()  },
       },
-    }).to.matchSnapshot("MCV — sqrt+reserves U->A (fee-on-input)");
+    }).to.matchSnapshot("MCV — sqrt+reserves U->A (fee-on-input, donated-before-swap)");
   });
 
   describe("3-pool orbit — liquidity snapshots (no profit accounting)", () => {
@@ -469,7 +496,7 @@ describe("Supplicate (MCV)", () => {
       const t0A = await bal(assetToken, await treasury.getAddress());
       const t0U = await bal(usdcToken,  await treasury.getAddress());
 
-      // MEV starts USDC->ASSET on startPoolAddr; router will handle inter-hop fees
+      // MEV starts USDC->ASSET on startPoolAddr; router will handle inter-hop flow
       await (await usdcToken.connect(deployer).mint(mcv.address, amountIn + feeFromInput(amountIn))).wait();
       await approveToPoolOnly(usdcToken, mcv, startPoolAddr, amountIn);
 
@@ -518,7 +545,7 @@ describe("Supplicate (MCV)", () => {
           after:  { a: t1A.toString(), u: t1U.toString() },
         },
         note:
-          "Orbit snapshot only (no internal profit accounting). Liquidity shown per selected 3 pools; Treasury balances shown before/after. Fees are charged on INPUT at each hop.",
+          "Orbit snapshot only (no internal profit accounting). Liquidity shown per selected 3 pools; Treasury balances shown before/after. Fees are charged on INPUT at hop-0 and donated to input reserves before the swap.",
       }).to.matchSnapshot("3-orbit MCV — liquidity+treasury (fee-on-input)");
     });
   });
