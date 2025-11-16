@@ -10,6 +10,7 @@ interface ILPPPool {
     event Supplicate(address indexed caller, bool assetToUsdc, uint256 amountIn, uint256 amountOut);
     event Donation(bool isUsdc, uint256 amount);
 
+    function targetOffsetBps() external view returns (int16);
     // Token getters
     function asset() external view returns (address);
     function usdc() external view returns (address);

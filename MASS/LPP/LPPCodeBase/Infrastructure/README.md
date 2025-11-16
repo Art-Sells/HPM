@@ -169,38 +169,28 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
 
 ---
 
-## 4. MEV / Flashbots Integration (Phase 0)
+## 4. MEV / Flashbots Integration (off-chain)
 
 > Focus: prove that *existing MEV searchers* can see & interact with LPP pools using standard CFMM semantics
 
 - [ ] **Clone Flashbots searcher repo (ethers-provider-flashbots-bundle or variant)**  
 - [ ] **Add LPP to the search universe:**
-  - Pools = [A, B, C, D]
-  - For each pool: track reserves & price via `provider.call` or event streams.
-- [ ] **Searcher logic (minimal):**
-  - Generate candidate 3-pool cycles (3 orbits).
-  - For each candidate:
-    - Simulate `mcvSupplication` entirely off-chain via `callStatic` or manual CFMM math.
-    - Keep only **profit > gas + fee + safety margin**.
-  - Bundle these as transactions to the Flashbots relay.
-- [ ] **Integrate Treasury fee:**
-  - Ensure 0.5% of realized profit is routed to Treasury address.
-  - The remainder is **bot PnL**; pipe this into the searcher’s internal accounting.
-
-Success criteria (Phase 0):
-
-- [ ] At least one **profitable 3-pool orbit** discovered & executed by a Flashbots-style searcher against the devnet / forked network.
-- [ ] Logs show:
-  - Pool reserve changes as expected.
-  - Treasury receives 0.5% cut.
-  - Bot wallet balance increases by net profit.
+  - Test Contract Logic against Flashbots logic (restructure (only smart contract logic) as needed)
 
 ---
 
-## 5. Delete / Defer (if above is successful)
+## 5. MEV / Flashbots Integration (on-chain)
 
-- [ ] **Prepare for scale-out phase (1,000 pools / 400 orbits and Treasury can withdraw pool amounts (only) no one else):**
+- [ ] **Deploy Smart Contract Logic and prepare logic for searchers... Then watch...**
+  - Prepare searcher logic (theGraph, etc)
+  - If successful, move onto #6.
+
+---
+
+## 6. Delete / Defer (if above is successful)
+
+- [ ] **Prepare for scale-out phase (1,000 pools / 500 orbits and Treasury can withdraw pool amounts (only) no one else):**
   - Auto-generation of pool ladders around oracle price.
   - Internal orbit registry (-/+500 orbits (all the same)) and lever to turn off pool orbits.
   - Same fee model extended LPP-wide.
-  - retest with spec files, add security (test all edge cases) and expand
+  - retest with spec files, add security (test all edge cases) and expand delete all ("you"s)

@@ -65,15 +65,6 @@ async function approveInputForSupplicate(
   await (await token.connect(payer).approve(await pool.getAddress(),   ethers.MaxUint256)).wait();
 }
 
-async function approveToPoolOnly(
-  token: any,
-  payer: any,
-  poolAddr: string,
-  amount: bigint
-) {
-  await (await token.connect(payer).approve(poolAddr, amount)).wait();
-}
-
 /** Integer sqrt for BigInt (Babylonian) */
 function isqrt(n: bigint): bigint {
   if (n <= 0n) return 0n;
@@ -132,15 +123,6 @@ async function bootstrapPool100_100(
   await bootstrapPoolAtOffset(treasury, poolAddr, -500n);
 }
 
-/** Seed SIX pools with fixed offsets: -500, -499, -498, +498, +499, +500. */
-async function bootstrapSixPools100_100_Offsets(treasury: any, poolAddrs: string[]) {
-  if (poolAddrs.length < 6) throw new Error("need at least 6 pool addresses");
-  const offsets = [-500n, -499n, -498n, 498n, 499n, 500n];
-  for (let i = 0; i < 6; i++) {
-    await bootstrapPoolAtOffset(treasury, poolAddrs[i], offsets[i]);
-  }
-}
-
 async function getPoolQuotedAmountOut(pool: any, assetToUsdc: boolean, amountIn: bigint) {
   try {
     const ret = await (pool as any).quoteSupplication(assetToUsdc, amountIn);
@@ -174,18 +156,6 @@ async function safeReadSqrtPriceX96(pool: any): Promise<bigint | null> {
     } catch {}
   }
   return null;
-}
-
-async function snapshotPoolState(pool: any) {
-  const addr = await pool.getAddress();
-  const r = await reserves(pool);
-  const s = await safeReadSqrtPriceX96(pool);
-  return {
-    pool: addr,
-    a: r.a.toString(),
-    u: r.u.toString(),
-    sqrtPriceX96: s?.toString() ?? null,
-  };
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -428,12 +398,12 @@ describe("Supplicate (MCV)", () => {
     }).to.matchSnapshot("MCV — sqrt+reserves U->A (fee-on-input, donated-before-swap)");
   });
 
-  describe("3-pool orbit — liquidity snapshots (no profit accounting)", () => {
-    it("mcvSupplication orbit — snapshot pools & treasury only", async () => {
+  describe("3-pool orbit — liquidity snapshots (with deltas + hop proof)", () => {
+    it("mcvSupplication orbit — snapshot pools & treasury, deltas, offsets, hop order", async () => {
       const env = await deployCore();
       const { deployer, router, treasury, factory, asset, usdc } = env;
 
-      // Ensure SIX total pools exist for this pair
+      // Ensure SIX pools exist for this pair (we'll use first 3 as the orbit)
       const have = (await factory.getPools()).length;
       const needToCreate = Math.max(0, 6 - have);
       for (let i = 0; i < needToCreate; i++) {
@@ -446,107 +416,475 @@ describe("Supplicate (MCV)", () => {
         ).wait();
       }
 
-      // Fetch the first six
+      // Grab pools and bootstrap offsets: [-500,-499,-498,+498,+499,+500]
       const allPools = await factory.getPools();
-      const poolAddrs = allPools.slice(0, 6);
-      if (poolAddrs.length < 6) throw new Error("need at least 6 pools for orbit");
+      await (async () => {
+        const offsets = [-500n, -499n, -498n, 498n, 499n, 500n];
+        for (let i = 0; i < 6; i++) {
+          await (
+            await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
+              allPools[i], ethers.parseEther("100"), ethers.parseEther("100"), offsets[i]
+            )
+          ).wait();
+        }
+      })();
 
-      // Bootstrap all six with your specified offsets (never equilibrium)
-      await bootstrapSixPools100_100_Offsets(treasury, poolAddrs);
 
-      // Choose a 3-pool orbit out of the six (e.g., {-500, +498, +500})
-      const orbitPools = [poolAddrs[0], poolAddrs[3], poolAddrs[5]] as [string, string, string];
+      // Orbit = first 3 (shared sign, e.g., NEG) — force a brand-new mutable array
+      const orbitPools = [ allPools[0], allPools[1], allPools[2] ] as [string, string, string];
       const startPoolAddr = orbitPools[0];
 
-      const poolA = await ethers.getContractAt("LPPPool", orbitPools[0]);
-      const poolB = await ethers.getContractAt("LPPPool", orbitPools[1]);
-      const poolC = await ethers.getContractAt("LPPPool", orbitPools[2]);
-
-      // Set the orbit THROUGH the Treasury wrapper (no impersonation needed)
       await (
         await (treasury as any).setOrbitViaTreasury(
           await router.getAddress(),
           startPoolAddr,
-          orbitPools
+          // pass a fresh array literal (also mutable)
+          [ orbitPools[0], orbitPools[1], orbitPools[2] ]
         )
       ).wait();
 
-      // MEV wallet (deployer for test)
-      const mcv = deployer;
-      const amountIn = ethers.parseEther("1");
+      // Contracts for snapshots
+      const poolA = await ethers.getContractAt("LPPPool", orbitPools[0]);
+      const poolB = await ethers.getContractAt("LPPPool", orbitPools[1]);
+      const poolC = await ethers.getContractAt("LPPPool", orbitPools[2]);
 
-      // Snap BEFORE
-      const [pA0, pB0, pC0] = await Promise.all([
-        snapshotPoolState(poolA),
-        snapshotPoolState(poolB),
-        snapshotPoolState(poolC),
-      ]);
+      // ----- INLINE FUNDING + APPROVALS (USDC-in across ALL 3 hops) -----
+      const amountIn = ethers.parseEther("1");              // per-hop input
+      const feePerHop = (amountIn * 250n) / 10_000n;        // 2.5%
+      const totalFee  = feePerHop * 3n;
+      const totalIn   = amountIn * 3n;
 
-      const assetToken = env.asset;
-      const usdcToken  = env.usdc;
+      await (await env.usdc.connect(deployer).mint(deployer.address, totalIn + totalFee)).wait();
+      // router pulls the fees each hop
+      await (await env.usdc.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
+      // each pool pulls amountIn once
+      for (const addr of orbitPools) {
+        await (await env.usdc.connect(deployer).approve(addr, amountIn)).wait();
+      }
 
-      // pair sanity (same pair across orbit)
-      expect(await assetToken.getAddress()).to.equal(await poolA.asset());
-      expect(await usdcToken.getAddress()).to.equal(await poolA.usdc());
-      expect(await poolB.asset()).to.equal(await poolA.asset());
-      expect(await poolB.usdc()).to.equal(await poolA.usdc());
-      expect(await poolC.asset()).to.equal(await poolA.asset());
-      expect(await poolC.usdc()).to.equal(await poolA.usdc());
+      // BEFORE snapshots
+      const snap = async (p: any) => {
+        const addr = await p.getAddress();
+        const a = BigInt((await p.reserveAsset()).toString());
+        const u = BigInt((await p.reserveUsdc()).toString());
+        const s = (() => p.sqrtPriceX96 || p.getSqrtPriceX96 || p.priceX96 || p.slot0)();
+        let sqrt: bigint | null = null;
+        try {
+          const v = await s.call(p);
+          if (v && typeof v === "object") {
+            if ("sqrtPriceX96" in v) sqrt = BigInt(v.sqrtPriceX96.toString());
+            else if ("0" in v)       sqrt = BigInt(v[0].toString());
+          } else {
+            sqrt = BigInt(v.toString());
+          }
+        } catch {}
+        return { pool: addr, a: a.toString(), u: u.toString(), sqrtPriceX96: sqrt?.toString() ?? null };
+      };
 
-      const t0A = await bal(assetToken, await treasury.getAddress());
-      const t0U = await bal(usdcToken,  await treasury.getAddress());
+      const pA0 = await snap(poolA);
+      const pB0 = await snap(poolB);
+      const pC0 = await snap(poolC);
+      const t0A = BigInt((await asset.balanceOf(await treasury.getAddress())).toString());
+      const t0U = BigInt((await usdc.balanceOf(await treasury.getAddress())).toString());
 
-      // MEV starts USDC->ASSET on startPoolAddr; router will handle inter-hop flow
-      await (await usdcToken.connect(deployer).mint(mcv.address, amountIn + feeFromInput(amountIn))).wait();
-      await approveToPoolOnly(usdcToken, mcv, startPoolAddr, amountIn);
+      const oA = Number(await poolA.targetOffsetBps());
+      const oB = Number(await poolB.targetOffsetBps());
+      const oC = Number(await poolC.targetOffsetBps());
 
+      // ----- CALL (object params; legacy mode honors assetToUsdc) -----
       let executed = false;
       let revertReason: string | null = null;
-
+      let receipt: any | null = null;
       try {
-        await (router.connect(mcv) as any).mcvSupplication({
+        const tx = await (router.connect(deployer) as any).mcvSupplication({
           startPool: startPoolAddr,
-          assetToUsdc: false, // USDC->ASSET first
+          assetToUsdc: false,           // USDC -> ASSET on all 3 hops (legacy honors this)
           amountIn,
-          payer: mcv.address,
-          to: mcv.address,
+          payer: deployer.address,
+          to: deployer.address,
         });
+        receipt = await tx.wait();
         executed = true;
       } catch (err: any) {
         executed = false;
-        const msg = err?.errorName ?? err?.shortMessage ?? err?.message ?? "";
-        revertReason = msg;
+        revertReason = err?.errorName ?? err?.shortMessage ?? err?.message ?? "";
       }
 
-      // Snap AFTER
-      const [pA1, pB1, pC1] = await Promise.all([
-        snapshotPoolState(poolA),
-        snapshotPoolState(poolB),
-        snapshotPoolState(poolC),
-      ]);
+      // AFTER snapshots
+      const pA1 = await snap(poolA);
+      const pB1 = await snap(poolB);
+      const pC1 = await snap(poolC);
+      const t1A = BigInt((await asset.balanceOf(await treasury.getAddress())).toString());
+      const t1U = BigInt((await usdc.balanceOf(await treasury.getAddress())).toString());
 
-      const t1A = await bal(assetToken, await treasury.getAddress());
-      const t1U = await bal(usdcToken,  await treasury.getAddress());
+      // Deltas
+      const asBig = (x: any) => BigInt(String(x));
+      const poolsWithDelta = [
+        { before: pA0, after: pA1, delta: { a: (asBig(pA1.a) - asBig(pA0.a)).toString(), u: (asBig(pA1.u) - asBig(pA0.u)).toString() } },
+        { before: pB0, after: pB1, delta: { a: (asBig(pB1.a) - asBig(pB0.a)).toString(), u: (asBig(pB1.u) - asBig(pB0.u)).toString() } },
+        { before: pC0, after: pC1, delta: { a: (asBig(pC1.a) - asBig(pC0.a)).toString(), u: (asBig(pC1.u) - asBig(pC0.u)).toString() } },
+      ];
 
-      // Final snapshot: only orbit metadata + liquidity deltas (no profit fields)
+      // Prove 3 hops via HopExecuted events
+      const HopExecutedSig = ethers.id("HopExecuted(address,bool,address,address,uint256,uint256)");
+      const hopTrace = (receipt?.logs ?? [])
+        .filter((l: any) => l.topics && l.topics[0] === HopExecutedSig)
+        .map((l: any) => {
+          const pool = ethers.getAddress("0x" + l.topics[1].slice(26));
+          const [assetToUsdc, tokenIn, tokenOut, amtIn, amtOut] =
+            ethers.AbiCoder.defaultAbiCoder().decode(
+              ["bool","address","address","uint256","uint256"],
+              l.data
+            );
+          return {
+            pool,
+            assetToUsdc: Boolean(assetToUsdc),
+            amountIn: amtIn.toString(),
+            amountOut: amtOut.toString(),
+            tokenIn,
+            tokenOut,
+          };
+        });
+
       expect({
         role: "MCV",
-        startPool: startPoolAddr,
-        orbitPools,
-        amountIn: amountIn.toString(),
         executed,
         revertReason,
+        amountIn: amountIn.toString(),
+        startPool: startPoolAddr,
+        orbitPools,
+        offsets: [oA, oB, oC],
+        hopTrace,
         pools: {
           before: [pA0, pB0, pC0],
           after:  [pA1, pB1, pC1],
+          delta:  poolsWithDelta.map(p => p.delta),
         },
         treasury: {
           before: { a: t0A.toString(), u: t0U.toString() },
           after:  { a: t1A.toString(), u: t1U.toString() },
+          delta:  { a: (t1A - t0A).toString(), u: (t1U - t0U).toString() },
         },
         note:
-          "Orbit snapshot only (no internal profit accounting). Liquidity shown per selected 3 pools; Treasury balances shown before/after. Fees are charged on INPUT at hop-0 and donated to input reserves before the swap.",
-      }).to.matchSnapshot("3-orbit MCV — liquidity+treasury (fee-on-input)");
+          "Independent 3-hop model: per-hop fee (2.5%) is charged each hop and donated to that hop’s input reserve; treasury receives 0.5% per hop. Params sent as object for ethers v6.",
+      }).to.matchSnapshot("3-orbit MCV — liquidity+treasury+delta+hop-proof");
+    });
+  });
+
+  /* ────────────────────────────────────────────────────────────────────────
+   * 3-pool dual-orbit — deltas + automatic flip
+   *   - Call 1: use NEG set + USDC-in (3 hops)
+   *   - Call 2: flip to POS set + ASSET-in (3 hops)
+   *   - Uses per-hop fees; prepares inputs/approvals for all three pools each call
+   * ──────────────────────────────────────────────────────────────────────── */
+  describe("3-pool dual-orbit — deltas + automatic flip", () => {
+    it("uses NEG set first, flips to POS after each mcvSupplication; shows per-pool & treasury deltas", async () => {
+      const env = await deployCore();
+      const { deployer, router, treasury, factory, asset, usdc } = env;
+
+      // Ensure SIX pools exist
+      const have = (await factory.getPools()).length;
+      const need = Math.max(0, 6 - have);
+      for (let i = 0; i < need; i++) {
+        await (
+          await treasury.createPoolViaTreasury(
+            await factory.getAddress(),
+            await asset.getAddress(),
+            await usdc.getAddress()
+          )
+        ).wait();
+      }
+
+      // Grab six & bootstrap: first 3 NEG (-500), last 3 POS (+500)
+      const all = await factory.getPools();
+      const p = all.slice(0, 6);
+      for (let i = 0; i < 3; i++) {
+        await (await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
+          p[i], ethers.parseEther("100"), ethers.parseEther("100"), -500
+        )).wait();
+      }
+      for (let i = 3; i < 6; i++) {
+        await (await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
+          p[i], ethers.parseEther("100"), ethers.parseEther("100"), +500
+        )).wait();
+      }
+
+      // Wire dual-orbit: start with NEG
+      const startPool = p[0];
+      await (
+        await (treasury as any).setDualOrbitViaTreasury(
+          await router.getAddress(),
+          startPool,
+          [p[0], p[1], p[2]], // NEG
+          [p[3], p[4], p[5]], // POS
+          /*startWithNeg*/ true
+        )
+      ).wait();
+
+      const toPool = async (addr: string) => await ethers.getContractAt("LPPPool", addr);
+      const poolObjs = await Promise.all(p.map(toPool));
+
+      const snapshot = async () => {
+        const arr = await Promise.all(poolObjs.map(async (po) => {
+          const addr = await po.getAddress();
+          const a = BigInt((await po.reserveAsset()).toString());
+          const u = BigInt((await po.reserveUsdc()).toString());
+          return { pool: addr, a, u };
+        }));
+        const treA = BigInt((await asset.balanceOf(await treasury.getAddress())).toString());
+        const treU = BigInt((await usdc.balanceOf(await treasury.getAddress())).toString());
+        return { pools: arr, treA, treU };
+      };
+
+      /* ----------------------- RUN #1 — NEG (USDC-in) ----------------------- */
+      const amountIn = ethers.parseEther("1");
+      const active0   = await (router as any).getActiveOrbit(startPool);
+      const usingNeg0 = active0[1] as boolean;
+      const orbit0    = active0[0] as string[];
+      expect(usingNeg0).to.equal(true);
+
+      // Fund + approve for ALL 3 NEG pools (per-hop fees)
+      {
+        const feePerHop = (amountIn * 250n) / 10_000n; // 2.5%
+        const totalFee  = feePerHop * 3n;
+        const totalIn   = amountIn * 3n;
+
+        await (await env.usdc.connect(deployer).mint(deployer.address, totalIn + totalFee)).wait();
+        // router pulls the fee each hop
+        await (await env.usdc.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
+        // each NEG pool pulls amountIn once
+        for (const addr of orbit0) {
+          await (await env.usdc.connect(deployer).approve(addr, amountIn)).wait();
+        }
+      }
+
+      const before1 = await snapshot();
+
+      {
+        await (router.connect(deployer) as any).mcvSupplication({
+          startPool,
+          assetToUsdc: false,   // ignored in dual-orbit; cursor controls direction
+          amountIn,
+          payer: deployer.address,
+          to: deployer.address,
+        });
+      }
+
+      const after1  = await snapshot();
+      const deltas1 = after1.pools.map((aft, i) => {
+        const bef = before1.pools[i];
+        return { pool: aft.pool, deltaA: (aft.a - bef.a).toString(), deltaU: (aft.u - bef.u).toString() };
+      });
+      const treDelta1 = { deltaA: (after1.treA - before1.treA).toString(), deltaU: (after1.treU - before1.treU).toString() };
+
+      // Orbit must flip to POS
+      const activeAfter1 = await (router as any).getActiveOrbit(startPool);
+      expect(activeAfter1[1] as boolean).to.equal(false);
+
+      /* ----------------------- RUN #2 — POS (ASSET-in) ---------------------- */
+      const amountIn2 = ethers.parseEther("1");
+      const active1   = await (router as any).getActiveOrbit(startPool);
+      const usingNeg1 = active1[1] as boolean;
+      const orbit1    = active1[0] as string[];
+      expect(usingNeg1).to.equal(false); // now POS
+
+      // Fund + approve for ALL 3 POS pools (per-hop fees)
+      {
+        const feePerHop = (amountIn2 * 250n) / 10_000n;
+        const totalFee  = feePerHop * 3n;
+        const totalIn   = amountIn2 * 3n;
+
+        await (await env.asset.connect(deployer).mint(deployer.address, totalIn + totalFee)).wait();
+        await (await env.asset.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
+        for (const addr of orbit1) {
+          await (await env.asset.connect(deployer).approve(addr, amountIn2)).wait();
+        }
+      }
+
+      const before2 = await snapshot();
+
+      {
+        await (router.connect(deployer) as any).mcvSupplication({
+          startPool,
+          assetToUsdc: true,    // ignored in dual-orbit; cursor controls direction
+          amountIn: amountIn2,
+          payer: deployer.address,
+          to: deployer.address,
+        });
+      }
+
+      const after2  = await snapshot();
+      const deltas2 = after2.pools.map((aft, i) => {
+        const bef = before2.pools[i];
+        return { pool: aft.pool, deltaA: (aft.a - bef.a).toString(), deltaU: (aft.u - bef.u).toString() };
+      });
+      const treDelta2 = { deltaA: (after2.treA - before2.treA).toString(), deltaU: (after2.treU - before2.treU).toString() };
+
+      // Flip back to NEG
+      const activeAfter2 = await (router as any).getActiveOrbit(startPool);
+      expect(activeAfter2[1] as boolean).to.equal(true);
+
+      // Snapshot summary
+      expect({
+        role: "MCV",
+        startPool,
+        orbitRun1: { usingNegBefore: usingNeg0, activeOrbit: orbit0, poolDeltas: deltas1, treasuryDelta: treDelta1 },
+        orbitRun2: { usingNegBefore: usingNeg1, activeOrbit: orbit1, poolDeltas: deltas2, treasuryDelta: treDelta2 },
+        note: "NEG-first under independent 3-hop model (per-hop fees), with explicit per-hop funding/approvals and object params.",
+      }).to.matchSnapshot("Dual-orbit — per-pool & treasury deltas + flip");
+    });
+
+    it("uses POS set first, flips to NEG after each mcvSupplication; shows per-pool & treasury deltas", async () => {
+      const env = await deployCore();
+      const { deployer, router, treasury, factory, asset, usdc } = env;
+
+      // Ensure SIX total pools exist
+      const have = (await factory.getPools()).length;
+      const need = Math.max(0, 6 - have);
+      for (let i = 0; i < need; i++) {
+        await (
+          await treasury.createPoolViaTreasury(
+            await factory.getAddress(),
+            await asset.getAddress(),
+            await usdc.getAddress()
+          )
+        ).wait();
+      }
+
+      // Grab six & bootstrap: first 3 NEG (-500), last 3 POS (+500)
+      const all = await factory.getPools();
+      const p = all.slice(0, 6);
+      for (let i = 0; i < 3; i++) {
+        await (await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
+          p[i], ethers.parseEther("100"), ethers.parseEther("100"), -500
+        )).wait();
+      }
+      for (let i = 3; i < 6; i++) {
+        await (await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
+          p[i], ethers.parseEther("100"), ethers.parseEther("100"), +500
+        )).wait();
+      }
+
+      // Wire dual orbit: POS first (startWithNeg = false)
+      const startPool = p[0];
+      await (
+        await (treasury as any).setDualOrbitViaTreasury(
+          await router.getAddress(),
+          startPool,
+          [p[0], p[1], p[2]], // NEG
+          [p[3], p[4], p[5]], // POS
+          /*startWithNeg*/ false
+        )
+      ).wait();
+
+      const toPool = async (addr: string) => await ethers.getContractAt("LPPPool", addr);
+      const poolObjs = await Promise.all(p.map(toPool));
+
+      const snapshot = async () => {
+        const arr = await Promise.all(poolObjs.map(async (po) => {
+          const addr = await po.getAddress();
+          const a = BigInt((await po.reserveAsset()).toString());
+          const u = BigInt((await po.reserveUsdc()).toString());
+          return { pool: addr, a, u };
+        }));
+        const treA = BigInt((await asset.balanceOf(await treasury.getAddress())).toString());
+        const treU = BigInt((await usdc.balanceOf(await treasury.getAddress())).toString());
+        return { pools: arr, treA, treU };
+      };
+
+      /* ----------------------- RUN #1 — POS set (USDC-in due to default cursor) ---------------------- */
+      const amountIn1 = ethers.parseEther("1");
+      const active0   = await (router as any).getActiveOrbit(startPool);
+      const usingNeg0 = active0[1] as boolean;
+      const orbit0    = active0[0] as string[];
+      expect(usingNeg0).to.equal(false); // POS first (set), direction will be USDC-in by default
+
+      // fund + approve: USDC-in for ALL 3 POS pools (per-hop fees)
+      {
+        const feePerHop = (amountIn1 * 250n) / 10_000n;
+        const totalFee  = feePerHop * 3n;
+        const totalIn   = amountIn1 * 3n;
+
+        await (await env.usdc.connect(deployer).mint(deployer.address, totalIn + totalFee)).wait();
+        await (await env.usdc.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
+        for (const addr of orbit0) {
+          await (await env.usdc.connect(deployer).approve(addr, amountIn1)).wait();
+        }
+      }
+
+      const before1 = await snapshot();
+
+      {
+        await (router.connect(deployer) as any).mcvSupplication({
+          startPool,
+          assetToUsdc: false,     // ignored in dual-orbit; cursor controls direction (USDC-in)
+          amountIn: amountIn1,
+          payer: deployer.address,
+          to: deployer.address,
+        });
+      }
+
+      const after1  = await snapshot();
+      const deltas1 = after1.pools.map((aft, i) => {
+        const bef = before1.pools[i];
+        return { pool: aft.pool, deltaA: (aft.a - bef.a).toString(), deltaU: (aft.u - bef.u).toString() };
+      });
+      const treDelta1 = { deltaA: (after1.treA - before1.treA).toString(), deltaU: (after1.treU - before1.treU).toString() };
+
+      // flipped to NEG
+      const activeAfter1 = await (router as any).getActiveOrbit(startPool);
+      expect(activeAfter1[1] as boolean).to.equal(true);
+
+      /* ----------------------- RUN #2 — NEG set (ASSET-in after flip) ----------------------- */
+      const amountIn2 = ethers.parseEther("1");
+      const active1   = await (router as any).getActiveOrbit(startPool);
+      const usingNeg1 = active1[1] as boolean;
+      const orbit1    = active1[0] as string[];
+      expect(usingNeg1).to.equal(true); // now NEG set
+
+      // fund + approve: ASSET-in for ALL 3 NEG pools (per-hop fees)
+      {
+        const feePerHop = (amountIn2 * 250n) / 10_000n;
+        const totalFee  = feePerHop * 3n;
+        const totalIn   = amountIn2 * 3n;
+
+        await (await env.asset.connect(deployer).mint(deployer.address, totalIn + totalFee)).wait();
+        await (await env.asset.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
+        for (const addr of orbit1) {
+          await (await env.asset.connect(deployer).approve(addr, amountIn2)).wait();
+        }
+      }
+
+      const before2 = await snapshot();
+
+      {
+        await (router.connect(deployer) as any).mcvSupplication({
+          startPool,
+          assetToUsdc: true,      // ignored in dual-orbit; cursor controls direction (ASSET-in)
+          amountIn: amountIn2,
+          payer: deployer.address,
+          to: deployer.address,
+        });
+      }
+
+      const after2  = await snapshot();
+      const deltas2 = after2.pools.map((aft, i) => {
+        const bef = before2.pools[i];
+        return { pool: aft.pool, deltaA: (aft.a - bef.a).toString(), deltaU: (aft.u - bef.u).toString() };
+      });
+      const treDelta2 = { deltaA: (after2.treA - before2.treA).toString(), deltaU: (after2.treU - before2.treU).toString() };
+
+      // flipped back to POS set
+      const activeAfter2 = await (router as any).getActiveOrbit(startPool);
+      expect(activeAfter2[1] as boolean).to.equal(false);
+
+      expect({
+        role: "MCV",
+        startPool,
+        orbitRun1: { usingNegBefore: usingNeg0, activeOrbit: orbit0, poolDeltas: deltas1, treasuryDelta: treDelta1 },
+        orbitRun2: { usingNegBefore: usingNeg1, activeOrbit: orbit1, poolDeltas: deltas2, treasuryDelta: treDelta2 },
+        note: "POS-first mirror under independent 3-hop model (per-hop fees); direction follows router cursor (USDC-in first), then flips.",
+      }).to.matchSnapshot("Dual-orbit (POS-first) — per-pool & treasury deltas + flip");
     });
   });
 

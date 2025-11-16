@@ -97,6 +97,18 @@ contract LPPTreasury is ILPPTreasury {
         ILPPRouter(router).setOrbit(startPool, pools);
     }
 
+    /// @notice Configure dual 3-pool orbits (NEG = -500, POS = +500) and initial side.
+    /// Calls Router.setDualOrbit(...) via Treasury so it passes Router's onlyTreasury check.
+    function setDualOrbitViaTreasury(
+        address router,
+        address startPool,
+        address[3] calldata neg,
+        address[3] calldata pos,
+        bool startWithNeg
+    ) external onlyOwner {
+        ILPPRouter(router).setDualOrbit(startPool, neg, pos, startWithNeg);
+    }
+
     // -----------------------------------------------------------------------
     // Direct bootstrap (no MintHook, Phase 0)
     // -----------------------------------------------------------------------
