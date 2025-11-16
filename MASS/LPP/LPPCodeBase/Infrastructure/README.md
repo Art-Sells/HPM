@@ -165,7 +165,7 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
 > This is where **Flashbots searcher code** comes in: it will test thousands of possible small routes and only bundle the profitable ones on-chain.
 
 ### 3.3 Test Off Chain
-- [ ] Test micro-orbits for TVL bootstrapping and growth (start small (reconfigure Readme and smart contracts) highest)
+- [ ] Test 500 events/day cap...
 - [ ] reconfigure all spec tests to test above
 
 ---
@@ -191,7 +191,7 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
 ## 6. Delete / Defer (if above is successful)
 
 - [ ] **Prepare for scale-out phase (1,000 pools / 500 orbits and Treasury can withdraw pool amounts (only) no one else):**
-  - Scale to highest possible micro-orbits/day
+  - Remove daily events/cap
   - Auto-generation of pool ladders around oracle price.
   - Internal orbit registry (-/+500 orbits (all the same)) and lever to turn off pool orbits.
   - Same fee model extended LPP-wide.
