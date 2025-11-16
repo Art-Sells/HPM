@@ -165,6 +165,7 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
 > This is where **Flashbots searcher code** comes in: it will test thousands of possible small routes and only bundle the profitable ones on-chain.
 
 ### 3.3 Test Off Chain
+- [ ] Test micro-orbits for TVL bootstrapping and growth (start small (reconfigure Readme and smart contracts))
 - [ ] reconfigure all spec tests to test above
 
 ---
