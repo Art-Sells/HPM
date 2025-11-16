@@ -5,6 +5,9 @@ import { IERC20 } from "./external/IERC20.sol";
 import { ILPPPool } from "./interfaces/ILPPPool.sol";
 
 contract LPPPool is ILPPPool {
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Immutable wiring
+    // ─────────────────────────────────────────────────────────────────────────────
     address public immutable override asset;
     address public immutable override usdc;
 
@@ -12,15 +15,22 @@ contract LPPPool is ILPPPool {
     address public immutable override factory;  // deploying factory (authorized to set hook)
     address public override hook;               // optional hook (unused in Phase 0, kept for future)
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // State
+    // ─────────────────────────────────────────────────────────────────────────────
     uint256 public override reserveAsset;
     uint256 public override reserveUsdc;
 
-    uint256 private _priceX96;
+    uint256 private _priceX96;                  // target price (U/A) in Q96 set at bootstrap
+    int16   public targetOffsetBps;    // persist the offset sign/magnitude (e.g. ±500)
     mapping(address => uint256) private _liq;
     uint256 public override totalLiquidity;
 
     bool public initialized;
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Modifiers
+    // ─────────────────────────────────────────────────────────────────────────────
     modifier nonZero(uint256 x) { require(x > 0, "zero"); _; }
     modifier onlyTreasuryOrFactory() {
         require(msg.sender == treasury || msg.sender == factory, "only auth");
@@ -33,12 +43,14 @@ contract LPPPool is ILPPPool {
         usdc = _usdc;
         treasury = _treasury;
         factory  = _factory;
-        _priceX96 = 1 << 96;
+        _priceX96 = 1 << 96; // default until bootstrap
     }
 
+    // Views
     function priceX96() external view override returns (uint256) { return _priceX96; }
     function liquidityOf(address who) external view override returns (uint256) { return _liq[who]; }
 
+    // Governance wiring
     function setHook(address hook_) external override onlyTreasuryOrFactory {
         require(hook == address(0), "hook set");
         require(hook_ != address(0), "zero hook");
@@ -46,7 +58,7 @@ contract LPPPool is ILPPPool {
         emit HookSet(hook_);
     }
 
-    /// @notice Initialize the pool after Treasury has transferred tokens into this contract.
+    /// @notice Initialize reserves and set target price/offset.
     function bootstrapInitialize(uint256 amtA, uint256 amtU, int256 offsetBps)
         external
         override
@@ -56,24 +68,22 @@ contract LPPPool is ILPPPool {
     {
         require(!initialized, "already init");
 
-        // Tokens MUST already be in this pool (sent by Treasury).
         _internalMint(treasury, amtA, amtU);
 
-        // base price = usdc/asset in Q96, then apply offset bps
+        // base price = usdc/asset in Q96, then apply offset
         uint256 baseX96 = (amtU << 96) / amtA;
-        if (offsetBps != 0) {
-            int256 num = int256(uint256(baseX96)) * (10000 + offsetBps);
-            require(num > 0, "bad offset");
-            _priceX96 = uint256(num) / 10000;
-        } else {
-            _priceX96 = baseX96;
-        }
+        int256 combined = int256(uint256(baseX96)) * (10000 + offsetBps);
+        require(combined > 0, "bad offset");
+        _priceX96 = uint256(combined) / 10000;
+
+        // persist offset sign/magnitude (bounds check optional)
+        require(offsetBps >= -10000 && offsetBps <= 10000, "offset out of bounds");
+        targetOffsetBps = int16(offsetBps);
 
         initialized = true;
         emit Initialized(amtA, amtU);
     }
 
-    /// @notice Mint from a hook or other authority. Not used in Phase 0, but kept for future.
     function mintFromHook(address to, uint256 amtA, uint256 amtU)
         external
         override
@@ -120,6 +130,7 @@ contract LPPPool is ILPPPool {
         emit Burn(to, liquidity, amountAssetOut, amountUsdcOut);
     }
 
+    // Quotes & Supplication (placeholder CFMM math)
     function quoteSupplication(bool assetToUsdc, uint256 amountIn)
         external
         view
@@ -149,14 +160,12 @@ contract LPPPool is ILPPPool {
         address u = usdc;
 
         if (assetToUsdc) {
-            // pull asset from payer → pool; send USDC to `to`
             require(IERC20(a).transferFrom(payer, address(this), amountIn), "pull asset fail");
             reserveAsset += amountIn;
             require(reserveUsdc >= amountOut, "insufficient usdc");
             reserveUsdc -= amountOut;
             require(IERC20(u).transfer(to, amountOut), "push usdc fail");
         } else {
-            // pull USDC from payer → pool; send asset to `to`
             require(IERC20(u).transferFrom(payer, address(this), amountIn), "pull usdc fail");
             reserveUsdc += amountIn;
             require(reserveAsset >= amountOut, "insufficient asset");
@@ -165,5 +174,32 @@ contract LPPPool is ILPPPool {
         }
 
         emit Supplicate(msg.sender, assetToUsdc, amountIn, amountOut);
+    }
+
+    // Donations (increase reserves without minting LP shares)
+    function donateToReserves(bool isUsdc, uint256 amount)
+        external
+        override
+        nonZero(amount)
+    {
+        if (isUsdc) {
+            uint256 beforeRes = reserveUsdc;
+            uint256 bal = IERC20(usdc).balanceOf(address(this));
+            if (bal < beforeRes + amount) {
+                require(IERC20(usdc).transferFrom(msg.sender, address(this), amount), "donate usdc pull fail");
+                bal = IERC20(usdc).balanceOf(address(this));
+            }
+            require(bal >= beforeRes + amount, "donate usdc shortage");
+            reserveUsdc = beforeRes + amount;
+        } else {
+            uint256 beforeRes = reserveAsset;
+            uint256 bal = IERC20(asset).balanceOf(address(this));
+            if (bal < beforeRes + amount) {
+                require(IERC20(asset).transferFrom(msg.sender, address(this), amount), "donate asset pull fail");
+                bal = IERC20(asset).balanceOf(address(this));
+            }
+            require(bal >= beforeRes + amount, "donate asset shortage");
+            reserveAsset = beforeRes + amount;
+        }
     }
 }

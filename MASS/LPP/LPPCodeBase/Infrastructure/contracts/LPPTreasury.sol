@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import { ILPPTreasury } from "./interfaces/ILPPTreasury.sol";
 import { ILPPFactory }  from "./interfaces/ILPPFactory.sol";
 import { ILPPPool }     from "./interfaces/ILPPPool.sol";
+import { ILPPRouter }   from "./interfaces/ILPPRouter.sol";
 import { IERC20 }       from "./external/IERC20.sol";
 
 contract LPPTreasury is ILPPTreasury {
@@ -82,6 +83,33 @@ contract LPPTreasury is ILPPTreasury {
     }
 
     // -----------------------------------------------------------------------
+    // Router forwarders (Router requires onlyTreasury)
+    // -----------------------------------------------------------------------
+
+    /// @notice Configure a 3-pool orbit on the Router.
+    /// Calls Router.setOrbit(startPool, pools) as the Treasury contract
+    /// so it passes Router's onlyTreasury check.
+    function setOrbitViaTreasury(
+        address router,
+        address startPool,
+        address[3] calldata pools
+    ) external onlyOwner {
+        ILPPRouter(router).setOrbit(startPool, pools);
+    }
+
+    /// @notice Configure dual 3-pool orbits (NEG = -500, POS = +500) and initial side.
+    /// Calls Router.setDualOrbit(...) via Treasury so it passes Router's onlyTreasury check.
+    function setDualOrbitViaTreasury(
+        address router,
+        address startPool,
+        address[3] calldata neg,
+        address[3] calldata pos,
+        bool startWithNeg
+    ) external onlyOwner {
+        ILPPRouter(router).setDualOrbit(startPool, neg, pos, startWithNeg);
+    }
+
+    // -----------------------------------------------------------------------
     // Direct bootstrap (no MintHook, Phase 0)
     // -----------------------------------------------------------------------
     /// @notice Bootstrap a pool by sending ASSET + USDC from Treasury and initializing price with offset (bps).
@@ -111,7 +139,7 @@ contract LPPTreasury is ILPPTreasury {
         uint256 amountAsset,
         uint256 amountUsdc
     ) external onlyOwner {
-        // now calls the *public* 4-arg version
+        // calls the public 4-arg version with offsetBps = 0
         bootstrapViaTreasury(pool, amountAsset, amountUsdc, 0);
     }
 }
