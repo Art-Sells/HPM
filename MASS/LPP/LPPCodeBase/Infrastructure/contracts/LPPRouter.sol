@@ -6,16 +6,41 @@ import { ILPPAccessManager } from "./interfaces/ILPPAccessManager.sol";
 import { ILPPPool } from "./interfaces/ILPPPool.sol";
 import { IERC20 } from "./external/IERC20.sol";
 
+interface IERC20Permit {
+    function permit(
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        uint8 v, bytes32 r, bytes32 s
+    ) external;
+}
+
 contract LPPRouter is ILPPRouter {
     ILPPAccessManager public immutable access;
     address public immutable treasury;
 
-    // -------- Fee constants --------
+    // -------- Fee constants (UNCHANGED economics) --------
     uint16 public constant override BPS_DENOMINATOR = 10_000;
-    // Per-hop input fee (applied on each of the 3 hops for MCV)
-    uint16 public constant override MCV_FEE_BPS      = 250; // 2.5%
-    uint16 public constant TREASURY_CUT_BPS          = 50;  // 0.5% of input (part of 2.5%)
-    uint16 public constant POOLS_CUT_BPS             = 200; // 2.0% of input (part of 2.5%)
+    // Per-hop fee: 12 bps (0.12%) charged on each hop (3 hops/event => 36 bps/event)
+    uint16 public constant override MCV_FEE_BPS      = 12; // 0.12% per hop
+    // Split per hop: 2 bps (0.02%) to treasury, 10 bps (0.10%) to LPs
+    uint16 public constant TREASURY_CUT_BPS          = 2;  // 0.02% of hop input
+    uint16 public constant POOLS_CUT_BPS             = 10; // 0.10% of hop input
+
+    // -------- Daily cap (NEW) --------
+    uint32 public constant MAX_EVENTS_PER_DAY = 500; // hard ceiling for mcvSupplication calls per UTC day
+    uint64 private _eventsDay;     // UTC day index (block.timestamp / 1 days)
+    uint32 private _eventsCount;   // number of mcvSupplication calls today
+
+    /// @dev Thrown when daily ceiling is reached.
+    error MaxDailyEventsReached(uint64 day, uint256 count, uint256 limit);
+
+    /// @dev Emitted when the daily window rolls (UTC).
+    event DailyWindowRolled(uint64 indexed newDay);
+
+    /// @dev Emitted on each accepted event after increment.
+    event DailyEventCounted(uint64 indexed day, uint32 newCount);
 
     // -------- Orbit storage (legacy single-orbit kept) --------
     struct OrbitConfig { address[3] pools; bool initialized; }
@@ -44,6 +69,25 @@ contract LPPRouter is ILPPRouter {
         require(treasury_ != address(0), "zero treasury");
         access = ILPPAccessManager(accessManager);
         treasury = treasury_;
+
+        _eventsDay = _today(); // initialize day window
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Public views for monitoring the cap
+    // ─────────────────────────────────────────────────────────────
+    function todayDayIndex() public view returns (uint64) {
+        return _today();
+    }
+
+    function eventsCountToday() public view returns (uint32) {
+        (uint64 d, uint32 c) = _rolledCounterView();
+        return d == _today() ? c : 0;
+    }
+
+    function remainingEventsToday() external view returns (uint256) {
+        uint32 c = eventsCountToday();
+        return (c >= MAX_EVENTS_PER_DAY) ? 0 : (MAX_EVENTS_PER_DAY - c);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -92,7 +136,6 @@ contract LPPRouter is ILPPRouter {
         }
         require(ILPPPool(pos[0]).asset() == a0 && ILPPPool(pos[0]).usdc() == u0, "dual: POS pair mismatch");
 
-        // Start direction cursor at USDC-in (false = USDC->ASSET) for first call; you can change this later.
         _dualOrbit[startPool] = DualOrbit({
             neg: neg,
             pos: pos,
@@ -177,9 +220,70 @@ contract LPPRouter is ILPPRouter {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // NEW: Single-pool supplicate with EIP-2612 permits
+    //  - fee permit: spender = router (this)
+    //  - principal permit: spender = pool
+    // ─────────────────────────────────────────────────────────────
+    struct PermitData {
+        address token;
+        uint256 value;
+        uint256 deadline;
+        uint8   v;
+        bytes32 r;
+        bytes32 s;
+    }
+
+    function supplicateWithPermit(
+        SupplicateParams calldata p,
+        PermitData     calldata feePermit,       // allowance for router fees
+        PermitData     calldata principalPermit  // allowance for pool principal
+    ) external returns (uint256 amountOut /* gross */) {
+        require(access.isApprovedSupplicator(msg.sender), "not permitted");
+
+        address payer = p.payer == address(0) ? msg.sender : p.payer;
+        address to    = p.to    == address(0) ? msg.sender : p.to;
+
+        address tokenIn  = p.assetToUsdc ? ILPPPool(p.pool).asset() : ILPPPool(p.pool).usdc();
+        address tokenOut = p.assetToUsdc ? ILPPPool(p.pool).usdc()  : ILPPPool(p.pool).asset();
+
+        // --- EIP-2612 permits ---
+        require(feePermit.token == tokenIn, "feePermit token mismatch");
+        IERC20Permit(tokenIn).permit(
+            payer, address(this),
+            feePermit.value, feePermit.deadline,
+            feePermit.v, feePermit.r, feePermit.s
+        );
+
+        require(principalPermit.token == tokenIn, "principalPermit token mismatch");
+        IERC20Permit(tokenIn).permit(
+            payer, p.pool,
+            principalPermit.value, principalPermit.deadline,
+            principalPermit.v, principalPermit.r, principalPermit.s
+        );
+
+        // Per-hop input fee (same policy as MCV)
+        _takeInputFeeAndDonate(p.pool, tokenIn, payer, p.amountIn);
+
+        // Execute swap: pool pulls amountIn from payer; sends gross to router
+        amountOut = ILPPPool(p.pool).supplicate(
+            payer,
+            address(this),
+            p.assetToUsdc,
+            p.amountIn,
+            p.minAmountOut
+        );
+
+        IERC20(tokenOut).transfer(to, amountOut);
+
+        emit HopExecuted(p.pool, p.assetToUsdc, tokenIn, tokenOut, p.amountIn, amountOut);
+        emit SupplicateExecuted(msg.sender, p.pool, tokenIn, p.amountIn, tokenOut, amountOut, 0);
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // MCV: 3 independent hops, SAME INPUT TOKEN & AMOUNT per hop
     //      - Applies input fee on EACH hop (payer is external for all hops)
     //      - Flips NEG↔POS set and USDC-in↔ASSET-in direction AFTER each call
+    //      - **Ceiling:** max 500 calls per UTC day (enforced here)
     // ─────────────────────────────────────────────────────────────
     function mcvSupplication(MCVParams calldata params)
         external
@@ -187,6 +291,9 @@ contract LPPRouter is ILPPRouter {
         returns (uint256 finalAmountOut)
     {
         require(params.amountIn > 0, "zero input");
+
+        // Enforce daily ceiling BEFORE any stateful token ops
+        _consumeEventSlotOrRevert();
 
         // Determine orbit set + direction via cursors (TL;DR policy)
         address[3] memory orbit;
@@ -222,6 +329,79 @@ contract LPPRouter is ILPPRouter {
             DualOrbit storage d2 = _dualOrbit[params.startPool];
             d2.useNegNext = !d2.useNegNext;                 // set flip
             d2.useAssetToUsdcNext = !d2.useAssetToUsdcNext; // direction alternation
+            emit OrbitFlipped(params.startPool, d2.useNegNext);
+            emit DirectionFlipped(params.startPool, d2.useAssetToUsdcNext);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // NEW: MCV with EIP-2612 permits (no pre-approvals)
+    //  - fee permit: spender = router (this), tokenIn shared across 3 hops
+    //  - hop permits: spender = orbit[i] pool (principal allowance per hop)
+    // ─────────────────────────────────────────────────────────────
+    function mcvSupplicationWithPermits(
+        MCVParams calldata params,
+        PermitData calldata feePermit,
+        PermitData[3] calldata hopPermits
+    ) external returns (uint256 finalAmountOut) {
+        require(params.amountIn > 0, "zero input");
+
+        // Enforce daily ceiling BEFORE any stateful ops
+        _consumeEventSlotOrRevert();
+
+        // Resolve active orbit + direction
+        address[3] memory orbit;
+        bool assetToUsdc;
+        if (_dualOrbit[params.startPool].initialized) {
+            DualOrbit storage d = _dualOrbit[params.startPool];
+            orbit = d.useNegNext ? d.neg : d.pos;
+            assetToUsdc = d.useAssetToUsdcNext;
+        } else {
+            OrbitConfig memory cfg = _orbitOf[params.startPool];
+            require(cfg.initialized, "orbit: not configured");
+            orbit = cfg.pools;
+            assetToUsdc = params.assetToUsdc;
+        }
+
+        address payer = params.payer == address(0) ? msg.sender : params.payer;
+        address to    = params.to    == address(0) ? msg.sender : params.to;
+
+        // Input token is the SAME across the 3 hops (pair-checked at config)
+        address tokenIn = assetToUsdc ? ILPPPool(orbit[0]).asset() : ILPPPool(orbit[0]).usdc();
+
+        // --- EIP-2612 permits ---
+        // Router fee allowance
+        require(feePermit.token == tokenIn, "feePermit token mismatch");
+        IERC20Permit(tokenIn).permit(
+            payer, address(this),
+            feePermit.value, feePermit.deadline,
+            feePermit.v, feePermit.r, feePermit.s
+        );
+
+        // Principal allowance per hop to each pool
+        for (uint256 i = 0; i < 3; i++) {
+            require(hopPermits[i].token == tokenIn, "hopPermit token mismatch");
+            IERC20Permit(tokenIn).permit(
+                payer, orbit[i],
+                hopPermits[i].value, hopPermits[i].deadline,
+                hopPermits[i].v, hopPermits[i].r, hopPermits[i].s
+            );
+        }
+
+        // Execute 3 fee’d hops
+        uint256 totalOut = 0;
+        unchecked {
+            for (uint256 i = 0; i < 3; i++) {
+                totalOut += _executeIndependentHop(orbit[i], assetToUsdc, params.amountIn, payer, to);
+            }
+        }
+        finalAmountOut = totalOut;
+
+        // Flip cursors AFTER the call (dual-orbit only)
+        DualOrbit storage d2 = _dualOrbit[params.startPool];
+        if (d2.initialized) {
+            d2.useNegNext = !d2.useNegNext;
+            d2.useAssetToUsdcNext = !d2.useAssetToUsdcNext;
             emit OrbitFlipped(params.startPool, d2.useNegNext);
             emit DirectionFlipped(params.startPool, d2.useAssetToUsdcNext);
         }
@@ -270,11 +450,11 @@ contract LPPRouter is ILPPRouter {
     ) internal {
         if (MCV_FEE_BPS == 0) return;
 
-        uint256 totalFee   = (amountInBase * MCV_FEE_BPS) / BPS_DENOMINATOR;      // 2.5%
+        uint256 totalFee   = (amountInBase * MCV_FEE_BPS) / BPS_DENOMINATOR;      // per-hop fee
         if (totalFee == 0) return;
 
-        uint256 treasuryFt = (amountInBase * TREASURY_CUT_BPS) / BPS_DENOMINATOR; // 0.5%
-        uint256 poolsFt    = totalFee - treasuryFt;                               // 2.0%
+        uint256 treasuryFt = (amountInBase * TREASURY_CUT_BPS) / BPS_DENOMINATOR; // treasury slice (bps of input)
+        uint256 poolsFt    = totalFee - treasuryFt;                               // LP slice
 
         // Pull fee from payer
         IERC20(tokenIn).transferFrom(payer, address(this), totalFee);
@@ -290,5 +470,37 @@ contract LPPRouter is ILPPRouter {
         }
 
         emit FeeTaken(pool, tokenIn, amountInBase, totalFee, treasuryFt, poolsFt);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Daily cap helpers
+    // ─────────────────────────────────────────────────────────────
+    function _today() private view returns (uint64) {
+        return uint64(block.timestamp / 1 days); // UTC day index
+    }
+
+    function _rolledCounterView() private view returns (uint64 day, uint32 count) {
+        uint64 t = _today();
+        if (t == _eventsDay) {
+            return (_eventsDay, _eventsCount);
+        }
+        // If the stored day is stale, view returns (t, 0) as effective count
+        return (t, 0);
+    }
+
+    function _consumeEventSlotOrRevert() private {
+        uint64 t = _today();
+        if (t != _eventsDay) {
+            _eventsDay = t;
+            _eventsCount = 0;
+            emit DailyWindowRolled(t);
+        }
+        if (_eventsCount >= MAX_EVENTS_PER_DAY) {
+            revert MaxDailyEventsReached(_eventsDay, _eventsCount, MAX_EVENTS_PER_DAY);
+        }
+        unchecked {
+            _eventsCount += 1;
+        }
+        emit DailyEventCounted(_eventsDay, _eventsCount);
     }
 }
