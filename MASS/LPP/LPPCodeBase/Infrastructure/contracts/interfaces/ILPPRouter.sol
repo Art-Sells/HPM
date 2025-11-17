@@ -17,11 +17,12 @@ interface ILPPRouter {
     }
 
     struct MCVParams {
-        address startPool;   // key used to look up orbit sets
-        bool assetToUsdc;    // direction of hop 0 (legacy mode only)
-        uint256 amountIn;    // hop input amount for each hop (independent hops mode)
-        address payer;       // external wallet that funds input (+ fee)
-        address to;          // receiver of output
+        address startPool;         // key used to look up orbit sets
+        bool    assetToUsdc;       // direction of hop 0 (legacy mode only)
+        uint256 amountIn;          // hop input amount for each hop (independent hops mode)
+        address payer;             // external wallet that funds input (+ fee)
+        address to;                // receiver of output
+        uint256 minTotalAmountOut; // NEW: aggregate minOut across all 3 hops
     }
 
     // -------- Events (declare here only; do NOT redeclare in the contract) --------
@@ -42,9 +43,9 @@ interface ILPPRouter {
         address indexed pool,
         address indexed token,   // fee token (hop input token)
         uint256 amountBase,      // hop amountIn on which fee was computed
-        uint256 totalFee,        // e.g. 2.5%
-        uint256 treasuryFee,     // e.g. 0.5%
-        uint256 poolsFee         // e.g. 2.0%
+        uint256 totalFee,        // e.g. 12 bps per hop
+        uint256 treasuryFee,     // e.g. 2 bps per hop
+        uint256 poolsFee         // e.g. 10 bps per hop
     );
 
     event SupplicateExecuted(
@@ -68,5 +69,28 @@ interface ILPPRouter {
 
     // -------- Actions --------
     function supplicate(SupplicateParams calldata p) external returns (uint256 amountOut);
+
+    // Base MCV path (now expects the extended MCVParams with minTotalAmountOut)
     function mcvSupplication(MCVParams calldata p) external returns (uint256 finalAmountOut);
+
+    // -------- Optional (recommended) bundle-friendly surfaces --------
+    // Include these if you want typed calls via the interface. Safe to remove if you prefer a minimal interface.
+
+    /// Return ABI-encoded calldata for mcvSupplication(p) and some helpful context.
+    function buildMCVCalldata(
+        MCVParams calldata p
+    ) external view returns (
+        bytes memory data,
+        address[3] memory orbit,
+        bool assetToUsdc,
+        address tokenIn,
+        address tokenOut
+    );
+
+    /// Execute MCV, then invoke a callback with post-exec context (useful for bundlers/searchers).
+    function mcvSupplicationAndCallback(
+        MCVParams calldata params,
+        address callback,
+        bytes calldata context
+    ) external returns (uint256 finalAmountOut);
 }

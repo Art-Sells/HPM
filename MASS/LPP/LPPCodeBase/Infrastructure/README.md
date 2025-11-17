@@ -196,3 +196,9 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
   - Internal orbit registry (-/+500 orbits (all the same)) and lever to turn off pool orbits.
   - Same fee model extended LPP-wide.
   - retest with spec files, add security (test all edge cases) and expand delete all ("you"s)
+  
+## 7. Prepare to buildPublic indexer & SDK
+  - Ship a tiny TS SDK:
+	•	quoteAndBuildBundle(startPool, amountIn) → returns totalOut, per-hop out, calldata, gas estimate, & suggested minTotalAmountOut.
+	•	Include examples for common builders (Flashbots-style bundles, private RPCs, etc.).
+	•	Why: fastest way to 3rd-party adoption.

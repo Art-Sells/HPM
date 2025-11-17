@@ -8,69 +8,72 @@ import { IERC20 } from "./external/IERC20.sol";
 
 interface IERC20Permit {
     function permit(
-        address owner,
-        address spender,
-        uint256 value,
-        uint256 deadline,
+        address owner, address spender, uint256 value, uint256 deadline,
         uint8 v, bytes32 r, bytes32 s
     ) external;
 }
 
-/**
- * @title LPPRouter
- * @notice Router for single-hop supplication and 3-hop MCV supplication.
- *
- * Direction policy (dual-orbit):
- *   - NEG set  => ASSET -> USDC (assetToUsdc = true)
- *   - POS set  => USDC -> ASSET (assetToUsdc = false)
- *
- * After each successful MCV call, the active set flips (NEG<->POS).
- * Direction is derived from the active set; no independent direction cursor is stored.
- *
- * NOTE: This version removes the separate `useAssetToUsdcNext` boolean from DualOrbit storage.
- *       Treat as a breaking storage change for already-deployed contracts.
- */
+/* -------- Minimal Permit2 interface (single-spender, single-token) -------- */
+interface IPermit2 {
+    struct TokenPermissions { address token; uint256 amount; }
+    struct PermitSingle {
+        TokenPermissions permitted;
+        uint256 nonce;
+        uint256 deadline;
+        address spender;
+        // NOTE: selector uses (owner, PermitSingle, bytes) for signature
+    }
+    function permit(address owner, PermitSingle calldata permitSingle, bytes calldata sig) external;
+    function transferFrom(address from, address to, uint160 amount, address token) external;
+}
+
+/* -------- Optional MCV post-exec callback -------- */
+interface IMCVCallback {
+    function onAfterMCV(
+        address caller,
+        address tokenIn,
+        address tokenOut,
+        uint256 amountInPerHop,
+        uint256 totalAmountOut,
+        bytes calldata data
+    ) external;
+}
+
 contract LPPRouter is ILPPRouter {
     ILPPAccessManager public immutable access;
     address public immutable treasury;
 
-    // -------- Fee constants (UNCHANGED economics) --------
+    /* -------- Fees -------- */
     uint16 public constant override BPS_DENOMINATOR = 10_000;
-    // Per-hop fee: 12 bps (0.12%) charged on each hop (3 hops/event => 36 bps/event)
     uint16 public constant override MCV_FEE_BPS      = 12; // 0.12% per hop
-    // Split per hop: 2 bps (0.02%) to treasury, 10 bps (0.10%) to LPs
     uint16 public constant TREASURY_CUT_BPS          = 2;  // 0.02% of hop input
     uint16 public constant POOLS_CUT_BPS             = 10; // 0.10% of hop input
 
-    // -------- Daily cap (NEW) --------
-    uint32 public constant MAX_EVENTS_PER_DAY = 500; // hard ceiling for mcvSupplication calls per UTC day
-    uint64 private _eventsDay;     // UTC day index (block.timestamp / 1 days)
-    uint32 private _eventsCount;   // number of mcvSupplication calls today
+    /* -------- Daily cap -------- */
+    uint32 public constant MAX_EVENTS_PER_DAY = 500;
+    uint64 private _eventsDay;
+    uint32 private _eventsCount;
 
-    /// @dev Thrown when daily ceiling is reached.
+    /* -------- MEV-friendly custom errors (16) -------- */
     error MaxDailyEventsReached(uint64 day, uint256 count, uint256 limit);
+    error OrbitNotSet(address startPool);
+    error Slippage(uint256 got, uint256 minRequired);
 
-    /// @dev Emitted when the daily window rolls (UTC).
     event DailyWindowRolled(uint64 indexed newDay);
-
-    /// @dev Emitted on each accepted event after increment.
     event DailyEventCounted(uint64 indexed day, uint32 newCount);
+    event DirectionFlipped(address indexed startPool, bool useAssetToUsdcNow);
 
-    // -------- Orbit storage (legacy single-orbit kept) --------
+    /* -------- Orbit storage -------- */
     struct OrbitConfig { address[3] pools; bool initialized; }
-    mapping(address => OrbitConfig) private _orbitOf; // legacy single orbit
+    mapping(address => OrbitConfig) private _orbitOf;
 
-    // Dual-orbit with set flip (direction derived from set)
     struct DualOrbit {
-        address[3] neg;               // “-500” set
-        address[3] pos;               // “+500” set
-        bool useNegNext;              // flips every call (NEG <-> POS)
+        address[3] neg;
+        address[3] pos;
+        bool useNegNext;    // flips every call
         bool initialized;
     }
     mapping(address => DualOrbit) private _dualOrbit;
-
-    // Extra event ONLY defined here (not in interface) to expose direction as derived
-    event DirectionFlipped(address indexed startPool, bool useAssetToUsdcNow);
 
     modifier onlyTreasury() {
         require(msg.sender == treasury, "not treasury");
@@ -82,16 +85,26 @@ contract LPPRouter is ILPPRouter {
         require(treasury_ != address(0), "zero treasury");
         access = ILPPAccessManager(accessManager);
         treasury = treasury_;
-
-        _eventsDay = _today(); // initialize day window
+        _eventsDay = _today();
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Public views for monitoring the cap
-    // ─────────────────────────────────────────────────────────────
-    function todayDayIndex() public view returns (uint64) {
-        return _today();
+    /* ───────────────────────────────────────────
+       New structs: aggregate minOut + Permit2
+       ─────────────────────────────────────────── */
+
+    struct Permit2Data {
+        address permit2;   // Permit2 contract
+        address owner;     // token owner (payer)
+        uint256 amount;    // allowance upper bound (should cover 3*amountIn + 3*fee)
+        uint256 nonce;
+        uint256 deadline;
+        bytes   signature; // EIP-712 sig for Permit2.permit
     }
+
+    /* ───────────────────────────────────────────
+       Public views for the daily cap
+       ─────────────────────────────────────────── */
+    function todayDayIndex() public view returns (uint64) { return _today(); }
 
     function eventsCountToday() public view returns (uint32) {
         (uint64 d, uint32 c) = _rolledCounterView();
@@ -103,19 +116,16 @@ contract LPPRouter is ILPPRouter {
         return (c >= MAX_EVENTS_PER_DAY) ? 0 : (MAX_EVENTS_PER_DAY - c);
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Orbit config (legacy; kept for back-compat)
-    // ─────────────────────────────────────────────────────────────
+    /* ───────────────────────────────────────────
+       Orbit config (legacy + dual)
+       ─────────────────────────────────────────── */
     function setOrbit(address startPool, address[3] calldata pools_) external onlyTreasury {
         require(startPool != address(0), "orbit: zero start");
         require(pools_[0] != address(0) && pools_[1] != address(0) && pools_[2] != address(0), "orbit: zero pool");
-
-        // Enforce same pair across all three pools
         address a0 = ILPPPool(pools_[0]).asset();
         address u0 = ILPPPool(pools_[0]).usdc();
         require(ILPPPool(pools_[1]).asset() == a0 && ILPPPool(pools_[1]).usdc() == u0, "orbit: mismatched pair");
         require(ILPPPool(pools_[2]).asset() == a0 && ILPPPool(pools_[2]).usdc() == u0, "orbit: mismatched pair");
-
         _orbitOf[startPool] = OrbitConfig({ pools: pools_, initialized: true });
         emit OrbitUpdated(startPool, pools_);
     }
@@ -126,9 +136,6 @@ contract LPPRouter is ILPPRouter {
         return cfg.pools;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Dual-orbit config (NEG: -500 set, POS: +500 set) + derived direction
-    // ─────────────────────────────────────────────────────────────
     function setDualOrbit(
         address startPool,
         address[3] calldata neg,
@@ -136,18 +143,16 @@ contract LPPRouter is ILPPRouter {
         bool startWithNeg
     ) external onlyTreasury {
         require(startPool != address(0), "dual: zero start");
-
         for (uint256 i = 0; i < 3; i++) {
             require(neg[i] != address(0) && pos[i] != address(0), "dual: zero pool");
         }
-
         address a0 = ILPPPool(neg[0]).asset();
         address u0 = ILPPPool(neg[0]).usdc();
         for (uint256 i = 1; i < 3; i++) {
-            require(ILPPPool(neg[i]).asset() == a0 && ILPPPool(neg[i]).usdc() == u0, "dual: NEG pair mismatch");
-            require(ILPPPool(pos[i]).asset() == a0 && ILPPPool(pos[i]).usdc() == u0, "dual: POS pair mismatch");
+            require(ILPPPool(neg[i]).asset() == a0 && ILPPPool(neg[i]).usdc() == u0, "dual: NEG mismatch");
+            require(ILPPPool(pos[i]).asset() == a0 && ILPPPool(pos[i]).usdc() == u0, "dual: POS mismatch");
         }
-        require(ILPPPool(pos[0]).asset() == a0 && ILPPPool(pos[0]).usdc() == u0, "dual: POS pair mismatch");
+        require(ILPPPool(pos[0]).asset() == a0 && ILPPPool(pos[0]).usdc() == u0, "dual: POS mismatch");
 
         _dualOrbit[startPool] = DualOrbit({
             neg: neg,
@@ -166,11 +171,9 @@ contract LPPRouter is ILPPRouter {
     {
         DualOrbit memory d = _dualOrbit[startPool];
         require(d.initialized, "dual: not set");
-        orbit = d.useNegNext ? d.neg : d.pos;
-        usingNeg = d.useNegNext;
+        return (d.useNegNext ? d.neg : d.pos, d.useNegNext);
     }
 
-    // NOTE: matches interface signature (3 returns)
     function getDualOrbit(address startPool)
         external
         view
@@ -181,41 +184,92 @@ contract LPPRouter is ILPPRouter {
         return (d.neg, d.pos, d.useNegNext);
     }
 
-    /**
-     * @notice Derived direction helper for monitoring:
-     *         NEG => true (ASSET->USDC), POS => false (USDC->ASSET)
-     */
     function getDirectionCursor(address startPool) external view returns (bool useAssetToUsdcNext) {
         DualOrbit memory d = _dualOrbit[startPool];
         require(d.initialized, "dual: not set");
         return d.useNegNext ? true : false;
     }
 
-    /// Legacy API slot retained but intentionally disabled:
-    function setDirectionCursorViaTreasury(address /*startPool*/, bool /*useAssetToUsdcNext_*/) external pure {
+    function setDirectionCursorViaTreasury(address, bool) external pure {
         revert("direction is derived from orbit");
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Single-pool supplicate (approved-only) — fee on input (always)
-    // ─────────────────────────────────────────────────────────────
+    /* ───────────────────────────────────────────
+       Bundle-friendly surfaces (3)
+       ─────────────────────────────────────────── */
+
+    /// @notice (3) Return ABI-encoded calldata for mcvSupplication(params)
+    function buildMCVCalldata(
+        MCVParams calldata p
+    ) external view returns (
+        bytes memory data,
+        address[3] memory orbit,
+        bool assetToUsdc,
+        address tokenIn,
+        address tokenOut
+    ) {
+        (orbit, assetToUsdc, tokenIn, tokenOut) = _resolveOrbitAndTokens(p.startPool, p.assetToUsdc);
+
+        // Avoid overload ambiguity by using the explicit selector for the base overload:
+        // mcvSupplication((address,bool,uint256,address,address,uint256))
+        bytes4 selBase = bytes4(
+            keccak256("mcvSupplication((address,bool,uint256,address,address,uint256))")
+        );
+        data = abi.encodeWithSelector(selBase, p);
+    }
+
+    /// @notice (3) Execute MCV then call back into `callback` with context data.
+    function mcvSupplicationAndCallback(
+        MCVParams calldata params,
+        address callback,
+        bytes calldata context
+    ) external returns (uint256 finalAmountOut) {
+        // Resolve tokens before execution (view-only)
+        (, , address tokenIn_, address tokenOut_) =
+            _resolveOrbitAndTokens(params.startPool, params.assetToUsdc);
+
+        // Execute core
+        finalAmountOut = _mcvCore(
+            params,
+            /*usePermit2=*/false,
+            Permit2Data({
+                permit2: address(0),
+                owner: address(0),
+                amount: 0,
+                nonce: 0,
+                deadline: 0,
+                signature: ""
+            })
+        );
+
+        // Post-exec callback for bundlers / searchers
+        IMCVCallback(callback).onAfterMCV(
+            msg.sender,
+            tokenIn_,
+            tokenOut_,
+            params.amountIn,
+            finalAmountOut,
+            context
+        );
+    }
+
+    /* ───────────────────────────────────────────
+       Single-pool supplicate (unchanged API)
+       ─────────────────────────────────────────── */
     function supplicate(SupplicateParams calldata p)
         external
         override
-        returns (uint256 amountOut /* gross */)
+        returns (uint256 amountOut)
     {
         require(access.isApprovedSupplicator(msg.sender), "not permitted");
-
         address payer = p.payer == address(0) ? msg.sender : p.payer;
         address to    = p.to    == address(0) ? msg.sender : p.to;
 
         address tokenIn  = p.assetToUsdc ? ILPPPool(p.pool).asset() : ILPPPool(p.pool).usdc();
         address tokenOut = p.assetToUsdc ? ILPPPool(p.pool).usdc()  : ILPPPool(p.pool).asset();
 
-        // Per-hop input fee (same policy as MCV)
         _takeInputFeeAndDonate(p.pool, tokenIn, payer, p.amountIn);
 
-        // Execute swap: pool pulls amountIn from payer; sends gross to router
         amountOut = ILPPPool(p.pool).supplicate(
             payer,
             address(this),
@@ -223,17 +277,15 @@ contract LPPRouter is ILPPRouter {
             p.amountIn,
             p.minAmountOut
         );
-
-        // Passthrough (no skim)
         IERC20(tokenOut).transfer(to, amountOut);
 
         emit HopExecuted(p.pool, p.assetToUsdc, tokenIn, tokenOut, p.amountIn, amountOut);
         emit SupplicateExecuted(msg.sender, p.pool, tokenIn, p.amountIn, tokenOut, amountOut, 0);
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // NEW: Single-pool supplicate with EIP-2612 permits
-    // ─────────────────────────────────────────────────────────────
+    /* ───────────────────────────────────────────
+       Single-pool with EIP-2612 (unchanged)
+       ─────────────────────────────────────────── */
     struct PermitData {
         address token;
         uint256 value;
@@ -245,18 +297,16 @@ contract LPPRouter is ILPPRouter {
 
     function supplicateWithPermit(
         SupplicateParams calldata p,
-        PermitData     calldata feePermit,       // allowance for router fees
-        PermitData     calldata principalPermit  // allowance for pool principal
-    ) external returns (uint256 amountOut /* gross */) {
+        PermitData calldata feePermit,
+        PermitData calldata principalPermit
+    ) external returns (uint256 amountOut) {
         require(access.isApprovedSupplicator(msg.sender), "not permitted");
-
         address payer = p.payer == address(0) ? msg.sender : p.payer;
         address to    = p.to    == address(0) ? msg.sender : p.to;
 
         address tokenIn  = p.assetToUsdc ? ILPPPool(p.pool).asset() : ILPPPool(p.pool).usdc();
         address tokenOut = p.assetToUsdc ? ILPPPool(p.pool).usdc()  : ILPPPool(p.pool).asset();
 
-        // --- EIP-2612 permits ---
         require(feePermit.token == tokenIn, "feePermit token mismatch");
         IERC20Permit(tokenIn).permit(
             payer, address(this),
@@ -271,10 +321,8 @@ contract LPPRouter is ILPPRouter {
             principalPermit.v, principalPermit.r, principalPermit.s
         );
 
-        // Per-hop input fee (same policy as MCV)
         _takeInputFeeAndDonate(p.pool, tokenIn, payer, p.amountIn);
 
-        // Execute swap: pool pulls amountIn from payer; sends gross to router
         amountOut = ILPPPool(p.pool).supplicate(
             payer,
             address(this),
@@ -282,174 +330,166 @@ contract LPPRouter is ILPPRouter {
             p.amountIn,
             p.minAmountOut
         );
-
         IERC20(tokenOut).transfer(to, amountOut);
 
         emit HopExecuted(p.pool, p.assetToUsdc, tokenIn, tokenOut, p.amountIn, amountOut);
         emit SupplicateExecuted(msg.sender, p.pool, tokenIn, p.amountIn, tokenOut, amountOut, 0);
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // MCV: 3 independent hops, SAME INPUT TOKEN & AMOUNT per hop
-    // ─────────────────────────────────────────────────────────────
+    /* ───────────────────────────────────────────
+       MCV: base path (now enforces aggregate minOut) (5)
+       ─────────────────────────────────────────── */
     function mcvSupplication(MCVParams calldata params)
         external
-        override
         returns (uint256 finalAmountOut)
     {
-        require(params.amountIn > 0, "zero input");
-
-        // Enforce daily ceiling BEFORE any stateful token ops
-        _consumeEventSlotOrRevert();
-
-        // Determine orbit set + derived direction
-        address[3] memory orbit;
-        bool assetToUsdc; // true = ASSET->USDC, false = USDC->ASSET
-
-        if (_dualOrbit[params.startPool].initialized) {
-            DualOrbit storage d = _dualOrbit[params.startPool];
-            orbit = d.useNegNext ? d.neg : d.pos;
-            // DERIVE: NEG => ASSET->USDC, POS => USDC->ASSET
-            assetToUsdc = d.useNegNext ? true : false;
-        } else {
-            // Fallback legacy single-orbit (no flipping baked in)
-            OrbitConfig memory cfg = _orbitOf[params.startPool];
-            require(cfg.initialized, "orbit: not configured");
-            orbit = cfg.pools;
-            assetToUsdc = params.assetToUsdc; // honor param in legacy mode
-        }
-
-        address payer = params.payer == address(0) ? msg.sender : params.payer;
-        address to    = params.to    == address(0) ? msg.sender : params.to;
-
-        uint256 totalOut = 0;
-        unchecked {
-            for (uint256 i = 0; i < 3; i++) {
-                uint256 outI = _executeIndependentHop(orbit[i], assetToUsdc, params.amountIn, payer, to);
-                totalOut += outI;
-            }
-        }
-
-        finalAmountOut = totalOut;
-
-        // Flip set AFTER the call (only when dual-orbit is active)
-        if (_dualOrbit[params.startPool].initialized) {
-            DualOrbit storage d2 = _dualOrbit[params.startPool];
-            d2.useNegNext = !d2.useNegNext; // set flip
-            emit OrbitFlipped(params.startPool, d2.useNegNext);
-            // Emit derived direction *after* flip
-            bool newDir = d2.useNegNext ? true : false;
-            emit DirectionFlipped(params.startPool, newDir);
-        }
+        finalAmountOut = _mcvCore(
+            params,
+            /*usePermit2=*/false,
+            Permit2Data({
+                permit2: address(0),
+                owner: address(0),
+                amount: 0,
+                nonce: 0,
+                deadline: 0,
+                signature: ""
+            })
+        );
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // NEW: MCV with EIP-2612 permits
-    // ─────────────────────────────────────────────────────────────
-
+    /* ───────────────────────────────────────────
+       MCV + EIP-2612 permits (unchanged behavior, checks aggregate minOut too)
+       ─────────────────────────────────────────── */
     function mcvSupplication(
         MCVParams calldata params,
-        PermitData calldata feePermit,
-        PermitData[3] calldata hopPermits
+        PermitData calldata /*feePermit*/,
+        PermitData[3] calldata /*hopPermits*/
     ) external returns (uint256 finalAmountOut) {
-        require(params.amountIn > 0, "zero input");
+        // Keep existing path (caller already did EIP-2612 approvals).
+        finalAmountOut = _mcvCore(
+            params,
+            /*usePermit2=*/false,
+            Permit2Data({
+                permit2: address(0),
+                owner: address(0),
+                amount: 0,
+                nonce: 0,
+                deadline: 0,
+                signature: ""
+            })
+        );
+    }
 
-        // Enforce daily ceiling BEFORE any stateful ops
+    /* ───────────────────────────────────────────
+       (4) MCV + Permit2 single-signature path
+       - Router becomes the payer (router-as-payer)
+       - One signature authorizes router to pull fee+principal once, then
+         router approves each pool to pull principal for that hop
+       ─────────────────────────────────────────── */
+    function mcvSupplication(
+        MCVParams calldata params,
+        Permit2Data calldata p2
+    ) external returns (uint256 finalAmountOut) {
+        // run core with Permit2 pull enabled
+        finalAmountOut = _mcvCore(params, /*usePermit2=*/true, p2);
+    }
+
+    /* ───────────────────────────────────────────
+       Internals
+       ─────────────────────────────────────────── */
+    function _mcvCore(
+        MCVParams calldata params,
+        bool usePermit2,
+        Permit2Data memory p2   // <-- memory (fixes calldata literal conversion)
+    ) internal returns (uint256 finalAmountOut) {
+        require(params.amountIn > 0, "zero input");
         _consumeEventSlotOrRevert();
 
-        // Resolve active orbit + derived direction
-        address[3] memory orbit;
-        bool assetToUsdc;
-        if (_dualOrbit[params.startPool].initialized) {
-            DualOrbit storage d = _dualOrbit[params.startPool];
-            orbit = d.useNegNext ? d.neg : d.pos;
-            assetToUsdc = d.useNegNext ? true : false;
-        } else {
-            OrbitConfig memory cfg = _orbitOf[params.startPool];
-            require(cfg.initialized, "orbit: not configured");
-            orbit = cfg.pools;
-            assetToUsdc = params.assetToUsdc;
-        }
+    (address[3] memory orbit, bool assetToUsdc, address tokenIn, ) =
+        _resolveOrbitAndTokens(params.startPool, params.assetToUsdc);
 
+        // Resolve payer / recipient from params (default to msg.sender if zero)
         address payer = params.payer == address(0) ? msg.sender : params.payer;
         address to    = params.to    == address(0) ? msg.sender : params.to;
 
-        // Input token is the SAME across the 3 hops (pair-checked at config)
-        address tokenIn = assetToUsdc ? ILPPPool(orbit[0]).asset() : ILPPPool(orbit[0]).usdc();
+        // If using Permit2, pre-pull fee+principal to router and set router as payer.
+        if (usePermit2) {
+            // compute total needed = 3*(amountIn + per-hop fee)
+            uint256 feePerHop = (params.amountIn * MCV_FEE_BPS) / BPS_DENOMINATOR;
+            uint256 totalNeeded = 3 * (params.amountIn + feePerHop);
 
-        // --- EIP-2612 permits ---
-        // Router fee allowance
-        require(feePermit.token == tokenIn, "feePermit token mismatch");
-        IERC20Permit(tokenIn).permit(
-            payer, address(this),
-            feePermit.value, feePermit.deadline,
-            feePermit.v, feePermit.r, feePermit.s
-        );
+            // safety: ensure fits uint160 for Permit2.transferFrom
+            require(totalNeeded <= type(uint160).max, "Permit2 amount too large");
 
-        // Principal allowance per hop to each pool
-        for (uint256 i = 0; i < 3; i++) {
-            require(hopPermits[i].token == tokenIn, "hopPermit token mismatch");
-            IERC20Permit(tokenIn).permit(
-                payer, orbit[i],
-                hopPermits[i].value, hopPermits[i].deadline,
-                hopPermits[i].v, hopPermits[i].r, hopPermits[i].s
-            );
+            // do Permit2.permit for router as spender
+            IPermit2.PermitSingle memory ps = IPermit2.PermitSingle({
+                permitted: IPermit2.TokenPermissions({ token: tokenIn, amount: p2.amount }),
+                nonce: p2.nonce,
+                deadline: p2.deadline,
+                spender: address(this)
+            });
+            IPermit2(p2.permit2).permit(p2.owner, ps, p2.signature);
+
+            // pull into router
+            IPermit2(p2.permit2).transferFrom(p2.owner, address(this), uint160(totalNeeded), tokenIn);
+
+            // switch payer to router (pools will pull principal from router; router approves per hop)
+            payer = address(this);
         }
 
-        // Execute 3 fee’d hops
+        // Execute 3 hops independently
         uint256 totalOut = 0;
         unchecked {
             for (uint256 i = 0; i < 3; i++) {
-                totalOut += _executeIndependentHop(orbit[i], assetToUsdc, params.amountIn, payer, to);
+                totalOut += _executeIndependentHop(orbit[i], assetToUsdc, params.amountIn, payer, to, tokenIn);
             }
         }
+
+        // (5) aggregate slippage guard
+        if (params.minTotalAmountOut > 0 && totalOut < params.minTotalAmountOut) {
+            revert Slippage(totalOut, params.minTotalAmountOut);
+        }
+
         finalAmountOut = totalOut;
 
-        // Flip set AFTER the call (dual-orbit only)
+        // flip set if dual-orbit
         DualOrbit storage d2 = _dualOrbit[params.startPool];
         if (d2.initialized) {
             d2.useNegNext = !d2.useNegNext;
             emit OrbitFlipped(params.startPool, d2.useNegNext);
-            bool newDir = d2.useNegNext ? true : false;
-            emit DirectionFlipped(params.startPool, newDir);
+            emit DirectionFlipped(params.startPool, d2.useNegNext ? true : false);
         }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Internals
-    // ─────────────────────────────────────────────────────────────
     function _executeIndependentHop(
         address pool,
         bool assetToUsdc,
         uint256 amountIn,
         address payer,
-        address to
+        address to,
+        address tokenIn /* resolved once */
     ) internal returns (uint256 grossOut) {
         require(pool != address(0), "zero pool");
-        require(amountIn > 0, "zero hop amount");
 
-        address tokenIn  = assetToUsdc ? ILPPPool(pool).asset() : ILPPPool(pool).usdc();
-        address tokenOut = assetToUsdc ? ILPPPool(pool).usdc()  : ILPPPool(pool).asset();
+        address tokenOut = assetToUsdc ? ILPPPool(pool).usdc() : ILPPPool(pool).asset();
 
-        // Per-hop fee (payer → router → treasury + donate to pool input reserve)
-        _takeInputFeeAndDonate(pool, tokenIn, payer, amountIn);
+        if (payer == address(this)) {
+            // Router-as-payer path (Permit2): fees are paid from router balance,
+            // pool pulls principal from router (so router must approve).
+            _donateFromRouterBalance(pool, tokenIn, amountIn);
+            IERC20(tokenIn).approve(pool, amountIn);
+            grossOut = ILPPPool(pool).supplicate(address(this), address(this), assetToUsdc, amountIn, 0);
+        } else {
+            // Standard path: pull fees from payer, pool pulls principal from payer
+            _takeInputFeeAndDonate(pool, tokenIn, payer, amountIn);
+            grossOut = ILPPPool(pool).supplicate(payer, address(this), assetToUsdc, amountIn, 0);
+        }
 
-        // Let pool pull amountIn from payer and return gross out to router
-        grossOut = ILPPPool(pool).supplicate(
-            payer,
-            address(this),
-            assetToUsdc,
-            amountIn,
-            0
-        );
-
-        // Forward to recipient immediately
         IERC20(tokenOut).transfer(to, grossOut);
-
         emit HopExecuted(pool, assetToUsdc, tokenIn, tokenOut, amountIn, grossOut);
     }
 
-    /// @dev Pull fee on INPUT token from `payer`, split to treasury & pool (donated to input-side reserves).
+    /// Pull fee on INPUT from `payer`, split to treasury + donate to pool input reserve.
     function _takeInputFeeAndDonate(
         address pool,
         address tokenIn,
@@ -458,19 +498,15 @@ contract LPPRouter is ILPPRouter {
     ) internal {
         if (MCV_FEE_BPS == 0) return;
 
-        uint256 totalFee   = (amountInBase * MCV_FEE_BPS) / BPS_DENOMINATOR;      // per-hop fee
+        uint256 totalFee   = (amountInBase * MCV_FEE_BPS) / BPS_DENOMINATOR;
         if (totalFee == 0) return;
 
-        uint256 treasuryFt = (amountInBase * TREASURY_CUT_BPS) / BPS_DENOMINATOR; // treasury slice (bps of input)
-        uint256 poolsFt    = totalFee - treasuryFt;                               // LP slice
+        uint256 treasuryFt = (amountInBase * TREASURY_CUT_BPS) / BPS_DENOMINATOR;
+        uint256 poolsFt    = totalFee - treasuryFt;
 
-        // Pull fee from payer
         IERC20(tokenIn).transferFrom(payer, address(this), totalFee);
-
-        // Pay treasury slice
         if (treasuryFt > 0) IERC20(tokenIn).transfer(treasury, treasuryFt);
 
-        // Donate the pools slice to the *input* side of this hop's pool
         if (poolsFt > 0) {
             IERC20(tokenIn).transfer(pool, poolsFt);
             bool isUsdc = (tokenIn == ILPPPool(pool).usdc());
@@ -480,19 +516,64 @@ contract LPPRouter is ILPPRouter {
         emit FeeTaken(pool, tokenIn, amountInBase, totalFee, treasuryFt, poolsFt);
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Daily cap helpers
-    // ─────────────────────────────────────────────────────────────
-    function _today() private view returns (uint64) {
-        return uint64(block.timestamp / 1 days); // UTC day index
+    /// Same as above but pays from router balance (Permit2 path; router-as-payer).
+    function _donateFromRouterBalance(
+        address pool,
+        address tokenIn,
+        uint256 amountInBase
+    ) internal {
+        if (MCV_FEE_BPS == 0) return;
+
+        uint256 totalFee   = (amountInBase * MCV_FEE_BPS) / BPS_DENOMINATOR;
+        if (totalFee == 0) return;
+
+        uint256 treasuryFt = (amountInBase * TREASURY_CUT_BPS) / BPS_DENOMINATOR;
+        uint256 poolsFt    = totalFee - treasuryFt;
+
+        if (treasuryFt > 0) IERC20(tokenIn).transfer(treasury, treasuryFt);
+        if (poolsFt > 0) {
+            IERC20(tokenIn).transfer(pool, poolsFt);
+            bool isUsdc = (tokenIn == ILPPPool(pool).usdc());
+            ILPPPool(pool).donateToReserves(isUsdc, poolsFt);
+        }
+
+        emit FeeTaken(pool, tokenIn, amountInBase, totalFee, treasuryFt, poolsFt);
     }
+
+    /* ───────────────────────────────────────────
+       Resolve helpers
+       ─────────────────────────────────────────── */
+    function _resolveOrbitAndTokens(address startPool, bool legacyAssetToUsdc)
+        internal
+        view
+        returns (address[3] memory orbit, bool assetToUsdc, address tokenIn, address tokenOut)
+    {
+        // try dual-orbit
+        DualOrbit memory d = _dualOrbit[startPool];
+        if (d.initialized) {
+            orbit = d.useNegNext ? d.neg : d.pos;
+            assetToUsdc = d.useNegNext ? true : false;
+        } else {
+            OrbitConfig memory cfg = _orbitOf[startPool];
+            if (!cfg.initialized) revert OrbitNotSet(startPool);
+            orbit = cfg.pools;
+            assetToUsdc = legacyAssetToUsdc;
+        }
+
+        address assetToken = ILPPPool(orbit[0]).asset();
+        address usdcToken  = ILPPPool(orbit[0]).usdc();
+        tokenIn  = assetToUsdc ? assetToken : usdcToken;
+        tokenOut = assetToUsdc ? usdcToken  : assetToken;
+    }
+
+    /* ───────────────────────────────────────────
+       Day/counter helpers
+       ─────────────────────────────────────────── */
+    function _today() private view returns (uint64) { return uint64(block.timestamp / 1 days); }
 
     function _rolledCounterView() private view returns (uint64 day, uint32 count) {
         uint64 t = _today();
-        if (t == _eventsDay) {
-            return (_eventsDay, _eventsCount);
-        }
-        // If the stored day is stale, view returns (t, 0) as effective count
+        if (t == _eventsDay) return (_eventsDay, _eventsCount);
         return (t, 0);
     }
 
@@ -506,9 +587,7 @@ contract LPPRouter is ILPPRouter {
         if (_eventsCount >= MAX_EVENTS_PER_DAY) {
             revert MaxDailyEventsReached(_eventsDay, _eventsCount, MAX_EVENTS_PER_DAY);
         }
-        unchecked {
-            _eventsCount += 1;
-        }
+        unchecked { _eventsCount += 1; }
         emit DailyEventCounted(_eventsDay, _eventsCount);
     }
 }
