@@ -2,97 +2,97 @@
 
 exports[`Supplicate (MCV) 3-pool dual-orbit — deltas + automatic flip uses NEG set first, flips to POS after each mcvSupplication; shows per-pool & treasury deltas 1`] = `
 Object {
-  "note": "NEG-first under independent 3-hop model (per-hop fees), with explicit per-hop funding/approvals and object params.",
+  "note": "NEG-first under independent 3-hop model (per-hop fees); run #1 funds ASSET for NEG, run #2 funds USDC for POS.",
   "orbitRun1": Object {
-    "activeOrbit":  [
-      "0x285BcEFFE7558b6c73Cb0632dA1497D81A2810eE",
-      "0xb8597CAebAea9a57f33b78bA26b12b4b3C6ae0cE",
-      "0x094Cdf3273265A664014e58ad40e295dA6330A09",
+    "activeOrbit": Array [
+      "POOL#0",
+      "POOL#1",
+      "POOL#2",
     ],
     "poolDeltas": Array [
       Object {
-        "deltaA": "-989902989507028311",
-        "deltaU": "1020000000000000000",
-        "pool": "0x285BcEFFE7558b6c73Cb0632dA1497D81A2810eE",
+        "deltaA": "1001000000000000000",
+        "deltaU": "-990089207037554083",
+        "pool": "POOL#0",
       },
       Object {
-        "deltaA": "-989902989507028311",
-        "deltaU": "1020000000000000000",
-        "pool": "0xb8597CAebAea9a57f33b78bA26b12b4b3C6ae0cE",
+        "deltaA": "1001000000000000000",
+        "deltaU": "-990089207037554083",
+        "pool": "POOL#1",
       },
       Object {
-        "deltaA": "-989902989507028311",
-        "deltaU": "1020000000000000000",
-        "pool": "0x094Cdf3273265A664014e58ad40e295dA6330A09",
-      },
-      Object {
-        "deltaA": "0",
-        "deltaU": "0",
-        "pool": "0xb60BD46D00FE6084de0eE94e5B322620044D8C2E",
+        "deltaA": "1001000000000000000",
+        "deltaU": "-990089207037554083",
+        "pool": "POOL#2",
       },
       Object {
         "deltaA": "0",
         "deltaU": "0",
-        "pool": "0xD523b095731E528Ed21F10ec6f46aaD583ac06c4",
+        "pool": "POOL#3",
       },
       Object {
         "deltaA": "0",
         "deltaU": "0",
-        "pool": "0x84E69A00be98f17E2e988308e14A6d619396ef3F",
+        "pool": "POOL#4",
+      },
+      Object {
+        "deltaA": "0",
+        "deltaU": "0",
+        "pool": "POOL#5",
       },
     ],
     "treasuryDelta": Object {
-      "deltaA": "0",
-      "deltaU": "15000000000000000",
+      "deltaA": "600000000000000",
+      "deltaU": "0",
     },
     "usingNegBefore": true,
   },
   "orbitRun2": Object {
-    "activeOrbit":  [
-      "0xb60BD46D00FE6084de0eE94e5B322620044D8C2E",
-      "0xD523b095731E528Ed21F10ec6f46aaD583ac06c4",
-      "0x84E69A00be98f17E2e988308e14A6d619396ef3F",
+    "activeOrbit": Array [
+      "POOL#3",
+      "POOL#4",
+      "POOL#5",
     ],
     "poolDeltas": Array [
       Object {
         "deltaA": "0",
         "deltaU": "0",
-        "pool": "0x285BcEFFE7558b6c73Cb0632dA1497D81A2810eE",
+        "pool": "POOL#0",
       },
       Object {
         "deltaA": "0",
         "deltaU": "0",
-        "pool": "0xb8597CAebAea9a57f33b78bA26b12b4b3C6ae0cE",
+        "pool": "POOL#1",
       },
       Object {
         "deltaA": "0",
         "deltaU": "0",
-        "pool": "0x094Cdf3273265A664014e58ad40e295dA6330A09",
+        "pool": "POOL#2",
       },
       Object {
-        "deltaA": "1020000000000000000",
-        "deltaU": "-989902989507028311",
-        "pool": "0xb60BD46D00FE6084de0eE94e5B322620044D8C2E",
+        "deltaA": "-990089207037554083",
+        "deltaU": "1001000000000000000",
+        "pool": "POOL#3",
       },
       Object {
-        "deltaA": "1020000000000000000",
-        "deltaU": "-989902989507028311",
-        "pool": "0xD523b095731E528Ed21F10ec6f46aaD583ac06c4",
+        "deltaA": "-990089207037554083",
+        "deltaU": "1001000000000000000",
+        "pool": "POOL#4",
       },
       Object {
-        "deltaA": "1020000000000000000",
-        "deltaU": "-989902989507028311",
-        "pool": "0x84E69A00be98f17E2e988308e14A6d619396ef3F",
+        "deltaA": "-990089207037554083",
+        "deltaU": "1001000000000000000",
+        "pool": "POOL#5",
       },
     ],
     "treasuryDelta": Object {
-      "deltaA": "15000000000000000",
-      "deltaU": "0",
+      "deltaA": "0",
+      "deltaU": "600000000000000",
     },
     "usingNegBefore": false,
   },
   "role": "MCV",
-  "startPool": "0x285BcEFFE7558b6c73Cb0632dA1497D81A2810eE",
+  "startPool": "POOL#0",
 }
 `;
 
@@ -100,95 +100,95 @@ exports[`Supplicate (MCV) 3-pool dual-orbit — deltas + automatic flip uses POS
 Object {
   "note": "POS-first mirror under independent 3-hop model (per-hop fees); direction follows router cursor (USDC-in first), then flips.",
   "orbitRun1": Object {
-    "activeOrbit":  [
-      "0x5B986F05A142e68c46D8A4e28D34A5bC7375fac6",
-      "0x1c088cCdCCd6DE91B2ea6A1e30b2E12df3B2A00c",
-      "0x07502508E439770770b9C2a9a0C600802cE0a95f",
+    "activeOrbit": Array [
+      "POOL#6",
+      "POOL#7",
+      "POOL#8",
     ],
     "poolDeltas": Array [
       Object {
         "deltaA": "0",
         "deltaU": "0",
-        "pool": "0x83545cd230B3cdAde840c0a745Cb534b5D67Ffb5",
+        "pool": "POOL#9",
       },
       Object {
         "deltaA": "0",
         "deltaU": "0",
-        "pool": "0x72b4e3a60597704D96d9cd1E78e2A5F348737C14",
+        "pool": "POOL#10",
       },
       Object {
         "deltaA": "0",
         "deltaU": "0",
-        "pool": "0xBcc55307C818c688D59A9e25DbAE0563801209Bb",
+        "pool": "POOL#11",
       },
       Object {
-        "deltaA": "-989902989507028311",
-        "deltaU": "1020000000000000000",
-        "pool": "0x5B986F05A142e68c46D8A4e28D34A5bC7375fac6",
+        "deltaA": "-990089207037554083",
+        "deltaU": "1001000000000000000",
+        "pool": "POOL#6",
       },
       Object {
-        "deltaA": "-989902989507028311",
-        "deltaU": "1020000000000000000",
-        "pool": "0x1c088cCdCCd6DE91B2ea6A1e30b2E12df3B2A00c",
+        "deltaA": "-990089207037554083",
+        "deltaU": "1001000000000000000",
+        "pool": "POOL#7",
       },
       Object {
-        "deltaA": "-989902989507028311",
-        "deltaU": "1020000000000000000",
-        "pool": "0x07502508E439770770b9C2a9a0C600802cE0a95f",
+        "deltaA": "-990089207037554083",
+        "deltaU": "1001000000000000000",
+        "pool": "POOL#8",
       },
     ],
     "treasuryDelta": Object {
       "deltaA": "0",
-      "deltaU": "15000000000000000",
+      "deltaU": "600000000000000",
     },
     "usingNegBefore": false,
   },
   "orbitRun2": Object {
-    "activeOrbit":  [
-      "0x83545cd230B3cdAde840c0a745Cb534b5D67Ffb5",
-      "0x72b4e3a60597704D96d9cd1E78e2A5F348737C14",
-      "0xBcc55307C818c688D59A9e25DbAE0563801209Bb",
+    "activeOrbit": Array [
+      "POOL#9",
+      "POOL#10",
+      "POOL#11",
     ],
     "poolDeltas": Array [
       Object {
-        "deltaA": "1020000000000000000",
-        "deltaU": "-989902989507028311",
-        "pool": "0x83545cd230B3cdAde840c0a745Cb534b5D67Ffb5",
+        "deltaA": "1001000000000000000",
+        "deltaU": "-990089207037554083",
+        "pool": "POOL#9",
       },
       Object {
-        "deltaA": "1020000000000000000",
-        "deltaU": "-989902989507028311",
-        "pool": "0x72b4e3a60597704D96d9cd1E78e2A5F348737C14",
+        "deltaA": "1001000000000000000",
+        "deltaU": "-990089207037554083",
+        "pool": "POOL#10",
       },
       Object {
-        "deltaA": "1020000000000000000",
-        "deltaU": "-989902989507028311",
-        "pool": "0xBcc55307C818c688D59A9e25DbAE0563801209Bb",
-      },
-      Object {
-        "deltaA": "0",
-        "deltaU": "0",
-        "pool": "0x5B986F05A142e68c46D8A4e28D34A5bC7375fac6",
+        "deltaA": "1001000000000000000",
+        "deltaU": "-990089207037554083",
+        "pool": "POOL#11",
       },
       Object {
         "deltaA": "0",
         "deltaU": "0",
-        "pool": "0x1c088cCdCCd6DE91B2ea6A1e30b2E12df3B2A00c",
+        "pool": "POOL#6",
       },
       Object {
         "deltaA": "0",
         "deltaU": "0",
-        "pool": "0x07502508E439770770b9C2a9a0C600802cE0a95f",
+        "pool": "POOL#7",
+      },
+      Object {
+        "deltaA": "0",
+        "deltaU": "0",
+        "pool": "POOL#8",
       },
     ],
     "treasuryDelta": Object {
-      "deltaA": "15000000000000000",
+      "deltaA": "600000000000000",
       "deltaU": "0",
     },
     "usingNegBefore": true,
   },
   "role": "MCV",
-  "startPool": "0x83545cd230B3cdAde840c0a745Cb534b5D67Ffb5",
+  "startPool": "POOL#9",
 }
 `;
 
@@ -199,7 +199,7 @@ Object {
   "hopTrace": Array [
     Object {
       "amountIn": "1000000000000000000",
-      "amountOut": "989902989507028311",
+      "amountOut": "990089207037554083",
       "assetToUsdc": false,
       "pool": "0xca4211da53d1bbab819B03138302a21d6F6B7647",
       "tokenIn": "0x0E801D84Fa97b50751Dbf25036d067dCf18858bF",
@@ -207,7 +207,7 @@ Object {
     },
     Object {
       "amountIn": "1000000000000000000",
-      "amountOut": "989902989507028311",
+      "amountOut": "990089207037554083",
       "assetToUsdc": false,
       "pool": "0xE7402c51ae0bd667ad57a99991af6C2b686cd4f1",
       "tokenIn": "0x0E801D84Fa97b50751Dbf25036d067dCf18858bF",
@@ -215,18 +215,18 @@ Object {
     },
     Object {
       "amountIn": "1000000000000000000",
-      "amountOut": "989902989507028311",
+      "amountOut": "990089207037554083",
       "assetToUsdc": false,
       "pool": "0xED53ee55B63FCD7842D009481c6DC5Af66Ba2e1e",
       "tokenIn": "0x0E801D84Fa97b50751Dbf25036d067dCf18858bF",
       "tokenOut": "0x99bbA657f2BbC93c02D617f8bA121cB8Fc104Acf",
     },
   ],
-  "note": "Independent 3-hop model: per-hop fee (2.5%) is charged each hop and donated to that hop’s input reserve; treasury receives 0.5% per hop. Params sent as object for ethers v6.",
+  "note": "Independent 3-hop model: per-hop fee (12 bps) is charged each hop and donated to that hop’s input reserve; treasury receives 2 bps per hop. Params sent as object for ethers v6.",
   "offsets": Array [
     -500,
-    -499,
-    -498,
+    -500,
+    -500,
   ],
   "orbitPools": Array [
     "0xca4211da53d1bbab819B03138302a21d6F6B7647",
@@ -236,22 +236,22 @@ Object {
   "pools": Object {
     "after": Array [
       Object {
-        "a": "99010097010492971689",
+        "a": "99009910792962445917",
         "pool": "0xca4211da53d1bbab819B03138302a21d6F6B7647",
         "sqrtPriceX96": "75266754388551120713866752819",
-        "u": "101020000000000000000",
+        "u": "101001000000000000000",
       },
       Object {
-        "a": "99010097010492971689",
+        "a": "99009910792962445917",
         "pool": "0xE7402c51ae0bd667ad57a99991af6C2b686cd4f1",
-        "sqrtPriceX96": "75274677204802547147626107214",
-        "u": "101020000000000000000",
+        "sqrtPriceX96": "75266754388551120713866752819",
+        "u": "101001000000000000000",
       },
       Object {
-        "a": "99010097010492971689",
+        "a": "99009910792962445917",
         "pool": "0xED53ee55B63FCD7842D009481c6DC5Af66Ba2e1e",
-        "sqrtPriceX96": "75282600021053973581385461609",
-        "u": "101020000000000000000",
+        "sqrtPriceX96": "75266754388551120713866752819",
+        "u": "101001000000000000000",
       },
     ],
     "before": Array [
@@ -264,28 +264,28 @@ Object {
       Object {
         "a": "100000000000000000000",
         "pool": "0xE7402c51ae0bd667ad57a99991af6C2b686cd4f1",
-        "sqrtPriceX96": "75274677204802547147626107214",
+        "sqrtPriceX96": "75266754388551120713866752819",
         "u": "100000000000000000000",
       },
       Object {
         "a": "100000000000000000000",
         "pool": "0xED53ee55B63FCD7842D009481c6DC5Af66Ba2e1e",
-        "sqrtPriceX96": "75282600021053973581385461609",
+        "sqrtPriceX96": "75266754388551120713866752819",
         "u": "100000000000000000000",
       },
     ],
     "delta": Array [
       Object {
-        "a": "-989902989507028311",
-        "u": "1020000000000000000",
+        "a": "-990089207037554083",
+        "u": "1001000000000000000",
       },
       Object {
-        "a": "-989902989507028311",
-        "u": "1020000000000000000",
+        "a": "-990089207037554083",
+        "u": "1001000000000000000",
       },
       Object {
-        "a": "-989902989507028311",
-        "u": "1020000000000000000",
+        "a": "-990089207037554083",
+        "u": "1001000000000000000",
       },
     ],
   },
@@ -295,7 +295,7 @@ Object {
   "treasury": Object {
     "after": Object {
       "a": "400000000000000000000",
-      "u": "400015000000000000000",
+      "u": "400000600000000000000",
     },
     "before": Object {
       "a": "400000000000000000000",
@@ -303,7 +303,7 @@ Object {
     },
     "delta": Object {
       "a": "0",
-      "u": "15000000000000000",
+      "u": "600000000000000",
     },
   },
 }
@@ -330,30 +330,30 @@ Object {
   "callerBalances": Object {
     "after": Object {
       "a": "100000000000000000000000000",
-      "u": "100000000989902989507028311",
+      "u": "100000000990089207037554083",
     },
     "before": Object {
-      "a": "100000001025000000000000000",
+      "a": "100000001001200000000000000",
       "u": "100000000000000000000000000",
     },
   },
   "direction": "ASSET->USDC",
   "fees": Object {
     "basis": "input",
-    "pools": "20000000000000000",
+    "pools": "1000000000000000",
     "token": "ASSET",
-    "total": "25000000000000000",
-    "treasury": "5000000000000000",
+    "total": "1200000000000000",
+    "treasury": "200000000000000",
   },
   "quotes": Object {
-    "expectedGross_afterDonation": "989902989507028311",
+    "expectedGross_afterDonation": "990089207037554083",
     "poolQuote_preFeeGross": "990099009900990099",
-    "routerStatic_gross": "989902989507028311",
+    "routerStatic_gross": "990089207037554083",
   },
   "reserves": Object {
     "after": Object {
-      "a": "101020000000000000000",
-      "u": "99010097010492971689",
+      "a": "101001000000000000000",
+      "u": "99009910792962445917",
     },
     "before": Object {
       "a": "100000000000000000000",
@@ -363,7 +363,7 @@ Object {
   "role": "MCV",
   "sqrtPriceX96": Object {
     "implied": Object {
-      "after": "78436037353409780821878802312",
+      "after": "78443340812552907234366057129",
       "before": "79228162514264337593543950336",
     },
     "stored": Object {
@@ -379,28 +379,28 @@ Object {
   "amountIn": "1000000000000000000",
   "caller": Object {
     "after": Object {
-      "a": "100000000989902989507028311",
+      "a": "100000000990089207037554083",
       "u": "100000000000000000000000000",
     },
     "before": Object {
       "a": "100000000000000000000000000",
-      "u": "100000001025000000000000000",
+      "u": "100000001001200000000000000",
     },
   },
   "direction": "USDC->ASSET",
-  "expectedGross_afterDonation": "989902989507028311",
+  "expectedGross_afterDonation": "990089207037554083",
   "fees": Object {
     "basis": "input",
-    "pools": "20000000000000000",
+    "pools": "1000000000000000",
     "token": "USDC",
-    "total": "25000000000000000",
-    "treasury": "5000000000000000",
+    "total": "1200000000000000",
+    "treasury": "200000000000000",
   },
   "poolQuote_preFeeGross": "990099009900990099",
   "reserves": Object {
     "after": Object {
-      "a": "99010097010492971689",
-      "u": "101020000000000000000",
+      "a": "99009910792962445917",
+      "u": "101001000000000000000",
     },
     "before": Object {
       "a": "100000000000000000000",
@@ -410,7 +410,7 @@ Object {
   "role": "MCV",
   "sqrtPriceX96": Object {
     "implied": Object {
-      "after": "80028287343276933717316070497",
+      "after": "80020836317850789811356659133",
       "before": "79228162514264337593543950336",
     },
     "stored": Object {

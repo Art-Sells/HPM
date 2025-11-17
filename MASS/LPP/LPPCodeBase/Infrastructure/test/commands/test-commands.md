@@ -2,6 +2,7 @@ yarn hardhat test test/AccessGating.Supplicate.spec.ts
 yarn hardhat test test/Bootstrap.spec.ts
 yarn hardhat test test/PoolMath.spec.ts
 yarn hardhat test test/QuoterAccuracy.spec.ts
+yarn hardhat test test/QuoterMCVAccuracy.spec.ts
 yarn hardhat test test/Revocation.spec.ts
 yarn hardhat test test/SupplicateApproved.spec.ts
 yarn hardhat test test/SupplicateMCV.spec.ts

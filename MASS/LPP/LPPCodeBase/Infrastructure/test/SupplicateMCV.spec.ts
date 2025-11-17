@@ -10,11 +10,11 @@ import { deployCore } from "./helpers.ts";
  * ──────────────────────────────────────────────────────────────────────────── */
 const IERC20_FQN = "contracts/external/IERC20.sol:IERC20";
 
-// Global fee (per supplicate) ON INPUT
-const FEE_BPS = 250n;          // 2.5% total
+// Global fee (per supplicate) ON INPUT — align with router
+const FEE_BPS = 12n;          // 0.12% total per hop
 const DENOM   = 10_000n;
-const TREASURY_CUT_BPS = 50n;  // 0.5% (part of the 2.5%)
-const POOLS_CUT_BPS    = 200n; // 2.0% (part of the 2.5%)
+const TREASURY_CUT_BPS = 2n;  // 0.02% (part of the 0.12%)
+const POOLS_CUT_BPS    = 10n; // 0.10% (part of the 0.12%)
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Local helpers
@@ -158,6 +158,16 @@ async function safeReadSqrtPriceX96(pool: any): Promise<bigint | null> {
   return null;
 }
 
+/** Canonicalize addresses so snapshots don't churn on random pool addresses */
+const canon = (() => {
+  const m = new Map<string, string>();
+  return (addr: string) => {
+    const a = ethers.getAddress(addr);
+    if (!m.has(a)) m.set(a, `POOL#${m.size}`);
+    return m.get(a)!;
+  };
+})();
+
 /* ────────────────────────────────────────────────────────────────────────────
  * Spec
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -190,10 +200,10 @@ describe("Supplicate (MCV)", () => {
     const b0U = await bal(usdc,  deployer.address);
     const t0A = await bal(asset, await treasury.getAddress()); // treasury accrues ASSET in A->U
 
-    // Pre-fee quote (for reference only; not used for equality check)
+    // Pre-fee quote (for reference only)
     const quotedPreFeeGross = await getPoolQuotedAmountOut(pool, true, amountIn);
 
-    // Router.staticCall should reflect the *post-donation* reserves path (gross out)
+    // Router.staticCall should reflect the post-donation reserves path (gross out)
     let staticGross: bigint | null = null;
     try {
       staticGross = await (router.connect(deployer) as any).supplicate.staticCall({
@@ -206,12 +216,12 @@ describe("Supplicate (MCV)", () => {
       });
     } catch { staticGross = null; }
 
-    // Expected gross with input fee donation to input reserve (pools 2.0%)
+    // Expected gross with input fee donation to input reserve (pools slice)
     const expectedGross = grossOutWithPreAddedInput(
       amountIn,
       r0.a,            // input reserve = ASSET
       r0.u,            // output reserve = USDC
-      poolsCutFromInput(amountIn) // extra ASSET donated before swap
+      poolsCutFromInput(amountIn)
     );
 
     // --- execute ---
@@ -234,32 +244,32 @@ describe("Supplicate (MCV)", () => {
     const u1 = await bal(usdc,  deployer.address);
     const t1A = await bal(asset, await treasury.getAddress());
 
-    // --- user deltas (user receives GROSS out; fee paid in ASSET)
+    // user deltas (user receives GROSS out; fee paid in ASSET)
     expect(b0A - a1).to.equal(amountIn + feeFromInput(amountIn));
     const userUOut = u1 > b0U ? u1 - b0U : 0n;
 
-    // compare to expected path (±1 wei)
+    // compare to expected/static (±1 wei)
     expectApproxEq(userUOut, expectedGross);
     if (staticGross !== null) expectApproxEq(userUOut, staticGross!);
 
-    // --- pool vs user deltas (fee-aware ON INPUT)
+    // pool vs user deltas (fee-aware ON INPUT)
     const poolUOutGross = r0.u > r1.u ? r0.u - r1.u : 0n;
     expectApproxEq(poolUOutGross, expectedGross);
 
-    // Input-side pool reserve (ASSET) increases by amountIn + poolsFee
+    // Input-side reserve increases by amountIn + poolsFee
     const poolsFeeA = poolsCutFromInput(amountIn);
     const assetIncrease = r1.a > r0.a ? r1.a - r0.a : 0n;
     expectApproxEq(assetIncrease, amountIn + poolsFeeA);
 
-    // Treasury increment should equal 0.5% of input (in ASSET)
+    // Treasury increment equals its cut of input (ASSET)
     const treasuryAInc = t1A > t0A ? t1A - t0A : 0n;
     const treasuryFeeA = treasuryCutFromInput(amountIn);
     expectApproxEq(treasuryAInc, treasuryFeeA);
 
-    // --- price moved correctly (implied) ---
+    // price moved correctly (implied)
     expect(s1Implied <= s0Implied).to.equal(true);
 
-    // --- snapshot (no profit fields) ---
+    // snapshot
     expect({
       role: "MCV",
       direction: "ASSET->USDC",
@@ -322,12 +332,12 @@ describe("Supplicate (MCV)", () => {
     // Pre-fee quote (for reference only)
     const quotedPreFeeGross = await getPoolQuotedAmountOut(pool, false, amountIn);
 
-    // Expected gross with donation of pools 2.0% to USDC reserve before swap
+    // Expected gross with donation of pools slice to USDC reserve before swap
     const expectedGross = grossOutWithPreAddedInput(
       amountIn,
       r0.u,            // input reserve = USDC
       r0.a,            // output reserve = ASSET
-      poolsCutFromInput(amountIn) // extra USDC donated before swap
+      poolsCutFromInput(amountIn)
     );
 
     // Execute
@@ -416,10 +426,10 @@ describe("Supplicate (MCV)", () => {
         ).wait();
       }
 
-      // Grab pools and bootstrap offsets: [-500,-499,-498,+498,+499,+500]
+      // Grab pools and bootstrap offsets: [-500,-500,-500,+500,+500,+500]
       const allPools = await factory.getPools();
       await (async () => {
-        const offsets = [-500n, -499n, -498n, 498n, 499n, 500n];
+        const offsets = [-500n, -500n, -500n, 500n, 500n, 500n];
         for (let i = 0; i < 6; i++) {
           await (
             await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
@@ -428,7 +438,6 @@ describe("Supplicate (MCV)", () => {
           ).wait();
         }
       })();
-
 
       // Orbit = first 3 (shared sign, e.g., NEG) — force a brand-new mutable array
       const orbitPools = [ allPools[0], allPools[1], allPools[2] ] as [string, string, string];
@@ -450,7 +459,7 @@ describe("Supplicate (MCV)", () => {
 
       // ----- INLINE FUNDING + APPROVALS (USDC-in across ALL 3 hops) -----
       const amountIn = ethers.parseEther("1");              // per-hop input
-      const feePerHop = (amountIn * 250n) / 10_000n;        // 2.5%
+      const feePerHop = (amountIn * FEE_BPS) / DENOM;       // 12 bps per hop
       const totalFee  = feePerHop * 3n;
       const totalIn   = amountIn * 3n;
 
@@ -566,7 +575,7 @@ describe("Supplicate (MCV)", () => {
           delta:  { a: (t1A - t0A).toString(), u: (t1U - t0U).toString() },
         },
         note:
-          "Independent 3-hop model: per-hop fee (2.5%) is charged each hop and donated to that hop’s input reserve; treasury receives 0.5% per hop. Params sent as object for ethers v6.",
+          "Independent 3-hop model: per-hop fee (12 bps) is charged each hop and donated to that hop’s input reserve; treasury receives 2 bps per hop. Params sent as object for ethers v6.",
       }).to.matchSnapshot("3-orbit MCV — liquidity+treasury+delta+hop-proof");
     });
   });
@@ -597,7 +606,7 @@ describe("Supplicate (MCV)", () => {
 
       // Grab six & bootstrap: first 3 NEG (-500), last 3 POS (+500)
       const all = await factory.getPools();
-      const p = all.slice(0, 6);
+      const p = all.slice(-6); // most recent 6 for determinism
       for (let i = 0; i < 3; i++) {
         await (await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
           p[i], ethers.parseEther("100"), ethers.parseEther("100"), -500
@@ -636,25 +645,22 @@ describe("Supplicate (MCV)", () => {
         return { pools: arr, treA, treU };
       };
 
-      /* ----------------------- RUN #1 — NEG (USDC-in) ----------------------- */
+      /* ----------------------- RUN #1 — NEG set (ASSET-in) ----------------------- */
       const amountIn = ethers.parseEther("1");
       const active0   = await (router as any).getActiveOrbit(startPool);
       const usingNeg0 = active0[1] as boolean;
       const orbit0    = active0[0] as string[];
-      expect(usingNeg0).to.equal(true);
+      expect(usingNeg0).to.equal(true); // NEG means ASSET->USDC
 
-      // Fund + approve for ALL 3 NEG pools (per-hop fees)
       {
-        const feePerHop = (amountIn * 250n) / 10_000n; // 2.5%
+        const feePerHop = (amountIn * FEE_BPS) / DENOM; // use test constants (12 bps)
         const totalFee  = feePerHop * 3n;
         const totalIn   = amountIn * 3n;
 
-        await (await env.usdc.connect(deployer).mint(deployer.address, totalIn + totalFee)).wait();
-        // router pulls the fee each hop
-        await (await env.usdc.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
-        // each NEG pool pulls amountIn once
+        await (await env.asset.connect(deployer).mint(deployer.address, totalIn + totalFee)).wait();
+        await (await env.asset.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait(); // router fee pull (ASSET)
         for (const addr of orbit0) {
-          await (await env.usdc.connect(deployer).approve(addr, amountIn)).wait();
+          await (await env.asset.connect(deployer).approve(addr, amountIn)).wait(); // pools pull principal (ASSET)
         }
       }
 
@@ -663,7 +669,7 @@ describe("Supplicate (MCV)", () => {
       {
         await (router.connect(deployer) as any).mcvSupplication({
           startPool,
-          assetToUsdc: false,   // ignored in dual-orbit; cursor controls direction
+          assetToUsdc: true,    // ignored in dual-orbit; direction derived from set (ASSET-in)
           amountIn,
           payer: deployer.address,
           to: deployer.address,
@@ -681,23 +687,22 @@ describe("Supplicate (MCV)", () => {
       const activeAfter1 = await (router as any).getActiveOrbit(startPool);
       expect(activeAfter1[1] as boolean).to.equal(false);
 
-      /* ----------------------- RUN #2 — POS (ASSET-in) ---------------------- */
+      /* ----------------------- RUN #2 — POS set (USDC-in) ------------------------ */
       const amountIn2 = ethers.parseEther("1");
       const active1   = await (router as any).getActiveOrbit(startPool);
       const usingNeg1 = active1[1] as boolean;
       const orbit1    = active1[0] as string[];
-      expect(usingNeg1).to.equal(false); // now POS
+      expect(usingNeg1).to.equal(false); // POS means USDC->ASSET
 
-      // Fund + approve for ALL 3 POS pools (per-hop fees)
       {
-        const feePerHop = (amountIn2 * 250n) / 10_000n;
+        const feePerHop = (amountIn2 * FEE_BPS) / DENOM;
         const totalFee  = feePerHop * 3n;
         const totalIn   = amountIn2 * 3n;
 
-        await (await env.asset.connect(deployer).mint(deployer.address, totalIn + totalFee)).wait();
-        await (await env.asset.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
+        await (await env.usdc.connect(deployer).mint(deployer.address, totalIn + totalFee)).wait();
+        await (await env.usdc.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait(); // router fee pull (USDC)
         for (const addr of orbit1) {
-          await (await env.asset.connect(deployer).approve(addr, amountIn2)).wait();
+          await (await env.usdc.connect(deployer).approve(addr, amountIn2)).wait(); // pools pull principal (USDC)
         }
       }
 
@@ -706,7 +711,7 @@ describe("Supplicate (MCV)", () => {
       {
         await (router.connect(deployer) as any).mcvSupplication({
           startPool,
-          assetToUsdc: true,    // ignored in dual-orbit; cursor controls direction
+          assetToUsdc: false,   // ignored in dual-orbit; direction derived from set (USDC-in)
           amountIn: amountIn2,
           payer: deployer.address,
           to: deployer.address,
@@ -720,18 +725,23 @@ describe("Supplicate (MCV)", () => {
       });
       const treDelta2 = { deltaA: (after2.treA - before2.treA).toString(), deltaU: (after2.treU - before2.treU).toString() };
 
-      // Flip back to NEG
+      // Flip back to NEG set
       const activeAfter2 = await (router as any).getActiveOrbit(startPool);
       expect(activeAfter2[1] as boolean).to.equal(true);
 
-      // Snapshot summary
+      // Snapshot summary (canonicalized addresses for deterministic snapshots)
+      const orbit0Canon  = orbit0.map(canon);
+      const orbit1Canon  = orbit1.map(canon);
+      const deltas1Canon = deltas1.map(d => ({ pool: canon(d.pool), deltaA: d.deltaA, deltaU: d.deltaU }));
+      const deltas2Canon = deltas2.map(d => ({ pool: canon(d.pool), deltaA: d.deltaA, deltaU: d.deltaU }));
+
       expect({
         role: "MCV",
-        startPool,
-        orbitRun1: { usingNegBefore: usingNeg0, activeOrbit: orbit0, poolDeltas: deltas1, treasuryDelta: treDelta1 },
-        orbitRun2: { usingNegBefore: usingNeg1, activeOrbit: orbit1, poolDeltas: deltas2, treasuryDelta: treDelta2 },
-        note: "NEG-first under independent 3-hop model (per-hop fees), with explicit per-hop funding/approvals and object params.",
-      }).to.matchSnapshot("Dual-orbit — per-pool & treasury deltas + flip");
+        startPool: canon(startPool),
+        orbitRun1: { usingNegBefore: usingNeg0, activeOrbit: orbit0Canon, poolDeltas: deltas1Canon, treasuryDelta: treDelta1 },
+        orbitRun2: { usingNegBefore: usingNeg1, activeOrbit: orbit1Canon, poolDeltas: deltas2Canon, treasuryDelta: treDelta2 },
+        note: "NEG-first under independent 3-hop model (per-hop fees); run #1 funds ASSET for NEG, run #2 funds USDC for POS.",
+      }).to.matchSnapshot("Dual-orbit — per-pool & treasury deltas + flip (NEG-first fixed)");
     });
 
     it("uses POS set first, flips to NEG after each mcvSupplication; shows per-pool & treasury deltas", async () => {
@@ -753,7 +763,7 @@ describe("Supplicate (MCV)", () => {
 
       // Grab six & bootstrap: first 3 NEG (-500), last 3 POS (+500)
       const all = await factory.getPools();
-      const p = all.slice(0, 6);
+      const p = all.slice(-6); // most recent 6 for determinism
       for (let i = 0; i < 3; i++) {
         await (await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
           p[i], ethers.parseEther("100"), ethers.parseEther("100"), -500
@@ -801,7 +811,7 @@ describe("Supplicate (MCV)", () => {
 
       // fund + approve: USDC-in for ALL 3 POS pools (per-hop fees)
       {
-        const feePerHop = (amountIn1 * 250n) / 10_000n;
+        const feePerHop = (amountIn1 * FEE_BPS) / DENOM; // 12 bps
         const totalFee  = feePerHop * 3n;
         const totalIn   = amountIn1 * 3n;
 
@@ -844,7 +854,7 @@ describe("Supplicate (MCV)", () => {
 
       // fund + approve: ASSET-in for ALL 3 NEG pools (per-hop fees)
       {
-        const feePerHop = (amountIn2 * 250n) / 10_000n;
+        const feePerHop = (amountIn2 * FEE_BPS) / DENOM; // 12 bps
         const totalFee  = feePerHop * 3n;
         const totalIn   = amountIn2 * 3n;
 
@@ -878,11 +888,17 @@ describe("Supplicate (MCV)", () => {
       const activeAfter2 = await (router as any).getActiveOrbit(startPool);
       expect(activeAfter2[1] as boolean).to.equal(false);
 
+      // Canonicalize addresses for deterministic snapshots
+      const orbit0Canon  = orbit0.map(canon);
+      const orbit1Canon  = orbit1.map(canon);
+      const deltas1Canon = deltas1.map(d => ({ pool: canon(d.pool), deltaA: d.deltaA, deltaU: d.deltaU }));
+      const deltas2Canon = deltas2.map(d => ({ pool: canon(d.pool), deltaA: d.deltaA, deltaU: d.deltaU }));
+
       expect({
         role: "MCV",
-        startPool,
-        orbitRun1: { usingNegBefore: usingNeg0, activeOrbit: orbit0, poolDeltas: deltas1, treasuryDelta: treDelta1 },
-        orbitRun2: { usingNegBefore: usingNeg1, activeOrbit: orbit1, poolDeltas: deltas2, treasuryDelta: treDelta2 },
+        startPool: canon(startPool),
+        orbitRun1: { usingNegBefore: usingNeg0, activeOrbit: orbit0Canon, poolDeltas: deltas1Canon, treasuryDelta: treDelta1 },
+        orbitRun2: { usingNegBefore: usingNeg1, activeOrbit: orbit1Canon, poolDeltas: deltas2Canon, treasuryDelta: treDelta2 },
         note: "POS-first mirror under independent 3-hop model (per-hop fees); direction follows router cursor (USDC-in first), then flips.",
       }).to.matchSnapshot("Dual-orbit (POS-first) — per-pool & treasury deltas + flip");
     });

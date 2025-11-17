@@ -10,7 +10,9 @@ pragma solidity ^0.8.24;
  *         - Quotes 3 independent hops using current pool reserves (no state changes)
  *         - Auto-detects dual-orbit; falls back to legacy orbit if dual-orbit not configured
  *
- * Return values include: chosen orbit, direction, per-hop fees, per-hop grossOut, and totals.
+ * Direction policy (dual-orbit):
+ *   NEG set  => ASSET -> USDC  (assetToUsdc = true)
+ *   POS set  => USDC -> ASSET  (assetToUsdc = false)
  */
 
 interface ILPPPoolView {
@@ -32,16 +34,14 @@ interface ILPPRouterRead {
         view
         returns (address[3] memory orbit, bool usingNeg);
 
-    function getDirectionCursor(address startPool)
-        external
-        view
-        returns (bool useAssetToUsdcNext);
-
     // legacy (single-orbit) helper
     function getOrbit(address startPool)
         external
         view
         returns (address[3] memory pools);
+
+    // optional monitor (derived direction); not required for this quoter
+    function getDirectionCursor(address startPool) external view returns (bool useAssetToUsdcNext);
 }
 
 contract LPPQuoterMCV {
@@ -61,12 +61,12 @@ contract LPPQuoterMCV {
     /**
      * @notice Quote the next mcvSupplication(..) result for the given router + startPool.
      * @param router              LPPRouter address
-     * @param startPool           the "cursor key" used in router to select orbit set and flip cursors
+     * @param startPool           the "cursor key" used in router to select orbit set
      * @param amountIn            SAME principal provided to *each* hop (payer principal per hop)
      * @param assetToUsdcLegacy   only used if dual-orbit is NOT configured; ignored otherwise
      *
      * @dev Behavior:
-     *  - If dual-orbit is configured, uses router.getActiveOrbit + getDirectionCursor.
+     *  - If dual-orbit is configured, uses router.getActiveOrbit. Direction is derived from `usingNeg`.
      *  - If dual-orbit is not configured, falls back to router.getOrbit and uses the legacy direction param.
      *  - Donation math: donation = amountIn * (MCV_FEE_BPS - TREASURY_CUT_BPS) / BPS.
      *  - Quote math matches LPPPool.quoteSupplication but with input-side reserve += donation before quoting.
@@ -95,13 +95,8 @@ contract LPPQuoterMCV {
         try r.getActiveOrbit(startPool) returns (address[3] memory o, bool neg) {
             orbit = o;
             usingNeg = neg;
-            // direction cursor (if dual is set)
-            try r.getDirectionCursor(startPool) returns (bool dir) {
-                assetToUsdc = dir;
-            } catch {
-                // Shouldn't happen for dual, but default to legacy param if it does
-                assetToUsdc = assetToUsdcLegacy;
-            }
+            // Direction is derived from set: NEG => ASSET->USDC ; POS => USDC->ASSET
+            assetToUsdc = usingNeg ? true : false;
         } catch {
             dualOk = false;
         }
@@ -152,13 +147,13 @@ contract LPPQuoterMCV {
                 }
             }
 
-            // Use the same placeholder CFMM math as LPPPool.quoteSupplication
+            // Placeholder CFMM math (must match pool's quoteSupplication)
             uint256 out;
             if (assetToUsdc) {
-                // out = (amountIn * reserveUsdc) / (reserveAsset + amountIn)
+                // out = (amountIn * reserveUsdc) / (reserveAsset + amountIn + donationToInput)
                 out = (amountIn * rU) / (rA + amountIn);
             } else {
-                // out = (amountIn * reserveAsset) / (reserveUsdc + amountIn)
+                // out = (amountIn * reserveAsset) / (reserveUsdc + amountIn + donationToInput)
                 out = (amountIn * rA) / (rU + amountIn);
             }
 

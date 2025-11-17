@@ -16,6 +16,20 @@ interface IERC20Permit {
     ) external;
 }
 
+/**
+ * @title LPPRouter
+ * @notice Router for single-hop supplication and 3-hop MCV supplication.
+ *
+ * Direction policy (dual-orbit):
+ *   - NEG set  => ASSET -> USDC (assetToUsdc = true)
+ *   - POS set  => USDC -> ASSET (assetToUsdc = false)
+ *
+ * After each successful MCV call, the active set flips (NEG<->POS).
+ * Direction is derived from the active set; no independent direction cursor is stored.
+ *
+ * NOTE: This version removes the separate `useAssetToUsdcNext` boolean from DualOrbit storage.
+ *       Treat as a breaking storage change for already-deployed contracts.
+ */
 contract LPPRouter is ILPPRouter {
     ILPPAccessManager public immutable access;
     address public immutable treasury;
@@ -46,17 +60,16 @@ contract LPPRouter is ILPPRouter {
     struct OrbitConfig { address[3] pools; bool initialized; }
     mapping(address => OrbitConfig) private _orbitOf; // legacy single orbit
 
-    // Dual-orbit with cursors (set flip; internal direction flip across calls)
+    // Dual-orbit with set flip (direction derived from set)
     struct DualOrbit {
         address[3] neg;               // “-500” set
         address[3] pos;               // “+500” set
-        bool useNegNext;              // flips every call
-        bool useAssetToUsdcNext;      // flips every call (ASSET-in ↔ USDC-in)
+        bool useNegNext;              // flips every call (NEG <-> POS)
         bool initialized;
     }
     mapping(address => DualOrbit) private _dualOrbit;
 
-    // Extra event ONLY defined here (not in interface) to expose direction cursor changes
+    // Extra event ONLY defined here (not in interface) to expose direction as derived
     event DirectionFlipped(address indexed startPool, bool useAssetToUsdcNow);
 
     modifier onlyTreasury() {
@@ -114,7 +127,7 @@ contract LPPRouter is ILPPRouter {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Dual-orbit config (NEG: -500 set, POS: +500 set) + cursors
+    // Dual-orbit config (NEG: -500 set, POS: +500 set) + derived direction
     // ─────────────────────────────────────────────────────────────
     function setDualOrbit(
         address startPool,
@@ -140,7 +153,6 @@ contract LPPRouter is ILPPRouter {
             neg: neg,
             pos: pos,
             useNegNext: startWithNeg,
-            useAssetToUsdcNext: false,
             initialized: true
         });
 
@@ -169,19 +181,19 @@ contract LPPRouter is ILPPRouter {
         return (d.neg, d.pos, d.useNegNext);
     }
 
-    // Optional helper to read direction cursor (not in interface)
+    /**
+     * @notice Derived direction helper for monitoring:
+     *         NEG => true (ASSET->USDC), POS => false (USDC->ASSET)
+     */
     function getDirectionCursor(address startPool) external view returns (bool useAssetToUsdcNext) {
         DualOrbit memory d = _dualOrbit[startPool];
         require(d.initialized, "dual: not set");
-        return d.useAssetToUsdcNext;
+        return d.useNegNext ? true : false;
     }
 
-    /// Optional: treasury can seed/tweak the next-direction cursor.
-    function setDirectionCursorViaTreasury(address startPool, bool useAssetToUsdcNext_) external onlyTreasury {
-        DualOrbit storage d = _dualOrbit[startPool];
-        require(d.initialized, "dual: not set");
-        d.useAssetToUsdcNext = useAssetToUsdcNext_;
-        emit DirectionFlipped(startPool, d.useAssetToUsdcNext);
+    /// Legacy API slot retained but intentionally disabled:
+    function setDirectionCursorViaTreasury(address /*startPool*/, bool /*useAssetToUsdcNext_*/) external pure {
+        revert("direction is derived from orbit");
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -221,8 +233,6 @@ contract LPPRouter is ILPPRouter {
 
     // ─────────────────────────────────────────────────────────────
     // NEW: Single-pool supplicate with EIP-2612 permits
-    //  - fee permit: spender = router (this)
-    //  - principal permit: spender = pool
     // ─────────────────────────────────────────────────────────────
     struct PermitData {
         address token;
@@ -281,9 +291,6 @@ contract LPPRouter is ILPPRouter {
 
     // ─────────────────────────────────────────────────────────────
     // MCV: 3 independent hops, SAME INPUT TOKEN & AMOUNT per hop
-    //      - Applies input fee on EACH hop (payer is external for all hops)
-    //      - Flips NEG↔POS set and USDC-in↔ASSET-in direction AFTER each call
-    //      - **Ceiling:** max 500 calls per UTC day (enforced here)
     // ─────────────────────────────────────────────────────────────
     function mcvSupplication(MCVParams calldata params)
         external
@@ -295,14 +302,15 @@ contract LPPRouter is ILPPRouter {
         // Enforce daily ceiling BEFORE any stateful token ops
         _consumeEventSlotOrRevert();
 
-        // Determine orbit set + direction via cursors (TL;DR policy)
+        // Determine orbit set + derived direction
         address[3] memory orbit;
-        bool assetToUsdc; // true = ASSET->USDC (ASSET-in), false = USDC->ASSET (USDC-in)
+        bool assetToUsdc; // true = ASSET->USDC, false = USDC->ASSET
 
         if (_dualOrbit[params.startPool].initialized) {
             DualOrbit storage d = _dualOrbit[params.startPool];
             orbit = d.useNegNext ? d.neg : d.pos;
-            assetToUsdc = d.useAssetToUsdcNext;
+            // DERIVE: NEG => ASSET->USDC, POS => USDC->ASSET
+            assetToUsdc = d.useNegNext ? true : false;
         } else {
             // Fallback legacy single-orbit (no flipping baked in)
             OrbitConfig memory cfg = _orbitOf[params.startPool];
@@ -324,22 +332,22 @@ contract LPPRouter is ILPPRouter {
 
         finalAmountOut = totalOut;
 
-        // Flip cursors AFTER the call (only when dual-orbit is active)
+        // Flip set AFTER the call (only when dual-orbit is active)
         if (_dualOrbit[params.startPool].initialized) {
             DualOrbit storage d2 = _dualOrbit[params.startPool];
-            d2.useNegNext = !d2.useNegNext;                 // set flip
-            d2.useAssetToUsdcNext = !d2.useAssetToUsdcNext; // direction alternation
+            d2.useNegNext = !d2.useNegNext; // set flip
             emit OrbitFlipped(params.startPool, d2.useNegNext);
-            emit DirectionFlipped(params.startPool, d2.useAssetToUsdcNext);
+            // Emit derived direction *after* flip
+            bool newDir = d2.useNegNext ? true : false;
+            emit DirectionFlipped(params.startPool, newDir);
         }
     }
 
     // ─────────────────────────────────────────────────────────────
-    // NEW: MCV with EIP-2612 permits (no pre-approvals)
-    //  - fee permit: spender = router (this), tokenIn shared across 3 hops
-    //  - hop permits: spender = orbit[i] pool (principal allowance per hop)
+    // NEW: MCV with EIP-2612 permits
     // ─────────────────────────────────────────────────────────────
-    function mcvSupplicationWithPermits(
+
+    function mcvSupplication(
         MCVParams calldata params,
         PermitData calldata feePermit,
         PermitData[3] calldata hopPermits
@@ -349,13 +357,13 @@ contract LPPRouter is ILPPRouter {
         // Enforce daily ceiling BEFORE any stateful ops
         _consumeEventSlotOrRevert();
 
-        // Resolve active orbit + direction
+        // Resolve active orbit + derived direction
         address[3] memory orbit;
         bool assetToUsdc;
         if (_dualOrbit[params.startPool].initialized) {
             DualOrbit storage d = _dualOrbit[params.startPool];
             orbit = d.useNegNext ? d.neg : d.pos;
-            assetToUsdc = d.useAssetToUsdcNext;
+            assetToUsdc = d.useNegNext ? true : false;
         } else {
             OrbitConfig memory cfg = _orbitOf[params.startPool];
             require(cfg.initialized, "orbit: not configured");
@@ -397,13 +405,13 @@ contract LPPRouter is ILPPRouter {
         }
         finalAmountOut = totalOut;
 
-        // Flip cursors AFTER the call (dual-orbit only)
+        // Flip set AFTER the call (dual-orbit only)
         DualOrbit storage d2 = _dualOrbit[params.startPool];
         if (d2.initialized) {
             d2.useNegNext = !d2.useNegNext;
-            d2.useAssetToUsdcNext = !d2.useAssetToUsdcNext;
             emit OrbitFlipped(params.startPool, d2.useNegNext);
-            emit DirectionFlipped(params.startPool, d2.useAssetToUsdcNext);
+            bool newDir = d2.useNegNext ? true : false;
+            emit DirectionFlipped(params.startPool, newDir);
         }
     }
 
