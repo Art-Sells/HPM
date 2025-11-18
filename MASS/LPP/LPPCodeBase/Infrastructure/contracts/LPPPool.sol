@@ -22,11 +22,27 @@ contract LPPPool is ILPPPool {
     uint256 public override reserveUsdc;
 
     uint256 private _priceX96;                  // target price (U/A) in Q96 set at bootstrap
-    int16   public targetOffsetBps;    // persist the offset sign/magnitude (e.g. ±500)
+    int16   public override targetOffsetBps;    // persist the offset sign/magnitude (e.g. ±500)
     mapping(address => uint256) private _liq;
     uint256 public override totalLiquidity;
 
     bool public initialized;
+
+    event Sync(uint112 reserve0, uint112 reserve1);
+    event Swap(
+        address indexed sender,
+        uint256 amount0In,
+        uint256 amount1In,
+        uint256 amount0Out,
+        uint256 amount1Out,
+        address indexed to
+    );
+
+    // token ordering cache for V2 shape
+    bool private immutable _assetIsToken0;
+
+    // V2 timestamp (like blockTimestampLast in pairs)
+    uint32 private _blockTimestampLast;
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Modifiers
@@ -40,10 +56,15 @@ contract LPPPool is ILPPPool {
     constructor(address _asset, address _usdc, address _treasury, address _factory) {
         require(_asset != address(0) && _usdc != address(0) && _treasury != address(0) && _factory != address(0), "zero");
         asset = _asset;
-        usdc = _usdc;
+        usdc  = _usdc;
         treasury = _treasury;
         factory  = _factory;
+
+        // V2 token0/1 ordering: lowest address is token0
+        _assetIsToken0 = (asset < usdc);
+
         _priceX96 = 1 << 96; // default until bootstrap
+        _blockTimestampLast = uint32(block.timestamp); // initialize
     }
 
     // Views
@@ -82,6 +103,8 @@ contract LPPPool is ILPPPool {
 
         initialized = true;
         emit Initialized(amtA, amtU);
+
+        _touchAndSync();
     }
 
     function mintFromHook(address to, uint256 amtA, uint256 amtU)
@@ -93,6 +116,7 @@ contract LPPPool is ILPPPool {
         returns (uint256 liquidityOut)
     {
         liquidityOut = _internalMint(to, amtA, amtU);
+        _touchAndSync();
     }
 
     function _internalMint(address to, uint256 amountAssetDesired, uint256 amountUsdcDesired)
@@ -128,6 +152,8 @@ contract LPPPool is ILPPPool {
         totalLiquidity = totalAfter;
 
         emit Burn(to, liquidity, amountAssetOut, amountUsdcOut);
+
+        _touchAndSync();
     }
 
     // Quotes & Supplication (placeholder CFMM math)
@@ -174,6 +200,29 @@ contract LPPPool is ILPPPool {
         }
 
         emit Supplicate(msg.sender, assetToUsdc, amountIn, amountOut);
+
+        // V2-style Swap (map to token0/1 amounts)
+        uint256 amount0In; uint256 amount1In; uint256 amount0Out; uint256 amount1Out;
+        if (_assetIsToken0) {
+            if (assetToUsdc) { // asset in, usdc out
+                amount0In  = amountIn;
+                amount1Out = amountOut;
+            } else {           // usdc in, asset out
+                amount1In  = amountIn;
+                amount0Out = amountOut;
+            }
+        } else {
+            if (assetToUsdc) { // asset in, usdc out ; here token0=usdc
+                amount1In  = amountIn;
+                amount0Out = amountOut;
+            } else {           // usdc in, asset out
+                amount0In  = amountIn;
+                amount1Out = amountOut;
+            }
+        }
+        emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
+
+        _touchAndSync();
     }
 
     // Donations (increase reserves without minting LP shares)
@@ -200,6 +249,108 @@ contract LPPPool is ILPPPool {
             }
             require(bal >= beforeRes + amount, "donate asset shortage");
             reserveAsset = beforeRes + amount;
+        }
+
+        emit Donation(isUsdc, amount);
+        _touchAndSync();
+    }
+
+    function getReserves()
+        public
+        view
+        override
+        returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)
+    {
+        if (_assetIsToken0) {
+            reserve0 = uint112(reserveAsset);
+            reserve1 = uint112(reserveUsdc);
+        } else {
+            reserve0 = uint112(reserveUsdc);
+            reserve1 = uint112(reserveAsset);
+        }
+        blockTimestampLast = _blockTimestampLast;
+    }
+
+    function slot0()
+        external
+        view
+        override
+        returns (
+            uint160 sqrtPriceX96,
+            int24 tick,
+            uint16 observationIndex,
+            uint16 observationCardinality,
+            uint16 observationCardinalityNext,
+            uint8 feeProtocol,
+            bool unlocked
+        )
+    {
+        // Determine token0/token1 price (token1/token0) in Q96
+        uint256 pxQ96;
+        if (_assetIsToken0) {
+            // token0 = asset, token1 = usdc => price = usdc/asset
+            if (reserveAsset > 0 && reserveUsdc > 0) {
+                pxQ96 = (reserveUsdc << 96) / reserveAsset;
+            } else {
+                pxQ96 = _priceX96;
+            }
+        } else {
+            // token0 = usdc, token1 = asset => price = asset/usdc
+            if (reserveAsset > 0 && reserveUsdc > 0) {
+                pxQ96 = (reserveAsset << 96) / reserveUsdc;
+            } else {
+                // invert stored price (usdc/asset) -> (asset/usdc)
+                require(_priceX96 > 0, "price=0");
+                pxQ96 = (uint256(1) << 192) / _priceX96; // (2^96 * 2^96) / priceQ96
+            }
+        }
+
+        // sqrtPriceX96 = sqrt(pxQ96) * 2^48  (since sqrt(Q96) => << 48)
+        uint256 sp = _isqrt(pxQ96) << 48;
+        require(sp <= type(uint160).max, "sqrt overflow");
+        sqrtPriceX96 = uint160(sp);
+
+        // minimal fixed fields (we are not running a V3 oracle here)
+        tick = 0;
+        observationIndex = 0;
+        observationCardinality = 1;
+        observationCardinalityNext = 1;
+        feeProtocol = 0;
+        unlocked = true;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Small helpers
+    // ─────────────────────────────────────────────────────────────────────────────
+    function _currentTimestamp32() private view returns (uint32) {
+        return uint32(block.timestamp);
+    }
+
+    function _touchAndSync() private {
+        _blockTimestampLast = _currentTimestamp32();
+        (uint112 r0, uint112 r1, ) = getReserves();
+        emit Sync(r0, r1);
+    }
+
+    // integer sqrt (Babylonian, capped)
+    function _isqrt(uint256 x) internal pure returns (uint256 z) {
+        if (x == 0) return 0;
+        uint256 y = x;
+        z = 1;
+        if (y >> 128 > 0) { y >>= 128; z <<= 64; }
+        if (y >>  64 > 0) { y >>=  64; z <<= 32; }
+        if (y >>  32 > 0) { y >>=  32; z <<= 16; }
+        if (y >>  16 > 0) { y >>=  16; z <<=  8; }
+        if (y >>   8 > 0) { y >>=   8; z <<=  4; }
+        if (y >>   4 > 0) { y >>=   4; z <<=  2; }
+        if (y >>   2 > 0) { z <<= 1; }
+        unchecked {
+            for (uint8 i = 0; i < 7; i++) {
+                uint256 nz = (z + x / z) >> 1;
+                if (nz == z) break;
+                z = nz;
+            }
+            if (z * z > x) z -= 1;
         }
     }
 }

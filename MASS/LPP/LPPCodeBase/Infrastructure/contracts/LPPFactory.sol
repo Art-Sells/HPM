@@ -5,6 +5,7 @@ import { ILPPFactory } from "./interfaces/ILPPFactory.sol";
 import { LPPPool } from "./LPPPool.sol";
 
 contract LPPFactory is ILPPFactory {
+    // Original interfaces/events
     address[] private _pools;
     mapping(address => bool) private _isPool;
 
@@ -12,6 +13,8 @@ contract LPPFactory is ILPPFactory {
     mapping(address => bool) private _allowedToken;
 
     address public override treasury;
+
+    event PoolCreatedV3(address indexed token0, address indexed token1, uint24 fee, int24 tickSpacing, address pool);
 
     modifier onlyTreasury() { require(msg.sender == treasury, "only treasury"); _; }
 
@@ -31,7 +34,7 @@ contract LPPFactory is ILPPFactory {
     function setAllowedToken(address token, bool allowed) external override onlyTreasury {
         require(token != address(0), "zero token");
         _allowedToken[token] = allowed;
-        emit TokenAllowed(token, allowed); // ✅ correct event name
+        emit TokenAllowed(token, allowed);
     }
 
     function isTokenAllowed(address token) external view override returns (bool) {
@@ -52,7 +55,16 @@ contract LPPFactory is ILPPFactory {
         pool = address(p);
         _pools.push(pool);
         _isPool[pool] = true;
+
+        // Original event
         emit PoolCreated(pool, asset, usdc);
+
+        // MEV-friendly mirrors
+        address token0 = asset < usdc ? asset : usdc;
+        address token1 = asset < usdc ? usdc : asset;
+
+        emit PairCreated(token0, token1, pool, _pools.length); 
+        emit PoolCreatedV3(token0, token1, uint24(0), int24(1), pool); 
     }
 
     function setPoolHook(address pool, address hook) external override onlyTreasury {

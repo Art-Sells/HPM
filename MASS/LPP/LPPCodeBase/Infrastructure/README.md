@@ -174,13 +174,19 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
 
 > Focus: prove that *existing MEV searchers* can see & interact with LPP pools using standard CFMM semantics
 
-- [ ] **Clone Flashbots searcher repo (ethers-provider-flashbots-bundle or variant)**  
+- [ ] **Clone searcher repos
+  - Flashbots
+  - Skip
+  - FastLane
+  - APE arbitrage
+  - Jaredfromsubway.eth’s bots
+  - All generic mev-share bundles
 - [ ] **Add LPP to the search universe:**
-  - Test Contract Logic against Flashbots logic (restructure (only smart contract logic) as needed)
+  - Test Contract Logic against searcher logic (restructure (only smart contract logic) as needed)
 
 ---
 
-## 5. MEV / Flashbots Integration (on-chain)
+## 5. MEV / Searcher Integration (on-chain)
 
 - [ ] **Deploy Smart Contract Logic and prepare logic for searchers... Then watch...**
   - Prepare searcher logic (theGraph, etc)
@@ -195,7 +201,7 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
   - Auto-generation of pool ladders around oracle price.
   - Internal orbit registry (-/+500 orbits (all the same)) and lever to turn off pool orbits.
   - Same fee model extended LPP-wide.
-  - retest with spec files, add security (test all edge cases) and expand delete all ("you"s)
+  - retest with spec files, add security (test all edge cases [testERC20 mints, etc]) and expand delete all ("you"s)
   
 ## 7. Prepare to buildPublic indexer & SDK
   - Ship a tiny TS SDK:
