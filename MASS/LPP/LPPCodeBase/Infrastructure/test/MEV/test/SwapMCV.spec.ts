@@ -3,7 +3,11 @@ import hre from "hardhat";
 const { ethers } = hre;
 
 import { expect } from "./shared/expect.ts";
-import { deployCore } from "./helpers.ts";
+import {
+  deployCore,
+  setupLegacyMevOrbit,
+  setupDualMevOrbit,
+} from "./helpers.ts";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Constants & Interfaces
@@ -397,32 +401,9 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
   const env = await deployCore();
   const { deployer, router, treasury, factory, asset, usdc } = env;
 
-  // Ensure SIX pools and bootstrap offsets: [-500,-500,-500,+500,+500,+500]
-  const have = (await factory.getPools()).length;
-  const needToCreate = Math.max(0, 6 - have);
-  for (let i = 0; i < needToCreate; i++) {
-    await (await treasury.createPoolViaTreasury(
-      await factory.getAddress(),
-      await asset.getAddress(),
-      await usdc.getAddress()
-    )).wait();
-  }
-  const allPools = await factory.getPools();
-  const offsets = [-500n, -500n, -500n, 500n, 500n, 500n];
-  for (let i = 0; i < 6; i++) {
-    await (await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
-      allPools[i], ethers.parseEther("100"), ethers.parseEther("100"), offsets[i]
-    )).wait();
-  }
-
-  // Orbit = first 3 (shared sign), wire legacy orbit
-  const orbitPools = [ allPools[0], allPools[1], allPools[2] ] as [string, string, string];
-  const startPoolAddr = orbitPools[0];
-  await (await (treasury as any).setOrbitViaTreasury(
-    await router.getAddress(),
-    startPoolAddr,
-    [ orbitPools[0], orbitPools[1], orbitPools[2] ]
-  )).wait();
+  const { orbit: orbitPools, startPool: startPoolAddr } = await setupLegacyMevOrbit(env, {
+    offsets: [-500, -500, -500],
+  });
 
   // Contracts
   const poolA = await ethers.getContractAt("LPPPool", orbitPools[0]);
@@ -546,35 +527,7 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
       const env = await deployCore();
       const { deployer, router, treasury, factory, asset, usdc } = env;
 
-      // Ensure 6 pools exist and bootstrap 3 NEG, 3 POS
-      const have = (await factory.getPools()).length;
-      for (let i = have; i < 6; i++) {
-        await (await treasury.createPoolViaTreasury(
-          await factory.getAddress(), await asset.getAddress(), await usdc.getAddress()
-        )).wait();
-      }
-      const all = await factory.getPools();
-      const p = all.slice(-6);
-      for (let i = 0; i < 3; i++) {
-        await (await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
-          p[i], ethers.parseEther("100"), ethers.parseEther("100"), -500
-        )).wait();
-      }
-      for (let i = 3; i < 6; i++) {
-        await (await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
-          p[i], ethers.parseEther("100"), ethers.parseEther("100"), +500
-        )).wait();
-      }
-
-      // Wire dual-orbit (start with NEG)
-      const startPool = p[0];
-      await (await (treasury as any).setDualOrbitViaTreasury(
-        await router.getAddress(),
-        startPool,
-        [p[0], p[1], p[2]], // NEG (ASSET-in)
-        [p[3], p[4], p[5]], // POS (USDC-in)
-        true
-      )).wait();
+      const { pools: p, startPool } = await setupDualMevOrbit(env, { startWithNeg: true });
 
       const toPool = async (addr: string) => await ethers.getContractAt("LPPPool", addr);
       const poolObjs = await Promise.all(p.map(toPool));
@@ -689,35 +642,7 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
       const env = await deployCore();
       const { deployer, router, treasury, factory, asset, usdc } = env;
 
-      // Ensure 6 pools exist and bootstrap 3 NEG, 3 POS
-      const have = (await factory.getPools()).length;
-      for (let i = have; i < 6; i++) {
-        await (await treasury.createPoolViaTreasury(
-          await factory.getAddress(), await asset.getAddress(), await usdc.getAddress()
-        )).wait();
-      }
-      const all = await factory.getPools();
-      const p = all.slice(-6);
-      for (let i = 0; i < 3; i++) {
-        await (await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
-          p[i], ethers.parseEther("100"), ethers.parseEther("100"), -500
-        )).wait();
-      }
-      for (let i = 3; i < 6; i++) {
-        await (await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
-          p[i], ethers.parseEther("100"), ethers.parseEther("100"), +500
-        )).wait();
-      }
-
-      // POS first
-      const startPool = p[0];
-      await (await (treasury as any).setDualOrbitViaTreasury(
-        await router.getAddress(),
-        startPool,
-        [p[0], p[1], p[2]], // NEG
-        [p[3], p[4], p[5]], // POS
-        false
-      )).wait();
+      const { pools: p, startPool } = await setupDualMevOrbit(env, { startWithNeg: false });
 
       const toPool = async (addr: string) => await ethers.getContractAt("LPPPool", addr);
       const poolObjs = await Promise.all(p.map(toPool));
