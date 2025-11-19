@@ -164,13 +164,9 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
 
 > This is where **Flashbots searcher code** comes in: it will test thousands of possible small routes and only bundle the profitable ones on-chain.
 
-### 3.3 Test Off Chain
-- [ ] Test 500 events/day cap...
-- [ ] reconfigure all spec tests to test above
-
 ---
 
-## 4. MEV / Flashbots Integration (off-chain)
+## 4. MEV Integration (off-chain)
 
 > Focus: prove that *existing MEV searchers* can see & interact with LPP pools using standard CFMM semantics
 
@@ -183,6 +179,10 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
   - All generic mev-share bundles
 - [ ] **Add LPP to the search universe:**
   - Test Contract Logic against searcher logic (restructure (only smart contract logic) as needed)
+
+### 4.1 Test Off Chain
+- [ ] Test 500 events/day cap...
+- [ ] reconfigure all spec tests to test above
 
 ---
 
@@ -201,7 +201,7 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
   - Auto-generation of pool ladders around oracle price.
   - Internal orbit registry (-/+500 orbits (all the same)) and lever to turn off pool orbits.
   - Same fee model extended LPP-wide.
-  - retest with spec files, add security (test all edge cases [testERC20 mints, etc]) and expand delete all ("you"s)
+  - retest with spec files, add security (test all edge cases [testERC20 mints, thousands of tiny positions, multi-hop atomic functions, and rebalancers increase bug risk, etc]) and expand delete all ("you"s)
   
 ## 7. Prepare to buildPublic indexer & SDK
   - Ship a tiny TS SDK:
