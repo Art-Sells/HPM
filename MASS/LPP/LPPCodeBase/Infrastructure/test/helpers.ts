@@ -29,7 +29,9 @@ export interface DeployCoreResult {
   usdcAddr: string;
 }
 
-/** Deploys AccessManager, Treasury, Router, Factory, Test tokens, creates first pool, and funds Treasury */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Core deployment (Access → Treasury → Router → Factory → Tokens → Pool)
+ * ──────────────────────────────────────────────────────────────────────────── */
 export async function deployCore(): Promise<DeployCoreResult> {
   const [deployer, other] = await ethers.getSigners();
 
@@ -108,6 +110,10 @@ export async function deployCore(): Promise<DeployCoreResult> {
   };
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Bootstrap helpers
+ * ──────────────────────────────────────────────────────────────────────────── */
+
 /** Overload-safe caller for Treasury.bootstrapViaTreasury (4-arg version with offsetBps) */
 export async function bootstrapPool(
   treasury: LPPTreasury,
@@ -125,7 +131,6 @@ export async function bootstrapPool(
   if (balA < amountAsset) await (await asset.mint(tAddr, amountAsset - balA)).wait();
   if (balU < amountUsdc)  await (await usdc.mint(tAddr,  amountUsdc  - balU)).wait();
 
-  // call overloaded function by full signature (ethers v6 + TypeChain)
   await (
     await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
       poolAddr, amountAsset, amountUsdc, offsetBps
@@ -218,7 +223,6 @@ export async function bootstrapSix(
   usdc: TestERC20
 ) {
   if (pools.length < 6) throw new Error("need at least 6 pools");
-  // first 3 NEG (-500), last 3 POS (+500)
   for (let i = 0; i < 3; i++) {
     await bootstrapPool(treasury, pools[i], asset, usdc, A, U, -500);
   }
@@ -227,9 +231,49 @@ export async function bootstrapSix(
   }
 }
 
-/** Approve a caller as a supplicator (router.supplicate requires this) */
-export async function approveSupplicator(access: LPPAccessManager, who: string, approved = true) {
-  await (await access.setApprovedSupplicator(who, approved)).wait();
+/* ────────────────────────────────────────────────────────────────────────────
+ * Orbit wiring (treasury-only on Router implementation)
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export async function wireLegacyOrbit(
+  treasury: LPPTreasury,
+  router: LPPRouter,
+  startPool: string,
+  orbit: [string, string, string]
+) {
+  await (await treasury.setOrbitViaTreasury(await router.getAddress(), startPool, orbit)).wait();
+}
+
+export async function wireDualOrbit(
+  treasury: LPPTreasury,
+  router: LPPRouter,
+  startPool: string,
+  neg: [string, string, string],
+  pos: [string, string, string],
+  startWithNeg = true
+) {
+  await (
+    await treasury.setDualOrbitViaTreasury(
+      await router.getAddress(),
+      startPool,
+      neg,
+      pos,
+      startWithNeg
+    )
+  ).wait();
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Token helpers
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export async function getTokensFromPoolAddr(poolAddr: string) {
+  const pool = (await ethers.getContractAt("LPPPool", poolAddr)) as LPPPool;
+  const assetAddr = await pool.asset();
+  const usdcAddr  = await pool.usdc();
+  const asset = (await ethers.getContractAt("TestERC20", assetAddr)) as TestERC20;
+  const usdc  = (await ethers.getContractAt("TestERC20", usdcAddr))  as TestERC20;
+  return { pool, asset, usdc, assetAddr, usdcAddr };
 }
 
 /** Utility: approve max allowance to a spender (ethers v6) */
@@ -244,8 +288,124 @@ export async function approveMaxMany(token: TestERC20, owner: any, spenders: str
   }
 }
 
-/** Read reserves from a pool (V2-style helper for tests) */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Permissioned single-pool path (SUPPLICATE)
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export async function approveSupplicator(access: LPPAccessManager, who: string, approved = true) {
+  await (await access.setApprovedSupplicator(who, approved)).wait();
+}
+
+/** Runs a single-pool supplicate (permissioned). Approves router (fee) + pool (principal). */
+export async function runSupplicate(params: {
+  router: LPPRouter;
+  caller: any;               // signer (must be an approved supplicator)
+  poolAddr: string;
+  assetToUsdc: boolean;
+  amountIn: bigint;
+  minAmountOut?: bigint;
+  to?: string;
+  payer?: string;
+}) {
+  const { router, caller, poolAddr, assetToUsdc, amountIn } = params;
+  const minAmountOut = params.minAmountOut ?? 0n;
+  const to = params.to ?? caller.address;
+  const payer = params.payer ?? caller.address;
+
+  const { asset, usdc } = await getTokensFromPoolAddr(poolAddr);
+  const tokenIn = assetToUsdc ? asset : usdc;
+
+  // Router pulls the fee; pool pulls the principal -> approvals needed for both.
+  await approveMax(tokenIn, caller, poolAddr);
+
+  const tx = await (router.connect(caller) as any).supplicate({
+    pool: poolAddr,
+    assetToUsdc,
+    amountIn,
+    minAmountOut,
+    to,
+    payer,
+  });
+  return await tx.wait();
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * MEV path (3-hop MCV SWAP) — public, no supplicator role required
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** Quote like a searcher: uses Router.getAmountsOutFromStart (no storage peeking) */
+export async function mevQuote(router: LPPRouter, startPool: string, amountIn: bigint) {
+  const q = await (router as any).getAmountsOutFromStart(startPool, amountIn);
+  // q = [assetToUsdc(bool), orbit(address[3]), perHop(uint256[3]), total(uint256)]
+  return {
+    assetToUsdc: Boolean(q[0]),
+    orbit: q[1] as string[],
+    perHop: (q[2] as bigint[]).map((x: any) => BigInt(String(x))),
+    total: BigInt(String(q[3])),
+  };
+}
+
+/** Prepare approvals for a swap:
+ *  - Router needs allowance to pull fees on tokenIn.
+ *  - Each pool needs allowance to pull principal (amountIn) for its hop.
+ */
+export async function prepareSwapApprovals(params: {
+  caller: any;
+  router: LPPRouter;
+  orbit: string[];
+  tokenIn: TestERC20;
+}) {
+  const { caller, router, orbit, tokenIn } = params;
+  await approveMax(tokenIn, caller, await router.getAddress());
+  await approveMaxMany(tokenIn, caller, orbit);
+}
+
+/** Execute a 3-hop swap (MCV).
+ *  - We first quote to know direction + tokenIn (so we don’t read custom storage)
+ *  - Then do approvals and call router.swap(...)
+ */
+export async function runSwap(params: {
+  router: LPPRouter;
+  caller: any;               // signer
+  startPool: string;
+  amountIn: bigint;
+  minTotalAmountOut?: bigint;
+  to?: string;
+  payer?: string;
+}) {
+  const { router, caller, startPool, amountIn } = params;
+  const minTotalAmountOut = params.minTotalAmountOut ?? 0n;
+  const to = params.to ?? caller.address;
+  const payer = params.payer ?? caller.address;
+
+  // Quote like a MEV
+  const q = await mevQuote(router, startPool, amountIn);
+
+  // Resolve tokenIn from the first pool in orbit using direction
+  const { assetAddr, usdcAddr } = await getTokensFromPoolAddr(q.orbit[0]);
+  const tokenInAddr = q.assetToUsdc ? assetAddr : usdcAddr;
+  const tokenIn = (await ethers.getContractAt("TestERC20", tokenInAddr)) as TestERC20;
+
+  // Approvals: router (fee) + each pool (principal)
+  await prepareSwapApprovals({ caller, router, orbit: q.orbit, tokenIn });
+
+  // Call the MEV-facing surface
+  const tx = await (router.connect(caller) as any).swap({
+    startPool,
+    assetToUsdc: false,       // ignored if dual-orbit set; kept for legacy single-orbit
+    amountIn,
+    minTotalAmountOut,
+    to,
+    payer,
+  });
+  return await tx.wait();
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Read helpers for tests
+ * ──────────────────────────────────────────────────────────────────────────── */
+
 export async function getReservesLike(pool: LPPPool) {
-  const [r0, r1] = await Promise.all([pool.reserveAsset(), pool.reserveUsdc()]);
-  return { reserveAsset: BigInt(r0.toString()), reserveUsdc: BigInt(r1.toString()) };
+  const [rA, rU] = await Promise.all([pool.reserveAsset(), pool.reserveUsdc()]);
+  return { reserveAsset: BigInt(rA.toString()), reserveUsdc: BigInt(rU.toString()) };
 }

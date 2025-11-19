@@ -33,6 +33,23 @@ async function snapshotReserves(pool: LPPPool, label: string) {
   }).to.matchSnapshot(label);
 }
 
+/** router per-hop fee split for a given amountIn */
+async function feeSplit(router: LPPRouter, amountIn: bigint) {
+  const bps = BigInt(await router.BPS_DENOMINATOR());
+  const feeBps = BigInt(await router.MCV_FEE_BPS());
+  // TREASURY_CUT_BPS isn't in the interface but exists on the concrete contract
+  const treasBps = BigInt(await (router as any).TREASURY_CUT_BPS());
+  const total = (amountIn * feeBps) / bps;
+  const treasury = (amountIn * treasBps) / bps;
+  const pools = total - treasury;
+  return { total, treasury, pools };
+}
+
+/** balanceOf helper */
+async function bal(token: TestERC20, who: string): Promise<bigint> {
+  return BigInt((await token.balanceOf(who)).toString());
+}
+
 /** Mint tokens to Treasury, then bootstrap the pool via Treasury (Phase 0 style). */
 async function bootstrapSeed(
   treasury: LPPTreasury,
@@ -53,7 +70,6 @@ async function bootstrapSeed(
     await (await usdc.connect(deployer).mint(tAddr, amountUsdc)).wait();
   }
 
-  // Call the 4-arg overload explicitly via signature (avoids ethers v6 ambiguity)
   const fn4 = (treasury as any)[
     "bootstrapViaTreasury(address,uint256,uint256,int256)"
   ] as (
@@ -118,7 +134,7 @@ describe("Pool math integrity", () => {
       expect(midA).to.be.gt(beforeA);
       expect(midU).to.be.gt(beforeU);
 
-      // fund payer with ASSET and approve POOL
+      // fund payer with ASSET and approve POOL+Router
       await fundAndApproveForSupplicate({
         token: asset,
         minter: deployer,
@@ -142,14 +158,14 @@ describe("Pool math integrity", () => {
       const afterA = await pool.reserveAsset();
       const afterU = await pool.reserveUsdc();
 
-      // pool gains ASSET (from payer), loses USDC (to payer)
+      // pool gains ASSET (from payer + poolsFee), loses USDC (to payer)
       expect(afterA).to.be.gt(midA);
       expect(afterU).to.be.lt(midU);
     });
   });
 
   describe("Directional accounting", () => {
-    it("ASSET->USDC: pool deltas == user deltas (token-wise)", async () => {
+    it("ASSET->USDC: includes per-hop fee split; conservation with treasury+router", async () => {
       const env: any = await deployCore();
       const { deployer, pool, router, treasury, access } = env;
       const { asset, usdc } = await getTokens(env);
@@ -167,7 +183,7 @@ describe("Pool math integrity", () => {
         ethers.parseEther("10"),
       );
 
-      // fund + approve ASSET to POOL
+      // fund + approve ASSET to POOL + Router
       await fundAndApproveForSupplicate({
         token: asset,
         minter: deployer,
@@ -178,9 +194,14 @@ describe("Pool math integrity", () => {
       });
 
       const who = deployer.address;
-      const bA0 = BigInt((await asset.balanceOf(who)).toString());
-      const bU0 = BigInt((await usdc.balanceOf(who)).toString());
+      const routerAddr = await router.getAddress();
+      const treasuryAddr = await treasury.getAddress();
+
+      const bA0 = await bal(asset, who);
+      const bU0 = await bal(usdc, who);
       const r0 = await reserves(pool);
+      const tA0 = await bal(asset, treasuryAddr);
+      const roA0 = await bal(asset, routerAddr);
 
       const args = {
         pool: await pool.getAddress(),
@@ -191,27 +212,44 @@ describe("Pool math integrity", () => {
         payer: who,
       };
 
-      const out: bigint = await (router.connect(deployer) as any).supplicate.staticCall(args);
+      const fees = await feeSplit(router as LPPRouter, args.amountIn);
+
+      const quoted: bigint = await (router.connect(deployer) as any).supplicate.staticCall(args);
       await (router.connect(deployer) as any).supplicate(args);
 
-      const bA1 = BigInt((await asset.balanceOf(who)).toString());
-      const bU1 = BigInt((await usdc.balanceOf(who)).toString());
+      const bA1 = await bal(asset, who);
+      const bU1 = await bal(usdc, who);
       const r1 = await reserves(pool);
+      const tA1 = await bal(asset, treasuryAddr);
+      const roA1 = await bal(asset, routerAddr);
 
-      // user spent ASSET and received USDC
-      expect(bA0 - bA1).to.equal(args.amountIn);
-      expect(bU1 - bU0).to.equal(out);
+      // user spent ASSET: amountIn + totalFee
+      expect(bA0 - bA1).to.equal(args.amountIn + fees.total);
+      // user received USDC: quoted
+      expect(bU1 - bU0).to.equal(quoted);
 
-      // pool gained ASSET and lost USDC
-      expect(r1.a - r0.a).to.equal(args.amountIn);
-      expect(r0.u - r1.u).to.equal(out);
+      // pool gained ASSET = amountIn + poolsFee; lost USDC = quoted
+      expect(r1.a - r0.a).to.equal(args.amountIn + fees.pools);
+      expect(r0.u - r1.u).to.equal(quoted);
 
-      // pool deltas == user deltas per leg
-      expect(r0.a + bA0).to.equal(r1.a + bA1);
-      expect(r0.u + bU0).to.equal(r1.u + bU1);
+      // treasury received the treasuryFee in ASSET
+      expect(tA1 - tA0).to.equal(fees.treasury);
+
+      // router shouldn't retain ASSET after fee split (donated+forwarded)
+      expect(roA1).to.equal(roA0);
+
+      // conservation (ASSET side): user + pool + treasury + router
+      const sumA0 = bA0 + r0.a + tA0 + roA0;
+      const sumA1 = bA1 + r1.a + tA1 + roA1;
+      expect(sumA1).to.equal(sumA0);
+
+      // conservation (USDC side): user + pool (router/treasury unaffected on USDC here)
+      const sumU0 = bU0 + r0.u;
+      const sumU1 = bU1 + r1.u;
+      expect(sumU1).to.equal(sumU0);
     });
 
-    it("USDC->ASSET: pool deltas == user deltas (token-wise)", async () => {
+    it("USDC->ASSET: includes per-hop fee split; conservation with treasury+router", async () => {
       const env: any = await deployCore();
       const { deployer, pool, router, treasury, access } = env;
       const { asset, usdc } = await getTokens(env);
@@ -229,7 +267,7 @@ describe("Pool math integrity", () => {
         ethers.parseEther("10"),
       );
 
-      // fund + approve USDC to POOL
+      // fund + approve USDC to POOL + Router
       await fundAndApproveForSupplicate({
         token: usdc,
         minter: deployer,
@@ -240,9 +278,14 @@ describe("Pool math integrity", () => {
       });
 
       const who = deployer.address;
-      const bA0 = BigInt((await asset.balanceOf(who)).toString());
-      const bU0 = BigInt((await usdc.balanceOf(who)).toString());
+      const routerAddr = await router.getAddress();
+      const treasuryAddr = await treasury.getAddress();
+
+      const bA0 = await bal(asset, who);
+      const bU0 = await bal(usdc, who);
       const r0 = await reserves(pool);
+      const tU0 = await bal(usdc, treasuryAddr);
+      const roU0 = await bal(usdc, routerAddr);
 
       const args = {
         pool: await pool.getAddress(),
@@ -253,51 +296,64 @@ describe("Pool math integrity", () => {
         payer: who,
       };
 
-      const out: bigint = await (router.connect(deployer) as any).supplicate.staticCall(args);
+      const fees = await feeSplit(router as LPPRouter, args.amountIn);
+
+      const quoted: bigint = await (router.connect(deployer) as any).supplicate.staticCall(args);
       await (router.connect(deployer) as any).supplicate(args);
 
-      const bA1 = BigInt((await asset.balanceOf(who)).toString());
-      const bU1 = BigInt((await usdc.balanceOf(who)).toString());
+      const bA1 = await bal(asset, who);
+      const bU1 = await bal(usdc, who);
       const r1 = await reserves(pool);
+      const tU1 = await bal(usdc, treasuryAddr);
+      const roU1 = await bal(usdc, routerAddr);
 
-      // user spent USDC and received ASSET
-      expect(bU0 - bU1).to.equal(args.amountIn);
-      expect(bA1 - bA0).to.equal(out);
+      // user spent USDC: amountIn + totalFee
+      expect(bU0 - bU1).to.equal(args.amountIn + fees.total);
+      // user received ASSET: quoted
+      expect(bA1 - bA0).to.equal(quoted);
 
-      // pool gained USDC and lost ASSET
-      expect(r1.u - r0.u).to.equal(args.amountIn);
-      expect(r0.a - r1.a).to.equal(out);
+      // pool gained USDC = amountIn + poolsFee; lost ASSET = quoted
+      expect(r1.u - r0.u).to.equal(args.amountIn + fees.pools);
+      expect(r0.a - r1.a).to.equal(quoted);
 
-      // pool deltas == user deltas per leg
-      expect(r0.a + bA0).to.equal(r1.a + bA1);
-      expect(r0.u + bU0).to.equal(r1.u + bU1);
+      // treasury received the treasuryFee in USDC
+      expect(tU1 - tU0).to.equal(fees.treasury);
+
+      // router shouldn't retain USDC after fee split
+      expect(roU1).to.equal(roU0);
+
+      // conservation (USDC side): user + pool + treasury + router
+      const sumU0c = bU0 + r0.u + tU0 + roU0;
+      const sumU1c = bU1 + r1.u + tU1 + roU1;
+      expect(sumU1c).to.equal(sumU0c);
+
+      // conservation (ASSET side): user + pool
+      const sumAc0 = bA0 + r0.a;
+      const sumAc1 = bA1 + r1.a;
+      expect(sumAc1).to.equal(sumAc0);
     });
   });
 
   describe("Validation & slippage", () => {
     it("reverts on empty reserves (supplicate before bootstrap)", async () => {
+      // Use the already-deployed TestERC20 pool from deployCore, which is NOT bootstrapped yet.
       const env: any = await deployCore();
-      const { deployer, treasury, factory, router, access } = env;
-
-      const rand = () => ethers.Wallet.createRandom().address;
-      const a = rand();
-      const u = rand();
-
-      await (await (treasury as LPPTreasury).allowTokenViaTreasury(await factory.getAddress(), a, true)).wait();
-      await (await (treasury as LPPTreasury).allowTokenViaTreasury(await factory.getAddress(), u, true)).wait();
-      await (await (treasury as LPPTreasury).createPoolViaTreasury(await factory.getAddress(), a, u)).wait();
-
-      const pools = await factory.getPools();
-      const poolAddr = pools[pools.length - 1];
-      const pool = (await ethers.getContractAt("LPPPool", poolAddr)) as LPPPool;
+      const { deployer, router, pool, access } = env;
+      const { asset } = await getTokens(env);
 
       await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
+
+      // To reach the pool's "empty reserves" require, let router successfully take fee first.
+      // -> mint payer some ASSET and approve the ROUTER (NOT the POOL).
+      const feeProbeIn = ethers.parseEther("1"); // amountIn used below
+      await (await asset.mint(deployer.address, feeProbeIn)).wait();
+      await (await asset.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
 
       await expect(
         (router.connect(deployer) as any).supplicate({
           pool: await pool.getAddress(),
           assetToUsdc: true,
-          amountIn: ethers.parseEther("1"),
+          amountIn: feeProbeIn,
           minAmountOut: 0n,
           to: deployer.address,
           payer: deployer.address,
@@ -323,7 +379,7 @@ describe("Pool math integrity", () => {
         ethers.parseEther("5"),
       );
 
-      // fund + approve ASSET to POOL
+      // fund + approve ASSET to POOL + Router
       await fundAndApproveForSupplicate({
         token: asset,
         minter: deployer,
@@ -367,7 +423,7 @@ describe("Pool math integrity", () => {
           to: deployer.address,
           payer: deployer.address,
         })
-      ).to.be.reverted; // generic: "zero" from LPPPool
+      ).to.be.reverted; // "zero" from LPPPool (modifier)
     });
   });
 
@@ -472,7 +528,7 @@ describe("Pool math integrity", () => {
         ethers.parseEther("40"),
       );
 
-      // forward: need ASSET minted + approved to POOL
+      // forward: need ASSET minted + approved to POOL + Router
       await fundAndApproveForSupplicate({
         token: asset,
         minter: deployer,
@@ -483,7 +539,7 @@ describe("Pool math integrity", () => {
       });
 
       const who = deployer.address;
-      const a0 = BigInt((await asset.balanceOf(who)).toString());
+      const a0 = await bal(asset, who);
 
       const fwdArgs = {
         pool: await pool.getAddress(),
@@ -511,10 +567,10 @@ describe("Pool math integrity", () => {
       const revOut: bigint = await (router.connect(deployer) as any).supplicate.staticCall(revArgs);
       await (router.connect(deployer) as any).supplicate(revArgs);
 
-      const a1 = BigInt((await asset.balanceOf(who)).toString());
+      const a1 = await bal(asset, who);
 
-      // forward spent 0.2 ASSET, reverse recovered some;
-      // net loss should be small (rounding), not catastrophic
+      // forward spent 0.2 ASSET + fee, reverse recovered some;
+      // we keep the same “small loss” envelope as before
       const spent = ethers.parseEther("0.2");
       const netLoss = (a0 - a1) - (spent - revOut);
 

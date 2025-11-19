@@ -1,36 +1,70 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import { ILPPRouter } from "./interfaces/ILPPRouter.sol";
-import { ILPPAccessManager } from "./interfaces/ILPPAccessManager.sol";
-import { ILPPPool } from "./interfaces/ILPPPool.sol";
-import { IERC20 } from "./external/IERC20.sol";
+import { ILPPRouter }          from "./interfaces/ILPPRouter.sol";
+import { ILPPAccessManager }   from "./interfaces/ILPPAccessManager.sol";
+import { ILPPPool }            from "./interfaces/ILPPPool.sol";
+import { IERC20 }              from "./external/IERC20.sol";
 
 contract LPPRouter is ILPPRouter {
     ILPPAccessManager public immutable access;
     address public immutable treasury;
 
-    /* -------- Fees (kept for single-pool route) -------- */
+    /* -------- Fees (public constants = auto getters) -------- */
     uint16 public constant override BPS_DENOMINATOR = 10_000;
     uint16 public constant override MCV_FEE_BPS      = 12; // 0.12% per hop
-    uint16 public constant TREASURY_CUT_BPS          = 2;  // 0.02% of hop input
+    uint16 public constant override TREASURY_CUT_BPS = 2;  // 0.02% of hop input
     uint16 public constant POOLS_CUT_BPS             = 10; // 0.10% of hop input
 
-    /* -------- Orbit storage (kept) -------- */
+    /* -------- Orbit storage -------- */
     struct OrbitConfig { address[3] pools; bool initialized; }
     mapping(address => OrbitConfig) private _orbitOf;
 
     struct DualOrbit {
-        address[3] neg;
-        address[3] pos;
-        bool useNegNext;    // flips on every call to supplicate() or explicit admin hook if desired
+        address[3] neg;     // NEG set  => ASSET-in  (asset->usdc)
+        address[3] pos;     // POS set  => USDC-in   (usdc->asset)
+        bool useNegNext;    // flips on each swap() call
         bool initialized;
     }
     mapping(address => DualOrbit) private _dualOrbit;
 
-    /* -------- Errors (kept) -------- */
+    /* -------- Errors -------- */
     error OrbitNotSet(address startPool);
 
+    /* -------- Events (MEV traces, admin) -------- */
+    event OrbitUpdated(address indexed startPool, address[3] pools);
+    event DualOrbitUpdated(address indexed startPool, address[3] neg, address[3] pos, bool startWithNeg);
+    event OrbitFlipped(address indexed startPool, bool nowUsingNeg);
+
+    event FeeTaken(
+        address indexed pool,
+        address indexed tokenIn,
+        uint256 amountInBase,
+        uint256 totalFee,
+        uint256 treasuryCut,
+        uint256 poolsCut
+    );
+
+    event HopExecuted(
+        address indexed pool,
+        bool    assetToUsdc,
+        address indexed tokenIn,
+        address indexed tokenOut,
+        uint256 amountIn,
+        uint256 amountOut
+    );
+
+    event SupplicateExecuted(
+        address indexed caller,
+        address indexed pool,
+        address indexed tokenIn,
+        uint256 amountIn,
+        address tokenOut,
+        uint256 amountOut,
+        uint256 fee
+    );
+
+    /* -------- Auth -------- */
     modifier onlyTreasury() { require(msg.sender == treasury, "not treasury"); _; }
 
     constructor(address accessManager, address treasury_) {
@@ -41,15 +75,18 @@ contract LPPRouter is ILPPRouter {
     }
 
     /* ───────────────────────────────────────────
-       Orbit config (legacy + dual) — unchanged
+       Orbit config (legacy single + dual)
        ─────────────────────────────────────────── */
+
     function setOrbit(address startPool, address[3] calldata pools_) external onlyTreasury {
         require(startPool != address(0), "orbit: zero start");
         require(pools_[0] != address(0) && pools_[1] != address(0) && pools_[2] != address(0), "orbit: zero pool");
+
         address a0 = ILPPPool(pools_[0]).asset();
         address u0 = ILPPPool(pools_[0]).usdc();
         require(ILPPPool(pools_[1]).asset() == a0 && ILPPPool(pools_[1]).usdc() == u0, "orbit: mismatched pair");
         require(ILPPPool(pools_[2]).asset() == a0 && ILPPPool(pools_[2]).usdc() == u0, "orbit: mismatched pair");
+
         _orbitOf[startPool] = OrbitConfig({ pools: pools_, initialized: true });
         emit OrbitUpdated(startPool, pools_);
     }
@@ -108,6 +145,10 @@ contract LPPRouter is ILPPRouter {
         return (d.neg, d.pos, d.useNegNext);
     }
 
+    /* ───────────────────────────────────────────
+       Single-pool (permissioned) — NO orbit flip
+       ─────────────────────────────────────────── */
+
     function supplicate(SupplicateParams calldata p)
         external
         override
@@ -120,9 +161,6 @@ contract LPPRouter is ILPPRouter {
         address tokenIn  = p.assetToUsdc ? ILPPPool(p.pool).asset() : ILPPPool(p.pool).usdc();
         address tokenOut = p.assetToUsdc ? ILPPPool(p.pool).usdc()  : ILPPPool(p.pool).asset();
 
-        // Router fee-on-input + donate to pool input reserve (unchanged)
-        _takeInputFeeAndDonate(p.pool, tokenIn, payer, p.amountIn);
-
         amountOut = ILPPPool(p.pool).supplicate(
             payer,
             address(this),
@@ -130,11 +168,65 @@ contract LPPRouter is ILPPRouter {
             p.amountIn,
             p.minAmountOut
         );
+
         IERC20(tokenOut).transfer(to, amountOut);
 
         emit HopExecuted(p.pool, p.assetToUsdc, tokenIn, tokenOut, p.amountIn, amountOut);
         emit SupplicateExecuted(msg.sender, p.pool, tokenIn, p.amountIn, tokenOut, amountOut, 0);
     }
+
+    /* ───────────────────────────────────────────
+       3-hop MCV / MEV — DOES orbit flip
+       ─────────────────────────────────────────── */
+
+    function swap(SwapParams calldata p)
+        external
+        override
+        returns (uint256 totalOut)
+    {
+        require(p.amountIn > 0, "zero input");
+
+        (address[3] memory orbit, bool assetToUsdc, address tokenIn, address tokenOut) =
+            _resolveOrbitAndTokens(p.startPool, p.assetToUsdc);
+
+        address payer = p.payer == address(0) ? msg.sender : p.payer;
+        address to    = p.to    == address(0) ? msg.sender : p.to;
+
+        unchecked {
+            for (uint256 i = 0; i < 3; i++) {
+                address pool = orbit[i];
+
+                _takeInputFeeAndDonate(pool, tokenIn, payer, p.amountIn);
+
+                uint256 out = ILPPPool(pool).supplicate(
+                    payer,
+                    address(this),
+                    assetToUsdc,
+                    p.amountIn,
+                    0 // per-hop minOut ignored; aggregate guard below
+                );
+
+                totalOut += out;
+                emit HopExecuted(pool, assetToUsdc, tokenIn, tokenOut, p.amountIn, out);
+            }
+        }
+
+        if (p.minTotalAmountOut > 0) {
+            require(totalOut >= p.minTotalAmountOut, "slippage");
+        }
+
+        IERC20(tokenOut).transfer(to, totalOut);
+
+        DualOrbit storage d = _dualOrbit[p.startPool];
+        if (d.initialized) {
+            d.useNegNext = !d.useNegNext;
+            emit OrbitFlipped(p.startPool, d.useNegNext);
+        }
+    }
+
+    /* ───────────────────────────────────────────
+       Quoting
+       ─────────────────────────────────────────── */
 
     function getAmountsOut(
         uint256 amountIn,
@@ -143,17 +235,19 @@ contract LPPRouter is ILPPRouter {
     ) external view override returns (uint256[3] memory perHop, uint256 total) {
         require(amountIn > 0, "amountIn=0");
         uint256 x = amountIn;
+
         unchecked {
             for (uint256 i = 0; i < 3; i++) {
                 address pool = orbit[i];
                 require(pool != address(0), "zero pool");
+
                 uint256 rA = ILPPPool(pool).reserveAsset();
                 uint256 rU = ILPPPool(pool).reserveUsdc();
                 require(rA > 0 && rU > 0, "empty reserves");
 
                 uint256 out = assetToUsdc
-                    ? (x * rU) / (rA + x)  // ASSET-in ⇒ USDC-out
-                    : (x * rA) / (rU + x); // USDC-in  ⇒ ASSET-out
+                    ? (x * rU) / (rA + x)  // ASSET-in  ⇒ USDC-out
+                    : (x * rA) / (rU + x); // USDC-in   ⇒ ASSET-out
 
                 perHop[i] = out;
                 total += out;
@@ -161,9 +255,51 @@ contract LPPRouter is ILPPRouter {
         }
     }
 
+    function getAmountsOutFromStart(
+        address startPool,
+        uint256 amountIn
+    )
+        external
+        view
+        override
+        returns (
+            bool assetToUsdc,
+            address[3] memory orbit,
+            uint256[3] memory perHop,
+            uint256 total
+        )
+    {
+        (orbit, assetToUsdc, , ) = _resolveOrbitAndTokens(startPool, /*legacy*/ false);
+        (perHop, total) = this.getAmountsOut(amountIn, orbit, assetToUsdc);
+    }
+
     /* ───────────────────────────────────────────
-       Internal fee split (unchanged)
+       Internals
        ─────────────────────────────────────────── */
+
+    function _resolveOrbitAndTokens(address startPool, bool legacyAssetToUsdc)
+        internal
+        view
+        returns (address[3] memory orbit, bool assetToUsdc, address tokenIn, address tokenOut)
+    {
+        DualOrbit memory d = _dualOrbit[startPool];
+        if (d.initialized) {
+            orbit = d.useNegNext ? d.neg : d.pos;
+            assetToUsdc = d.useNegNext ? true : false;
+        } else {
+            OrbitConfig memory cfg = _orbitOf[startPool];
+            if (!cfg.initialized) revert OrbitNotSet(startPool);
+            orbit = cfg.pools;
+            assetToUsdc = legacyAssetToUsdc;
+        }
+
+        address a = ILPPPool(orbit[0]).asset();
+        address u = ILPPPool(orbit[0]).usdc();
+        tokenIn  = assetToUsdc ? a : u;
+        tokenOut = assetToUsdc ? u : a;
+    }
+
+    /// Pull fee on INPUT from `payer`, split to treasury + donate to pool input reserve.
     function _takeInputFeeAndDonate(
         address pool,
         address tokenIn,
@@ -172,13 +308,14 @@ contract LPPRouter is ILPPRouter {
     ) internal {
         if (MCV_FEE_BPS == 0) return;
 
-        uint256 totalFee   = (amountInBase * MCV_FEE_BPS) / BPS_DENOMINATOR;
+        uint256 totalFee = (amountInBase * MCV_FEE_BPS) / BPS_DENOMINATOR;
         if (totalFee == 0) return;
 
         uint256 treasuryFt = (amountInBase * TREASURY_CUT_BPS) / BPS_DENOMINATOR;
         uint256 poolsFt    = totalFee - treasuryFt;
 
         IERC20(tokenIn).transferFrom(payer, address(this), totalFee);
+
         if (treasuryFt > 0) IERC20(tokenIn).transfer(treasury, treasuryFt);
 
         if (poolsFt > 0) {

@@ -28,6 +28,9 @@ contract LPPPool is ILPPPool {
 
     bool public initialized;
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // V2/V3 compatibility (events + read shape)
+    // ─────────────────────────────────────────────────────────────────────────────
     event Sync(uint112 reserve0, uint112 reserve1);
     event Swap(
         address indexed sender,
@@ -67,11 +70,15 @@ contract LPPPool is ILPPPool {
         _blockTimestampLast = uint32(block.timestamp); // initialize
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
     // Views
+    // ─────────────────────────────────────────────────────────────────────────────
     function priceX96() external view override returns (uint256) { return _priceX96; }
     function liquidityOf(address who) external view override returns (uint256) { return _liq[who]; }
 
+    // ─────────────────────────────────────────────────────────────────────────────
     // Governance wiring
+    // ─────────────────────────────────────────────────────────────────────────────
     function setHook(address hook_) external override onlyTreasuryOrFactory {
         require(hook == address(0), "hook set");
         require(hook_ != address(0), "zero hook");
@@ -156,7 +163,9 @@ contract LPPPool is ILPPPool {
         _touchAndSync();
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
     // Quotes & Supplication (placeholder CFMM math)
+    // ─────────────────────────────────────────────────────────────────────────────
     function quoteSupplication(bool assetToUsdc, uint256 amountIn)
         external
         view
@@ -173,7 +182,13 @@ contract LPPPool is ILPPPool {
         }
     }
 
-    function supplicate(address payer, address to, bool assetToUsdc, uint256 amountIn, uint256 minAmountOut)
+    function supplicate(
+        address payer,
+        address to,
+        bool assetToUsdc,
+        uint256 amountIn,
+        uint256 minAmountOut
+    )
         external
         override
         nonZero(amountIn)
@@ -225,7 +240,9 @@ contract LPPPool is ILPPPool {
         _touchAndSync();
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
     // Donations (increase reserves without minting LP shares)
+    // ─────────────────────────────────────────────────────────────────────────────
     function donateToReserves(bool isUsdc, uint256 amount)
         external
         override
@@ -255,6 +272,9 @@ contract LPPPool is ILPPPool {
         _touchAndSync();
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // V2/V3 Read Helpers
+    // ─────────────────────────────────────────────────────────────────────────────
     function getReserves()
         public
         view

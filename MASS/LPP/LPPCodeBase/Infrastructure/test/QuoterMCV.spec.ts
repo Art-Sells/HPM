@@ -1,4 +1,4 @@
-// test/QuoterMCVAccuracy.spec.ts
+// test/QuoterMCV.spec.ts
 import hre from "hardhat";
 const { ethers } = hre;
 
@@ -13,14 +13,14 @@ import type {
   LPPFactory,
   LPPTreasury,
   LPPAccessManager,
-  LPPQuoterMCV,
-} from "../typechain-types";
+} from "../typechain-types/index.ts";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Direction Policy (derived from active set):
  *   NEG set  => ASSET-in (ASSET -> USDC)
  *   POS set  => USDC-in  (USDC  -> ASSET)
  * No independent direction cursor is used.
+ * Searcher quote = router.swap.staticCall (eth_call).
  * ──────────────────────────────────────────────────────────────────────────── */
 
 const IERC20_FQN = "contracts/external/IERC20.sol:IERC20";
@@ -102,12 +102,31 @@ async function approveForMCV(params: {
 
 function toBig(x: any) { return BigInt(String(x)); }
 
+/** MEV-style quote: a dry-run eth_call to the router.swap */
+async function searcherQuoteStatic(
+  router: LPPRouter,
+  startPool: string,
+  assetToUsdcDerived: boolean,
+  amountIn: bigint,
+  payer: string,
+  to: string
+): Promise<bigint> {
+  return await (router as any).swap.staticCall({
+    startPool,
+    assetToUsdc: assetToUsdcDerived, // ignored by router when dual-orbit is set; kept for ABI shape
+    amountIn,
+    payer,
+    to,
+    minTotalAmountOut: 0n,
+  });
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
  * Spec
  * ──────────────────────────────────────────────────────────────────────────── */
 
-describe("MCVQuoterAccuracy", () => {
-  it("NEG set first (ASSET-in derived) — quoter == router.static == exec; snapshots", async () => {
+describe("MCV — searcher-style quoting (no Quoter; eth_call only)", () => {
+  it("NEG set first (ASSET-in derived) — static == exec; snapshots", async () => {
     const env = await deployCore();
     const { deployer, router, factory, treasury, asset, usdc, access } = env as {
       deployer: any;
@@ -119,7 +138,7 @@ describe("MCVQuoterAccuracy", () => {
       access: LPPAccessManager;
     };
 
-    // allow deployer to mcvSupplicate
+    // allow deployer for single-pool supplicate (not needed for swap but harmless)
     await (await access.setApprovedSupplicator(deployer.address, true)).wait();
 
     // 6 pools; bootstrap [-500,-500,-500,+500,+500,+500]
@@ -175,34 +194,24 @@ describe("MCVQuoterAccuracy", () => {
     const b0A = await bal(tokens.asset, deployer.address);
     const b0U = await bal(tokens.usdc,  deployer.address);
 
-    // Quoter deploy & quote
-    const QF = await ethers.getContractFactory("LPPQuoterMCV");
-    const quoter = (await QF.deploy()) as unknown as LPPQuoterMCV;
-    await quoter.waitForDeployment();
-
-    const qr = await (quoter as any).quoteMCV(
-      await router.getAddress(),
+    // === Searcher quote (eth_call) ===
+    const staticOut = await searcherQuoteStatic(
+      router,
       startPool,
+      /*assetToUsdcDerived*/ true,
       amountIn,
-      /*assetToUsdcLegacy*/ true // ignored since dual-orbit is configured
+      deployer.address,
+      deployer.address
     );
 
-    // Router static (returns sum of hop outs)
-    const staticOut: bigint = await (router.connect(deployer) as any).mcvSupplication.staticCall({
-      startPool,
-      assetToUsdc: true,  // ignored (dual); derived as ASSET-in from NEG
-      amountIn,
-      payer: deployer.address,
-      to: deployer.address,
-    });
-
     // Execute
-    const tx = await (router.connect(deployer) as any).mcvSupplication({
+    const tx = await (router.connect(deployer) as any).swap({
       startPool,
       assetToUsdc: true,  // ignored (dual)
       amountIn,
       payer: deployer.address,
       to: deployer.address,
+      minTotalAmountOut: 0n,
     });
     const rcpt = await tx.wait();
 
@@ -226,10 +235,15 @@ describe("MCVQuoterAccuracy", () => {
     const hopTrace = (rcpt?.logs ?? [])
       .filter((l: any) => l.topics && l.topics[0] === HopExecutedSig)
       .map((l: any) => {
-        const pool = ethers.getAddress("0x" + l.topics[1].slice(26));
-        const [assetToUsdc, tokenIn, tokenOut, amtIn, amtOut] =
+        // indexed topics: [0]=sig, [1]=pool, [2]=tokenIn, [3]=tokenOut
+        const pool     = ethers.getAddress("0x" + l.topics[1].slice(26));
+        const tokenIn  = ethers.getAddress("0x" + l.topics[2].slice(26));
+        const tokenOut = ethers.getAddress("0x" + l.topics[3].slice(26));
+
+        // data = non-indexed: [bool assetToUsdc, uint256 amountIn, uint256 amountOut]
+        const [assetToUsdc, amtIn, amtOut] =
           ethers.AbiCoder.defaultAbiCoder().decode(
-            ["bool","address","address","uint256","uint256"],
+            ["bool","uint256","uint256"],
             l.data
           );
         return {
@@ -242,27 +256,21 @@ describe("MCVQuoterAccuracy", () => {
         };
       });
 
-    // Assertions: quoter == static == exec (sum of hop outs)
-    const quoterTotal = toBig(qr.totalAmountOut);
-    expect(userUsdcOut, "exec vs quoter").to.equal(quoterTotal);
-    expect(staticOut,   "static vs quoter").to.equal(quoterTotal);
+    // Assertions: static == exec (sum of hop outs)
+    expect(userUsdcOut, "exec vs static (searcher quote)").to.equal(staticOut);
 
     // Snapshot object
     expect({
-      role: "MCVQuoter",
-      usingNeg: Boolean(qr.usingNeg),                 // true
-      assetToUsdc: Boolean(qr.assetToUsdc),           // true (ASSET->USDC)
+      role: "MCV — searcher-quote",
+      usingNeg: usingNeg0,                          // true
+      assetToUsdc: true,                            // ASSET->USDC
       amountIn: amountIn.toString(),
       fees: {
         perHopTotal: perHopFee.toString(),
         perHopTreasury: ((amountIn * TRE_CUT) / BPS).toString(),
         perHopPools: (perHopFee - (amountIn * TRE_CUT) / BPS).toString(),
       },
-      orbit: (qr.orbit as string[]),
-      quoter: {
-        perHop: (qr.amountOutPerHop as bigint[]).map((x: any) => x.toString()),
-        total: quoterTotal.toString(),
-      },
+      orbit: orbit0,
       routerStatic: staticOut.toString(),
       execution: {
         userUsdcOut: userUsdcOut.toString(),
@@ -273,11 +281,11 @@ describe("MCVQuoterAccuracy", () => {
         before: poolsBefore,
         after:  poolsAfter,
       },
-      note: "NEG set, ASSET-in (direction derived from set). Donation applied to input reserve per hop before quote.",
-    }).to.matchSnapshot("MCVQuoter — NEG first (ASSET-in) — quote==static==exec");
+      note: "NEG set, ASSET-in. Quote is eth_call to router.swap (no Quoter).",
+    }).to.matchSnapshot("MCV — NEG first (ASSET-in) — static==exec (+hop proof)");
   });
 
-  it("POS set first (USDC-in derived) — quoter == router.static == exec; snapshots", async () => {
+  it("POS set first (USDC-in derived) — static == exec; snapshots", async () => {
     const env = await deployCore();
     const { deployer, router, factory, treasury, asset, usdc, access } = env as {
       deployer: any;
@@ -342,34 +350,24 @@ describe("MCVQuoterAccuracy", () => {
     const b0A = BigInt((await tokens.asset.balanceOf(deployer.address)).toString());
     const b0U = BigInt((await tokens.usdc.balanceOf(deployer.address)).toString());
 
-    // Quoter deploy & quote (should show usingNeg=false, assetToUsdc=false)
-    const QF = await ethers.getContractFactory("LPPQuoterMCV");
-    const quoter = (await QF.deploy()) as unknown as LPPQuoterMCV;
-    await quoter.waitForDeployment();
-
-    const qr = await (quoter as any).quoteMCV(
-      await router.getAddress(),
+    // === Searcher quote (eth_call) ===
+    const staticOut = await searcherQuoteStatic(
+      router,
       startPool,
+      /*assetToUsdcDerived*/ false,
       amountIn,
-      /*assetToUsdcLegacy*/ false // ignored in dual-orbit
+      deployer.address,
+      deployer.address
     );
 
-    // Static call
-    const staticOut: bigint = await (router.connect(deployer) as any).mcvSupplication.staticCall({
-      startPool,
-      assetToUsdc: false,  // ignored (dual)
-      amountIn,
-      payer: deployer.address,
-      to: deployer.address,
-    });
-
     // Execute
-    const tx = await (router.connect(deployer) as any).mcvSupplication({
+    const tx = await (router.connect(deployer) as any).swap({
       startPool,
       assetToUsdc: false,  // ignored (dual)
       amountIn,
       payer: deployer.address,
       to: deployer.address,
+      minTotalAmountOut: 0n,
     });
     const rcpt = await tx.wait();
 
@@ -391,10 +389,13 @@ describe("MCVQuoterAccuracy", () => {
     const hopTrace = (rcpt?.logs ?? [])
       .filter((l: any) => l.topics?.[0] === HopExecutedSig)
       .map((l: any) => {
-        const pool = ethers.getAddress("0x" + l.topics[1].slice(26));
-        const [assetToUsdc, tokenIn, tokenOut, amtIn, amtOut] =
+        const pool     = ethers.getAddress("0x" + l.topics[1].slice(26));
+        const tokenIn  = ethers.getAddress("0x" + l.topics[2].slice(26));
+        const tokenOut = ethers.getAddress("0x" + l.topics[3].slice(26));
+
+        const [assetToUsdc, amtIn, amtOut] =
           ethers.AbiCoder.defaultAbiCoder().decode(
-            ["bool","address","address","uint256","uint256"],
+            ["bool","uint256","uint256"],
             l.data
           );
         return {
@@ -408,9 +409,7 @@ describe("MCVQuoterAccuracy", () => {
       });
 
     // Equality checks
-    const quoterTotal = BigInt(String((qr as any).totalAmountOut));
-    expect(userAssetOut, "exec vs quoter").to.equal(quoterTotal);
-    expect(staticOut,     "static vs quoter").to.equal(quoterTotal);
+    expect(userAssetOut, "exec vs static (searcher quote)").to.equal(staticOut);
 
     // After first call, router flips to NEG (next call will be ASSET-in)
     const flipped = await (router as any).getActiveOrbit(startPool);
@@ -418,21 +417,17 @@ describe("MCVQuoterAccuracy", () => {
 
     // Snapshot
     expect({
-      role: "MCVQuoter",
+      role: "MCV — searcher-quote",
       startWith: "POS",
-      usingNeg: Boolean((qr as any).usingNeg),          // false
-      assetToUsdc: Boolean((qr as any).assetToUsdc),    // false (USDC-in)
+      usingNeg: usingNeg0,                     // false
+      assetToUsdc: false,                      // USDC->ASSET
       amountIn: amountIn.toString(),
       fees: {
         perHopTotal: perHopFee.toString(),
         perHopTreasury: ((amountIn * TRE_CUT) / BPS).toString(),
         perHopPools: (perHopFee - (amountIn * TRE_CUT) / BPS).toString(),
       },
-      orbit: (qr as any).orbit as string[],
-      quoter: {
-        perHop: ((qr as any).amountOutPerHop as bigint[]).map((x: any) => BigInt(String(x)).toString()),
-        total: quoterTotal.toString(),
-      },
+      orbit: orbit0,
       routerStatic: staticOut.toString(),
       execution: {
         userAssetOut: userAssetOut.toString(),
@@ -443,11 +438,11 @@ describe("MCVQuoterAccuracy", () => {
         after:  poolsAfter,
       },
       flippedToNegAfter: Boolean((await (router as any).getActiveOrbit(startPool))[1]),
-      note: "POS-first under dual-orbit; direction derived from set (USDC-in). Quoter == router.static == exec; three independent hops proven by events.",
-    }).to.matchSnapshot("MCVQuoter — POS first (USDC-in) — quote==static==exec");
+      note: "POS-first under dual-orbit; quote is eth_call to router (no Quoter).",
+    }).to.matchSnapshot("MCV — POS first (USDC-in) — static==exec (+hop proof)");
   });
 
-  it("dual-orbit flips: after first call (NEG/ASSET-in) → POS/USDC-in; quotes & deltas snapshot", async () => {
+  it("dual-orbit flips: after first call (NEG/ASSET-in) → POS/USDC-in; static & deltas snapshot", async () => {
     const env = await deployCore();
     const { deployer, router, factory, treasury, asset, usdc, access } = env as {
       deployer: any;
@@ -493,16 +488,27 @@ describe("MCVQuoterAccuracy", () => {
       await (await env.asset.connect(deployer).mint(deployer.address, amountIn * 3n + perHopFee * 3n)).wait();
       await approveForMCV({ token: tokens.asset, payer: deployer, router, orbit: orbit0, amountIn });
 
-      await (router.connect(deployer) as any).mcvSupplication({
+      // searcher quote (NEG/ASSET-in)
+      const staticA = await searcherQuoteStatic(
+        router, startPool, true, amountIn, deployer.address, deployer.address
+      );
+
+      // exec
+      await (router.connect(deployer) as any).swap({
         startPool,
         assetToUsdc: true,   // ignored (dual)
         amountIn,
         payer: deployer.address,
         to: deployer.address,
+        minTotalAmountOut: 0n,
       });
 
+      // flip happened?
       const flipped = await (router as any).getActiveOrbit(startPool);
       expect(Boolean(flipped[1])).to.equal(false); // now POS
+
+      // keep the staticA around only for context in snapshot below
+      expect(staticA >= 0n).to.equal(true);
     }
 
     // ----- RUN #2: POS / USDC-in (after flip) -----
@@ -521,54 +527,34 @@ describe("MCVQuoterAccuracy", () => {
       await (await env.usdc.connect(deployer).mint(deployer.address, amountIn * 3n + perHopFee * 3n)).wait();
       await approveForMCV({ token: tokens.usdc, payer: deployer, router, orbit: orbit1, amountIn });
 
-      // Quote via MCV quoter (should reflect POS / USDC-in)
-      const QF = await ethers.getContractFactory("LPPQuoterMCV");
-      const quoter = (await QF.deploy()) as unknown as LPPQuoterMCV;
-      await quoter.waitForDeployment();
-
-      const qr2 = await (quoter as any).quoteMCV(
-        await router.getAddress(),
-        startPool,
-        amountIn,
-        /*legacy*/ false // ignored (dual)
+      // Quote via MEV-style static
+      const staticOut2 = await searcherQuoteStatic(
+        router, startPool, false, amountIn, deployer.address, deployer.address
       );
 
-      const staticOut2: bigint = await (router.connect(deployer) as any).mcvSupplication.staticCall({
+      const tx2 = await (router.connect(deployer) as any).swap({
         startPool,
         assetToUsdc: false,  // ignored (dual)
         amountIn,
         payer: deployer.address,
         to: deployer.address,
-      });
-
-      const tx2 = await (router.connect(deployer) as any).mcvSupplication({
-        startPool,
-        assetToUsdc: false,  // ignored (dual)
-        amountIn,
-        payer: deployer.address,
-        to: deployer.address,
+        minTotalAmountOut: 0n,
       });
       const rcpt2 = await tx2.wait();
 
-      // Last known user balances (useful for snapshot context)
+      // Last known balances (context)
       const bA = await bal(tokens.asset, deployer.address);
       const bU = await bal(tokens.usdc,  deployer.address);
 
       expect({
-        role: "MCVQuoter",
+        role: "MCV — searcher-quote",
         flip: "NEG→POS",
         usingNegAfterFlip: Boolean((await (router as any).getActiveOrbit(startPool))[1]), // false (POS)
-        quote: {
-          usingNeg: Boolean(qr2.usingNeg),                 // false
-          assetToUsdc: Boolean(qr2.assetToUsdc),           // false (USDC-in)
-          total: toBig(qr2.totalAmountOut).toString(),
-          perHop: (qr2.amountOutPerHop as bigint[]).map((x: any) => x.toString()),
-        },
         routerStatic: staticOut2.toString(),
         lastKnownUserBalances: { asset: bA.toString(), usdc: bU.toString() },
         hops: (rcpt2?.logs ?? []).filter((l: any) => l.topics?.[0] === ethers.id("HopExecuted(address,bool,address,address,uint256,uint256)")).length,
-        note: "Run #2 after set flip — POS set, USDC-in. Quoter and static must agree; events prove 3 hops.",
-      }).to.matchSnapshot("MCVQuoter — POS after flip (USDC-in) — quote==static (+hop proof)");
+        note: "Run #2 after set flip — POS set, USDC-in. Quote is eth_call to router; events prove 3 hops.",
+      }).to.matchSnapshot("MCV — POS after flip (USDC-in) — static (+hop proof)");
     }
   });
 });

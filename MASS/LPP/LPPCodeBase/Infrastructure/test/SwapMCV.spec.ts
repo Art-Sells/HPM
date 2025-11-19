@@ -1,4 +1,4 @@
-// test/SupplicateMCV.spec.ts
+// test/SwapMCV.spec.ts
 import hre from "hardhat";
 const { ethers } = hre;
 
