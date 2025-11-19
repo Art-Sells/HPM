@@ -6,9 +6,6 @@ yarn hardhat test test/QuoterMCV.spec.ts
 yarn hardhat test test/Revocation.spec.ts
 yarn hardhat test test/SupplicateApproved.spec.ts
 yarn hardhat test test/SwapMCV.spec.ts
------
-yarn hardhat test test/MEV/test/QuoterMCV.spec.ts
-yarn hardhat test test/MEV/test/SwapMCV.spec.ts
 
 --Test below after MEV tests complete
 yarn hardhat test test/TreasuryWithdrawal.spec.ts

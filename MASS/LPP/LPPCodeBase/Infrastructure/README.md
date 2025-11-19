@@ -172,11 +172,6 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
 
 - [ ] **Clone searcher repos
   - Flashbots
-  - Skip
-  - FastLane
-  - APE arbitrage
-  - Jaredfromsubway.eth’s bots
-  - All generic mev-share bundles
 - [ ] **Add LPP to the search universe:**
   - Test Contract Logic against searcher logic (restructure (only smart contract logic) as needed)
 
