@@ -10,7 +10,6 @@ interface ILPPPool {
     event Supplicate(address indexed caller, bool assetToUsdc, uint256 amountIn, uint256 amountOut);
     event Donation(bool isUsdc, uint256 amount);
 
-    function targetOffsetBps() external view returns (int16);
     // Token getters
     function asset() external view returns (address);
     function usdc() external view returns (address);
@@ -24,6 +23,18 @@ interface ILPPPool {
     function reserveAsset() external view returns (uint256);
     function reserveUsdc() external view returns (uint256);
 
+    function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+
+    function slot0() external view returns (
+        uint160 sqrtPriceX96,
+        int24  tick,
+        uint16 observationIndex,
+        uint16 observationCardinality,
+        uint16 observationCardinalityNext,
+        uint8  feeProtocol,
+        bool   unlocked
+    );
+
     // Price (placeholder Q96)
     function priceX96() external view returns (uint256);
 
@@ -34,7 +45,7 @@ interface ILPPPool {
     // Wiring (one-time)
     function setHook(address hook_) external;
 
-    // NOTE: offsetBps version (matches your implementation)
+    // NOTE: offsetBps version (matches implementation)
     function bootstrapInitialize(uint256 amtA, uint256 amtU, int256 offsetBps) external;
 
     // Mint path (hook-only)
@@ -57,4 +68,7 @@ interface ILPPPool {
     /// isUsdc = true  => credit USDC side
     /// isUsdc = false => credit ASSET side
     function donateToReserves(bool isUsdc, uint256 amount) external;
+
+    // Target offset bps persisted at bootstrap
+    function targetOffsetBps() external view returns (int16);
 }

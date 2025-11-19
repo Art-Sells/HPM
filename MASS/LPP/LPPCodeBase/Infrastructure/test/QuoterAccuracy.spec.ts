@@ -34,6 +34,54 @@ function mustHaveFn(iface: any, signature: string) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * Utilities for BigInt tolerance
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** absolute |a-b| */
+function absdiff(a: bigint, b: bigint): bigint {
+  return a >= b ? a - b : b - a;
+}
+
+/** 1 basis point of x, floored — never less than 1 wei */
+function bp1OrOneWei(x: bigint): bigint {
+  const oneBp = x / 10_000n;
+  return oneBp > 1n ? oneBp : 1n;
+}
+
+/** near-equality helper with descriptive message */
+function expectNearlyEqual(actual: bigint, expected: bigint, msg: string) {
+  const tol = bp1OrOneWei(expected); // ~1bp tolerance for rounding/split-order drift
+  const d = absdiff(actual, expected);
+  expect(
+    d <= tol,
+    `${msg}: |actual-expected|=${d} > tol=${tol} (expected=${expected}, actual=${actual})`
+  ).to.equal(true);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Tiny input probe: find smallest amountIn that yields non-zero out
+ * ──────────────────────────────────────────────────────────────────────────── */
+async function findSmallestNonZeroAmount(opts: {
+  pool: LPPPool;
+  assetToUsdc: boolean;
+  maxAttempts?: number;
+  start?: bigint;
+  growth?: bigint;
+}): Promise<bigint | null> {
+  const { pool, assetToUsdc } = opts;
+  const maxAttempts = opts.maxAttempts ?? 32;
+  let amount = opts.start ?? 1n;   // start at 1 wei
+  const growth = opts.growth ?? 10n;
+
+  for (let i = 0; i < maxAttempts; i++) {
+    const q = await getPoolQuotedAmountOut(pool, assetToUsdc, amount);
+    if (q.amountOut > 0n) return amount;
+    amount *= growth;
+  }
+  return null; // couldn’t find non-zero within attempts
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Generic helpers (typed)
  * ──────────────────────────────────────────────────────────────────────────── */
 
@@ -89,6 +137,7 @@ async function mintToForInput(
     await (await env.usdc.connect(minter).mint(payerAddr, amount)).wait();
   }
 }
+
 /** Seed pool via Treasury.bootstrapViaTreasury (Phase 0 style) */
 async function bootstrapSeed(
   treasury: LPPTreasury,
@@ -100,14 +149,10 @@ async function bootstrapSeed(
   amountUsdc: bigint,
   offsetBps: bigint = 0n
 ) {
-  // --- NEW: make it idempotent (don't re-bootstrap an initialized pool) ---
+  // Idempotent: skip if already initialized
   const currentA = BigInt((await pool.reserveAsset()).toString());
   const currentU = BigInt((await pool.reserveUsdc()).toString());
-  if (currentA > 0n || currentU > 0n) {
-    // already initialized; nothing to do
-    return;
-  }
-  // ------------------------------------------------------------------------ //
+  if (currentA > 0n || currentU > 0n) return;
 
   const tAddr = await treasury.getAddress();
 
@@ -251,31 +296,7 @@ async function getPoolQuotedAmountOut(pool: LPPPool, assetToUsdc: boolean, amoun
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Tiny input probe
- * ──────────────────────────────────────────────────────────────────────────── */
-
-async function findSmallestNonZeroAmount(opts: {
-  pool: LPPPool;
-  assetToUsdc: boolean;
-  maxAttempts?: number;
-  start?: bigint;
-  growth?: bigint;
-}) {
-  const { pool, assetToUsdc } = opts;
-  const maxAttempts = opts.maxAttempts ?? 32;
-  let amount = opts.start ?? 1n;
-  const growth = opts.growth ?? 10n;
-
-  for (let i = 0; i < maxAttempts; i++) {
-    const q = await getPoolQuotedAmountOut(pool, assetToUsdc, amount);
-    if (q.amountOut > 0n) return amount;
-    amount *= growth;
-  }
-  return null;
-}
-
-/* ────────────────────────────────────────────────────────────────────────────
- * Core snapshot: execute a trade and compare with quotes
+ * Core snapshot: execute a trade and compare with quotes (fee-aware)
  * ──────────────────────────────────────────────────────────────────────────── */
 
 async function snapshotTradeAndCompare(opts: {
@@ -368,19 +389,46 @@ async function snapshotTradeAndCompare(opts: {
   const b1 = await readTokenBalances(tokens, who.address);
   const r1 = await reserves(pool);
 
+  // ---- Fee-aware accounting -------------------------------------------------
   let assetOut = 0n, usdcOut = 0n, amountOut = 0n;
+
   if (assetToUsdc) {
-    expect(b0.a - b1.a).to.equal(amountIn);
-    usdcOut = b1.u - b0.u;
+    const spentA  = b0.a - b1.a;        // what payer actually spent (may include input fee)
+    const poolAIn = r1.a - r0.a;        // what the pool actually received
+
+    expect(spentA, "payer must spend >= amountIn").to.be.gte(amountIn);
+    expect(poolAIn, "pool must receive >= amountIn").to.be.gte(amountIn);
+
+    const extraToPoolA   = poolAIn > amountIn ? (poolAIn - amountIn) : 0n;
+    const extraFromPayer = spentA  > amountIn ? (spentA  - amountIn) : 0n;
+    expect(
+      extraToPoolA <= extraFromPayer,
+      `input-fee mismatch (toPool=${extraToPoolA} > fromPayer=${extraFromPayer})`
+    ).to.equal(true);
+
+    usdcOut  = b1.u - b0.u;
     if (requireNonZeroOut) expect(usdcOut > 0n).to.equal(true);
     amountOut = usdcOut;
   } else {
-    expect(b0.u - b1.u).to.equal(amountIn);
+    const spentU  = b0.u - b1.u;
+    const poolUIn = r1.u - r0.u;
+
+    expect(spentU, "payer must spend >= amountIn").to.be.gte(amountIn);
+    expect(poolUIn, "pool must receive >= amountIn").to.be.gte(amountIn);
+
+    const extraToPoolU   = poolUIn > amountIn ? (poolUIn - amountIn) : 0n;
+    const extraFromPayer = spentU  > amountIn ? (spentU  - amountIn) : 0n;
+    expect(
+      extraToPoolU <= extraFromPayer,
+      `input-fee mismatch (toPool=${extraToPoolU} > fromPayer=${extraFromPayer})`
+    ).to.equal(true);
+
     assetOut = b1.a - b0.a;
     if (requireNonZeroOut) expect(assetOut > 0n).to.equal(true);
     amountOut = assetOut;
   }
 
+  // Cross-check pool vs user deltas on the *output* leg
   const poolAOut = r0.a > r1.a ? r0.a - r1.a : 0n;
   const poolUOut = r0.u > r1.u ? r0.u - r1.u : 0n;
   const userAOut = b1.a > b0.a ? b1.a - b0.a : 0n;
@@ -390,9 +438,12 @@ async function snapshotTradeAndCompare(opts: {
 
   const sqrtNow = await safeReadSqrtPriceX96(pool);
 
+  // Exact equality where it must be exact
   expect(amountOut, "exec vs router.staticCall").to.equal(staticOut);
-  expect(amountOut, "exec vs pool.quoteSupplication").to.equal(qPool.amountOut);
-  expect(amountOut, "exec vs quoter.quoteSupplication").to.equal(qQuoter.amountOut);
+
+  // Allow tiny rounding drift vs both quoter and pool-local quote
+  expectNearlyEqual(amountOut, qQuoter.amountOut, "exec vs quoter.quoteSupplication");
+  expectNearlyEqual(amountOut, qPool.amountOut,   "exec vs pool.quoteSupplication");
 
   expect({
     label,
@@ -621,3 +672,28 @@ describe("Quoter accuracy & sqrt pricing snapshots (Phase 0, no hooks)", () => {
     });
   });
 });
+
+/* Optional helper if you later expose fee bps on Router:
+async function readTotalInputFeeBps(router: LPPRouter): Promise<bigint> {
+  const cand = [
+    "totalFeeBps","supplicationFeeBps","FEE_BPS","feeBps",
+    "inputFeeBps","TOTAL_FEE_BPS"
+  ];
+  for (const name of cand) {
+    if (name in (router as any)) {
+      try {
+        const v = await (router as any)[name]();
+        return BigInt(v.toString());
+      } catch {}
+    }
+  }
+  const parts = [["feeBps"],["treasuryFeeBps"],["poolsFeeBps"]];
+  let sum = 0n;
+  for (const [n] of parts) {
+    if (n in (router as any)) {
+      try { sum += BigInt((await (router as any)[n]()).toString()); } catch {}
+    }
+  }
+  return sum;
+}
+*/

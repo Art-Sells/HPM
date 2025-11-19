@@ -15,7 +15,7 @@ import type {
 } from "../typechain-types/index.ts";
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Interfaces & constants
+ * Interfaces & types
  * ──────────────────────────────────────────────────────────────────────────── */
 
 const IERC20_FQN = "contracts/external/IERC20.sol:IERC20";
@@ -39,15 +39,9 @@ async function getTokensFromPool(
   pool: LPPPool
 ): Promise<{ asset: IERC20; usdc: IERC20 }> {
   const assetAddr = await pool.asset();
-  const usdcAddr = await pool.usdc();
-  const asset = (await ethers.getContractAt(
-    IERC20_FQN,
-    assetAddr
-  )) as unknown as IERC20;
-  const usdc = (await ethers.getContractAt(
-    IERC20_FQN,
-    usdcAddr
-  )) as unknown as IERC20;
+  const usdcAddr  = await pool.usdc();
+  const asset = (await ethers.getContractAt(IERC20_FQN, assetAddr)) as unknown as IERC20;
+  const usdc  = (await ethers.getContractAt(IERC20_FQN, usdcAddr))  as unknown as IERC20;
   return { asset, usdc };
 }
 
@@ -64,19 +58,11 @@ async function bal(token: IERC20, who: string) {
 async function approveInputForSupplicate(
   token: IERC20,
   payer: any,
-  router: LPPRouter,
+  _router: LPPRouter,
   pool: LPPPool
 ) {
-  await (
-    await token
-      .connect(payer)
-      .approve(await router.getAddress(), ethers.MaxUint256)
-  ).wait();
-  await (
-    await token
-      .connect(payer)
-      .approve(await pool.getAddress(), ethers.MaxUint256)
-  ).wait();
+  // Fee-less supplicate: only the pool needs allowance
+  await (await token.connect(payer).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
 }
 
 async function mintTo(
@@ -92,56 +78,34 @@ async function mintTo(
   }
 }
 
-/**
- * Ensure the canonical Phase-0 pool has non-zero reserves (100/100) using
- * LPPTreasury.bootstrapViaTreasury (4-arg overload). If reserves are already
- * non-zero, this becomes a no-op.
- */
+/** Ensure the Phase-0 pool has 100/100 reserves (no-op if already set). */
 async function seedPoolIfNeeded(env: CoreEnv | any) {
   const { pool, treasury, asset, usdc, deployer } = env;
-
   const currentA = BigInt((await pool.reserveAsset()).toString());
   const currentU = BigInt((await pool.reserveUsdc()).toString());
-  if (currentA > 0n || currentU > 0n) return; // already initialized
+  if (currentA > 0n || currentU > 0n) return;
 
   const amtA = ethers.parseEther("100");
   const amtU = ethers.parseEther("100");
-
   const tAddr = await treasury.getAddress();
+
   await (await asset.connect(deployer).mint(tAddr, amtA)).wait();
   await (await usdc.connect(deployer).mint(tAddr, amtU)).wait();
 
-  const bootstrap = (treasury as any)[
-    "bootstrapViaTreasury(address,uint256,uint256,int256)"
-  ] as (
-    pool: string,
-    amountAsset: bigint,
-    amountUsdc: bigint,
-    offsetBps: bigint
-  ) => Promise<any>;
+  const bootstrap = (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"] as
+    (pool: string, a: bigint, u: bigint, offsetBps: bigint) => Promise<any>;
 
   try {
-    await (
-      await bootstrap(await pool.getAddress(), amtA, amtU, 0n)
-    ).wait();
+    await (await bootstrap(await pool.getAddress(), amtA, amtU, 0n)).wait();
   } catch (err: any) {
     const msg: string = err?.message ?? "";
-    // ignore "already init" if some other path bootstrapped the pool
-    if (!msg.includes("already init")) {
-      throw err;
-    }
+    if (!msg.includes("already init")) throw err;
   }
 }
 
 /** Best-effort sqrt reader supporting multiple shapes (slot0, priceX96, etc.) */
 async function safeReadSqrtPriceX96(pool: any): Promise<bigint | null> {
-  const tryFns = [
-    "sqrtPriceX96",
-    "getSqrtPriceX96",
-    "currentSqrtPriceX96",
-    "priceX96",
-    "slot0",
-  ];
+  const tryFns = ["sqrtPriceX96","getSqrtPriceX96","currentSqrtPriceX96","priceX96","slot0"];
   for (const fn of tryFns) {
     try {
       const f = (pool as any)[fn];
@@ -160,7 +124,23 @@ async function safeReadSqrtPriceX96(pool: any): Promise<bigint | null> {
   return null;
 }
 
-async function getPoolQuotedAmountOut(
+/** Integer sqrt for BigInt (Babylonian) */
+function isqrt(n: bigint): bigint {
+  if (n <= 0n) return 0n;
+  let x0 = n, x1 = (n >> 1n) + 1n;
+  while (x1 < x0) { x0 = x1; x1 = (x1 + n / x1) >> 1n; }
+  return x0;
+}
+
+/** Implied sqrtPriceX96 from reserves: sqrt((U<<192)/A) */
+function impliedSqrtPriceX96FromReserves(a: bigint, u: bigint): bigint {
+  if (a === 0n || u === 0n) return 0n;
+  const NUM_SHIFTED = u << 192n;
+  return isqrt(NUM_SHIFTED / a);
+}
+
+/** Pool-naïve quote (no fees, no donations): x * rOut / (rIn + x) */
+async function poolQuote(
   pool: LPPPool,
   assetToUsdc: boolean,
   amountIn: bigint
@@ -179,25 +159,6 @@ async function getPoolQuotedAmountOut(
   }
 }
 
-/** Integer sqrt for BigInt (Babylonian) */
-function isqrt(n: bigint): bigint {
-  if (n <= 0n) return 0n;
-  let x0 = n;
-  let x1 = (n >> 1n) + 1n;
-  while (x1 < x0) {
-    x0 = x1;
-    x1 = (x1 + n / x1) >> 1n;
-  }
-  return x0;
-}
-
-/** Implied sqrtPriceX96 from reserves: sqrt((U<<192)/A) */
-function impliedSqrtPriceX96FromReserves(a: bigint, u: bigint): bigint {
-  if (a === 0n || u === 0n) return 0n;
-  const NUM_SHIFTED = u << 192n;
-  return isqrt(NUM_SHIFTED / a);
-}
-
 /* ────────────────────────────────────────────────────────────────────────────
  * Spec
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -207,28 +168,26 @@ describe("Supplicate (Approved-only flow)", () => {
     const env: CoreEnv | any = await deployCore();
     const { other, access, pool, router, deployer } = env;
 
-    // Seed pool so price/reserves exist (100/100)
     await seedPoolIfNeeded(env);
-
     await (await access.setApprovedSupplicator(other.address, true)).wait();
 
     const amountIn = ethers.parseEther("1");
     const { asset, usdc } = await getTokensFromPool(pool);
-    await mintTo(env, other.address, /* assetToUsdc */ true, amountIn);
+
+    await mintTo(env, other.address, /* A->U */ true, amountIn);
     await approveInputForSupplicate(asset, other, router, pool);
 
-    // Before snapshots
+    // Before
     const r0 = await reserves(pool);
-    const s0Stored = await safeReadSqrtPriceX96(pool);
+    const s0Stored  = await safeReadSqrtPriceX96(pool);
     const s0Implied = impliedSqrtPriceX96FromReserves(r0.a, r0.u);
-
     const poolAddr = await pool.getAddress();
     const b0A = await bal(asset, other.address);
     const b0U = await bal(usdc, other.address);
 
-    const quoted = await getPoolQuotedAmountOut(pool, true, amountIn);
+    const quoted = await poolQuote(pool, true, amountIn);
 
-    // Static-call (optional)
+    // router static (should match naïve now that fees are 0)
     let staticOut: bigint | null = null;
     try {
       staticOut = await (router.connect(other) as any).supplicate.staticCall({
@@ -239,11 +198,8 @@ describe("Supplicate (Approved-only flow)", () => {
         to: other.address,
         payer: other.address,
       });
-    } catch {
-      staticOut = null;
-    }
+    } catch { staticOut = null; }
 
-    // Execute
     await expect(
       (router.connect(other) as any).supplicate({
         pool: poolAddr,
@@ -255,53 +211,43 @@ describe("Supplicate (Approved-only flow)", () => {
       })
     ).not.to.be.reverted;
 
-    // After snapshots
     const r1 = await reserves(pool);
-    const s1Stored = await safeReadSqrtPriceX96(pool);
+    const s1Stored  = await safeReadSqrtPriceX96(pool);
     const s1Implied = impliedSqrtPriceX96FromReserves(r1.a, r1.u);
-
     const a1 = await bal(asset, other.address);
     const u1 = await bal(usdc, other.address);
 
-    // Basic correctness
-    expect(b0A - a1).to.equal(amountIn); // spent asset
-    expect(u1 >= b0U).to.equal(true); // received USDC
-    if (quoted > 0n) expect(u1 - b0U).to.equal(quoted);
-    if (staticOut !== null) expect(u1 - b0U).to.equal(staticOut!);
+    // Spent = amountIn exactly (no fee)
+    expect(b0A - a1).to.equal(amountIn);
 
-    // Reserve deltas correspond to user deltas
-    const poolAOut = r0.a > r1.a ? r0.a - r1.a : 0n;
+    // Received equals pool quote (and static, if present)
+    const userUsdcOut = u1 - b0U;
+    expect(userUsdcOut).to.equal(quoted);
+    if (staticOut !== null) expect(userUsdcOut).to.equal(staticOut!);
+
+    // Reserves mirror user deltas
     const poolUOut = r0.u > r1.u ? r0.u - r1.u : 0n;
-    const userAOut = a1 > b0A ? a1 - b0A : 0n;
-    const userUOut = u1 > b0U ? u1 - b0U : 0n;
-    expect(poolAOut).to.equal(userAOut);
-    expect(poolUOut).to.equal(userUOut);
+    expect(poolUOut).to.equal(userUsdcOut);
 
-    // Directional price check (ASSET->USDC reduces U/A ⇒ implied sqrt decreases)
+    // Price direction: A->U reduces U/A ⇒ implied sqrt decreases
     expect(s1Implied <= s0Implied).to.equal(true);
 
-    // Snapshot concise summary
     expect({
       direction: "ASSET->USDC",
       amountIn: amountIn.toString(),
-      quotes: {
-        poolQuote: quoted.toString(),
-        routerStatic: staticOut?.toString() ?? null,
-      },
+      quote: quoted.toString(),
+      routerStatic: staticOut?.toString() ?? null,
       reserves: {
         before: { a: r0.a.toString(), u: r0.u.toString() },
-        after: { a: r1.a.toString(), u: r1.u.toString() },
+        after:  { a: r1.a.toString(), u: r1.u.toString() },
       },
       callerBalances: {
         before: { a: b0A.toString(), u: b0U.toString() },
-        after: { a: a1.toString(), u: u1.toString() },
+        after:  { a: a1.toString(), u: u1.toString() },
       },
       sqrtPriceX96: {
-        stored: {
-          before: s0Stored?.toString() ?? null,
-          after: s1Stored?.toString() ?? null,
-        },
-        implied: { before: s0Implied.toString(), after: s1Implied.toString() },
+        stored:  { before: s0Stored?.toString() ?? null, after: s1Stored?.toString() ?? null },
+        implied: { before: s0Implied.toString(),          after: s1Implied.toString() },
       },
     }).to.matchSnapshot("approved — first supplicate summary A->U");
   });
@@ -342,21 +288,16 @@ describe("Supplicate (Approved-only flow)", () => {
       const amountIn = ethers.parseEther("1");
       const { asset, usdc } = await getTokensFromPool(pool);
 
-      await mintTo(env, other.address, /* assetToUsdc */ false, amountIn); // fund USDC
+      await mintTo(env, other.address, /* U->A */ false, amountIn);
       await approveInputForSupplicate(usdc, other, router, pool);
 
       const r0 = await reserves(pool);
-      const s0Stored = await safeReadSqrtPriceX96(pool);
+      const s0Stored  = await safeReadSqrtPriceX96(pool);
       const s0Implied = impliedSqrtPriceX96FromReserves(r0.a, r0.u);
-
       const b0A = await bal(asset, other.address);
       const b0U = await bal(usdc, other.address);
 
-      const quoted = await getPoolQuotedAmountOut(
-        pool,
-        /* assetToUsdc */ false,
-        amountIn
-      );
+      const quoted = await poolQuote(pool, false, amountIn);
 
       await (router.connect(other) as any).supplicate({
         pool: await pool.getAddress(),
@@ -368,40 +309,32 @@ describe("Supplicate (Approved-only flow)", () => {
       });
 
       const r1 = await reserves(pool);
-      const s1Stored = await safeReadSqrtPriceX96(pool);
+      const s1Stored  = await safeReadSqrtPriceX96(pool);
       const s1Implied = impliedSqrtPriceX96FromReserves(r1.a, r1.u);
-
       const a1 = await bal(asset, other.address);
       const u1 = await bal(usdc, other.address);
 
-      expect(b0U - u1).to.equal(amountIn); // spent USDC
-      expect(a1 >= b0A).to.equal(true); // received asset
-      if (quoted > 0n) expect(a1 - b0A).to.equal(quoted);
+      expect(b0U - u1).to.equal(amountIn);       // spent USDC (no fee)
+      expect(a1 - b0A).to.equal(quoted);         // received ASSET
 
-      // Directional price check (USDC->ASSET increases U/A ⇒ implied sqrt increases)
+      // U->A increases U/A ⇒ implied sqrt increases
       expect(s1Implied >= s0Implied).to.equal(true);
 
       expect({
         direction: "USDC->ASSET",
         amountIn: amountIn.toString(),
-        poolQuote: quoted.toString(),
+        quote: quoted.toString(),
         sqrtPriceX96: {
-          stored: {
-            before: s0Stored?.toString() ?? null,
-            after: s1Stored?.toString() ?? null,
-          },
-          implied: {
-            before: s0Implied.toString(),
-            after: s1Implied.toString(),
-          },
+          stored:  { before: s0Stored?.toString() ?? null, after: s1Stored?.toString() ?? null },
+          implied: { before: s0Implied.toString(),          after: s1Implied.toString() },
         },
         reserves: {
           before: { a: r0.a.toString(), u: r0.u.toString() },
-          after: { a: r1.a.toString(), u: r1.u.toString() },
+          after:  { a: r1.a.toString(), u: r1.u.toString() },
         },
         caller: {
           before: { a: b0A.toString(), u: b0U.toString() },
-          after: { a: a1.toString(), u: u1.toString() },
+          after:  { a: a1.toString(),  u: u1.toString()  },
         },
       }).to.matchSnapshot("approved — sqrt+reserves U->A");
     });
@@ -430,22 +363,10 @@ describe("Supplicate (Approved-only flow)", () => {
       await (await usdc.connect(other).transfer(poolAddr, amt)).wait();
 
       // transferFrom into pool
-      await (
-        await env.asset.connect(other).approve(deployer.address, amt)
-      ).wait();
-      await (
-        await env.usdc.connect(other).approve(deployer.address, amt)
-      ).wait();
-      await (
-        await asset
-          .connect(deployer)
-          .transferFrom(other.address, poolAddr, amt)
-      ).wait();
-      await (
-        await usdc
-          .connect(deployer)
-          .transferFrom(other.address, poolAddr, amt)
-      ).wait();
+      await (await env.asset.connect(other).approve(deployer.address, amt)).wait();
+      await (await env.usdc.connect(other).approve(deployer.address, amt)).wait();
+      await (await asset.connect(deployer).transferFrom(other.address, poolAddr, amt)).wait();
+      await (await usdc.connect(deployer).transferFrom(other.address, poolAddr, amt)).wait();
 
       const r1 = await reserves(pool);
       expect(r1.a).to.equal(r0.a);
@@ -453,7 +374,7 @@ describe("Supplicate (Approved-only flow)", () => {
 
       expect({
         reservesBefore: { a: r0.a.toString(), u: r0.u.toString() },
-        reservesAfter: { a: r1.a.toString(), u: r1.u.toString() },
+        reservesAfter:  { a: r1.a.toString(), u: r1.u.toString() },
         note: "Raw token transfers cannot spoof/mutate LPP reserves",
       }).to.matchSnapshot("bypass-guard — reserves unchanged");
     });

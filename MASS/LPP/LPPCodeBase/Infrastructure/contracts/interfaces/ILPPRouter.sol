@@ -2,71 +2,63 @@
 pragma solidity ^0.8.24;
 
 interface ILPPRouter {
-    // -------- Constants --------
+    /* ───────── Single-pool (permissioned) ───────── */
+    struct SupplicateParams {
+        address pool;          // concrete pool (single-hop)
+        bool    assetToUsdc;   // direction for this pool
+        uint256 amountIn;      // principal per call
+        uint256 minAmountOut;  // slippage guard (single hop)
+        address to;            // recipient (defaults msg.sender if zero)
+        address payer;         // who pays principal/fee (defaults msg.sender if zero)
+    }
+
+    /* ───────── 3-hop MCV (MEV) ─────────
+       One struct only; MEVs quote with swap.staticCall(SwapParams({...}))
+       Set minTotalAmountOut=0 for pure quotes.
+    */
+    struct SwapParams {
+        address startPool;         // key that selects the orbit
+        bool    assetToUsdc;       // ignored if dual-orbit is configured; used for legacy single-orbit
+        uint256 amountIn;          // SAME amount per hop (3 hops)
+        address payer;             // defaults msg.sender if zero
+        address to;                // defaults msg.sender if zero
+        uint256 minTotalAmountOut; // aggregate slippage guard across the 3 hops (0 to ignore)
+    }
+
+    /* ───────── constants used in fee math ───────── */
     function BPS_DENOMINATOR() external view returns (uint16);
     function MCV_FEE_BPS() external view returns (uint16);
+    function TREASURY_CUT_BPS() external view returns (uint16);
 
-    // -------- Types --------
-    struct SupplicateParams {
-        address pool;
-        bool assetToUsdc;
-        uint256 amountIn;
-        uint256 minAmountOut;
-        address to;      // optional; defaults to msg.sender
-        address payer;   // optional; defaults to msg.sender
-    }
+    /* ───────── execution surfaces ───────── */
+    function supplicate(SupplicateParams calldata p) external returns (uint256 amountOut); // permissioned single-pool
+    function swap(SwapParams calldata p) external returns (uint256 totalAmountOut);        // MEV 3-hop (quote via staticCall)
 
-    struct MCVParams {
-        address startPool;   // key used to look up orbit sets
-        bool assetToUsdc;    // direction of hop 0 (legacy mode only)
-        uint256 amountIn;    // hop input amount for each hop (independent hops mode)
-        address payer;       // external wallet that funds input (+ fee)
-        address to;          // receiver of output
-    }
-
-    // -------- Events (declare here only; do NOT redeclare in the contract) --------
-    event OrbitUpdated(address indexed startPool, address[3] pools);
-    event DualOrbitUpdated(address indexed startPool, address[3] neg, address[3] pos, bool useNeg);
-    event OrbitFlipped(address indexed startPool, bool nowUsingNeg);
-
-    event HopExecuted(
-        address indexed pool,
-        bool assetToUsdc,
-        address tokenIn,
-        address tokenOut,
+    /* ───────── quoting helpers ───────── */
+    function getAmountsOut(
         uint256 amountIn,
-        uint256 grossOut
-    );
+        address[3] calldata orbit,
+        bool assetToUsdc
+    ) external view returns (uint256[3] memory perHop, uint256 total);
 
-    event FeeTaken(
-        address indexed pool,
-        address indexed token,   // fee token (hop input token)
-        uint256 amountBase,      // hop amountIn on which fee was computed
-        uint256 totalFee,        // e.g. 2.5%
-        uint256 treasuryFee,     // e.g. 0.5%
-        uint256 poolsFee         // e.g. 2.0%
-    );
+    function getAmountsOutFromStart(
+        address startPool,
+        uint256 amountIn
+    )
+        external
+        view
+        returns (
+            bool assetToUsdc,         // derived from active set if dual-orbit
+            address[3] memory orbit,  // the three pools used for this call
+            uint256[3] memory perHop,
+            uint256 total
+        );
 
-    event SupplicateExecuted(
-        address indexed caller,
-        address indexed pool,
-        address tokenIn,
-        uint256 amountIn,
-        address tokenOut,
-        uint256 amountOut,
-        uint256 /*reserved*/
-    );
-
-    // -------- Config --------
-    function setOrbit(address startPool, address[3] calldata pools_) external; // legacy (still supported)
-    function getOrbit(address startPool) external view returns (address[3] memory pools); // legacy view
-
-    // Dual-orbit API (selects which set will be used on the NEXT call)
+    /* ───────── treasury-only orbit wiring ───────── */
+    function setOrbit(address startPool, address[3] calldata pools) external;
     function setDualOrbit(address startPool, address[3] calldata neg, address[3] calldata pos, bool startWithNeg) external;
+
+    /* ───────── inspectors used by tests ───────── */
     function getActiveOrbit(address startPool) external view returns (address[3] memory orbit, bool usingNeg);
     function getDualOrbit(address startPool) external view returns (address[3] memory neg, address[3] memory pos, bool usingNeg);
-
-    // -------- Actions --------
-    function supplicate(SupplicateParams calldata p) external returns (uint256 amountOut);
-    function mcvSupplication(MCVParams calldata p) external returns (uint256 finalAmountOut);
 }

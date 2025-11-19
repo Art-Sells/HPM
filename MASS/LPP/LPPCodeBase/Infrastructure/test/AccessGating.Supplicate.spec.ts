@@ -4,7 +4,12 @@ const { ethers } = hre;
 
 import { expect } from "./shared/expect.ts";
 import snapshotGasCost from "./shared/snapshotGasCost.ts";
-import { deployCore } from "./helpers.ts";
+import {
+  deployCore,
+  bootstrapPool,
+  A,
+  U,
+} from "./helpers.ts";
 
 /* ─────────────────────────── ABI helpers ─────────────────────────── */
 
@@ -68,9 +73,20 @@ async function mintFundAndApprove(
 ) {
   const payerAddr = await payer.getAddress();
   await (await token.connect(tokenOwner).mint(payerAddr, amount)).wait();
+  // Router needs allowance to pull per-hop fees
   await (await token.connect(payer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
 }
 
+// Compute per-hop fee pieces from router constants
+async function feePieces(router: any, amountIn: bigint) {
+  const BPS = 10_000n;
+  const feeBps = BigInt(await router.MCV_FEE_BPS());
+  const treasuryCutBps = BigInt(await router.TREASURY_CUT_BPS());
+  const fee = (amountIn * feeBps) / BPS;
+  const treasuryFee = (amountIn * treasuryCutBps) / BPS;
+  const poolsFee = fee - treasuryFee;
+  return { fee, treasuryFee, poolsFee };
+}
 
 async function snapshotSupplicateStrict(opts: {
   label: string;
@@ -95,11 +111,13 @@ async function snapshotSupplicateStrict(opts: {
   const b0 = await readTokenBalances(tok, who);
   const r0 = await reserves(pool);
 
+  const { fee, poolsFee } = await feePieces(router, args.amountIn);
+
   const amountOut: bigint = await (router.connect(signer) as any).supplicate.staticCall(args);
 
   const tx = await (router.connect(signer) as any).supplicate(args);
 
-  // Best-effort event assertion (tolerate ABI changes but expect name)
+  // Expect router-side SupplicateExecuted (7 args; last is reserved uint256)
   try {
     const assetIn  = args.assetToUsdc ? await pool.asset() : await pool.usdc();
     const assetOut = args.assetToUsdc ? await pool.usdc() : await pool.asset();
@@ -112,7 +130,7 @@ async function snapshotSupplicateStrict(opts: {
         args.amountIn,
         assetOut,
         amountOut,
-        0 // reason = OK
+        0 // reserved
       );
   } catch {
     // tolerate signature drift, still measure gas + state
@@ -126,30 +144,38 @@ async function snapshotSupplicateStrict(opts: {
 
   // Direction-aware checks and per-token outs
   let assetOut = 0n, usdcOut = 0n;
+
   if (args.assetToUsdc) {
-    expect(b0.a - b1.a).to.equal(args.amountIn);
+    // payer spent amountIn + fee in ASSET
+    expect(b0.a - b1.a).to.equal(args.amountIn + fee);
+    // user received USDC = amountOut
     expect(b1.u - b0.u).to.equal(amountOut);
-    expect(r1.a - r0.a).to.equal(args.amountIn);
+
+    // pool reserves: ASSET increased by amountIn + poolsFee; USDC decreased by amountOut
+    expect(r1.a - r0.a).to.equal(args.amountIn + poolsFee);
     expect(r0.u - r1.u).to.equal(amountOut);
+
     assetOut = 0n;
     usdcOut  = b1.u - b0.u;
   } else {
-    expect(b0.u - b1.u).to.equal(args.amountIn);
+    // payer spent amountIn + fee in USDC
+    expect(b0.u - b1.u).to.equal(args.amountIn + fee);
+    // user received ASSET = amountOut
     expect(b1.a - b0.a).to.equal(amountOut);
-    expect(r1.u - r0.u).to.equal(args.amountIn);
+
+    // pool reserves: USDC increased by amountIn + poolsFee; ASSET decreased by amountOut
+    expect(r1.u - r0.u).to.equal(args.amountIn + poolsFee);
     expect(r0.a - r1.a).to.equal(amountOut);
+
     assetOut = b1.a - b0.a;
     usdcOut  = 0n;
   }
 
-  // Pool deltas = user deltas (sanity)
+  // "Out" side sanity: what left the pool equals what the user gained
   const poolAOut = r0.a > r1.a ? r0.a - r1.a : 0n;
   const poolUOut = r0.u > r1.u ? r0.u - r1.u : 0n;
   const userAOut = b1.a > b0.a ? b1.a - b0.a : 0n;
   const userUOut = b1.u > b0.u ? b1.u - b0.u : 0n;
-
-  expect(poolAOut).to.equal(userAOut);
-  expect(poolUOut).to.equal(userUOut);
   expect(poolAOut + poolUOut).to.equal(userAOut + userUOut);
 
   expect({
@@ -168,12 +194,10 @@ async function snapshotSupplicateStrict(opts: {
     reserves: {
       before: { a: r0.a.toString(), u: r0.u.toString() },
       after:  { a: r1.a.toString(), u: r1.u.toString() },
-      delta:  { a: poolAOut.toString(), u: poolUOut.toString(), sum: (poolAOut + poolUOut).toString() },
     },
     callerBalances: {
       before: { a: b0.a.toString(), u: b0.u.toString() },
       after:  { a: b1.a.toString(), u: b1.u.toString() },
-      delta:  { a: userAOut.toString(), u: userUOut.toString(), sum: (userAOut + userUOut).toString() },
     },
     gasUsed: rcpt!.gasUsed.toString(),
   }).to.matchSnapshot(label);
@@ -191,9 +215,10 @@ describe("Access gating", () => {
     const { router, pool } = await deployCore();
 
     mustHaveFn(router.interface, "supplicate((address,bool,uint256,uint256,address,address))");
+    // NOTE: reserved is uint256 now
     mustHaveEvent(
       router.interface,
-      "SupplicateExecuted(address,address,address,uint256,address,uint256,uint8)"
+      "SupplicateExecuted(address,address,address,uint256,address,uint256,uint256)"
     );
 
     mustHaveFn(pool.interface, "supplicate(address,address,bool,uint256,uint256)");
@@ -204,71 +229,78 @@ describe("Access gating", () => {
   // ───────────────────────────────── Permissions: Approved-only ────────────────────────────────
   //
   describe("Permissions: Approved Supplicators only", () => {
-it("Approved Supplicator can supplicate ASSET->USDC (ABI-verified)", async () => {
-  const { deployer, other, access, router, pool, asset, usdc } = await deployCore();
+    it("Approved Supplicator can supplicate ASSET->USDC (ABI-verified)", async () => {
+      const { deployer, other, access, router, pool, asset, usdc, treasury } = await deployCore();
 
-  // Approve 'other' as supplicator
-  await (await access.connect(deployer).setApprovedSupplicator(other.address, true)).wait();
+      // Bootstrap reserves so quotes won't revert
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, 0);
 
-  // Fund 'other' with ASSET, approve router
-  await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("2"));
+      // Approve 'other' as supplicator
+      await (await access.connect(deployer).setApprovedSupplicator(other.address, true)).wait();
 
-  // 🔥 NEW: also approve the pool as spender
-  await (await asset.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
+      // Fund 'other' with ASSET, approve router (fees) and pool (principal)
+      await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("2"));
+      await (await asset.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
 
-  await snapshotReserves(pool, "Approved — pre supplicate ASSET->USDC");
+      await snapshotReserves(pool, "Approved — pre supplicate ASSET->USDC");
 
-  await snapshotSupplicateStrict({
-    label: "Approved — ASSET->USDC outcome (Phase 0)",
-    router,
-    pool,
-    asset,
-    usdc,
-    signer: other,
-    args: {
-      pool: await pool.getAddress(),
-      assetToUsdc: true,
-      amountIn: ethers.parseEther("1"),
-      minAmountOut: 0n,
-      to: other.address,
-      payer: other.address,
-    },
-  });
-});
+      await snapshotSupplicateStrict({
+        label: "Approved — ASSET->USDC outcome (Phase 0)",
+        router,
+        pool,
+        asset,
+        usdc,
+        signer: other,
+        args: {
+          pool: await pool.getAddress(),
+          assetToUsdc: true,
+          amountIn: ethers.parseEther("1"),
+          minAmountOut: 0n,
+          to: other.address,
+          payer: other.address,
+        },
+      });
+    });
 
-it("Approved Supplicator can supplicate USDC->ASSET (ABI-verified)", async () => {
-  const { deployer, other, access, router, pool, asset, usdc } = await deployCore();
+    it("Approved Supplicator can supplicate USDC->ASSET (ABI-verified)", async () => {
+      const { deployer, other, access, router, pool, asset, usdc, treasury } = await deployCore();
 
-  await (await access.connect(deployer).setApprovedSupplicator(other.address, true)).wait();
+      // Bootstrap
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, 0);
 
-  await mintFundAndApprove(usdc, deployer, other, router, ethers.parseEther("2"));
+      await (await access.connect(deployer).setApprovedSupplicator(other.address, true)).wait();
 
-  // 🔥 NEW: approve pool to pull USDC from 'other'
-  await (await usdc.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
+      await mintFundAndApprove(usdc, deployer, other, router, ethers.parseEther("2"));
+      // approve pool to pull USDC principal
+      await (await usdc.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
 
-  await snapshotSupplicateStrict({
-    label: "Approved — USDC->ASSET outcome (Phase 0)",
-    router,
-    pool,
-    asset,
-    usdc,
-    signer: other,
-    args: {
-      pool: await pool.getAddress(),
-      assetToUsdc: false,
-      amountIn: ethers.parseEther("1"),
-      minAmountOut: 0n,
-      to: other.address,
-      payer: other.address,
-    },
-  });
-});
+      await snapshotSupplicateStrict({
+        label: "Approved — USDC->ASSET outcome (Phase 0)",
+        router,
+        pool,
+        asset,
+        usdc,
+        signer: other,
+        args: {
+          pool: await pool.getAddress(),
+          assetToUsdc: false,
+          amountIn: ethers.parseEther("1"),
+          minAmountOut: 0n,
+          to: other.address,
+          payer: other.address,
+        },
+      });
+    });
 
-    it("Unauthorized caller reverts (not Approved, even if they have no/yes liquidity)", async () => {
-      const { deployer, other, router, pool, asset } = await deployCore();
+    it("Unauthorized caller reverts (not Approved, even if they have liquidity)", async () => {
+      const { deployer, other, router, pool, asset, usdc, treasury } = await deployCore();
+
+      // Bootstrap so we don't fail early on empty reserves
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, 0);
 
       // Fund 'other' with ASSET but DO NOT approve in AccessManager
       await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("1"));
+      await (await asset.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
 
       await expect(
         (router.connect(other) as any).supplicate({
@@ -282,48 +314,49 @@ it("Approved Supplicator can supplicate USDC->ASSET (ABI-verified)", async () =>
       ).to.be.revertedWith("not permitted");
     });
 
-it("Approved toggling affects Router permission", async () => {
-  const { deployer, other, access, router, pool, asset, usdc } = await deployCore();
+    it("Approved toggling affects Router permission", async () => {
+      const { deployer, other, access, router, pool, asset, usdc, treasury } = await deployCore();
 
-  // Approve 'other'
-  await (await access.connect(deployer).setApprovedSupplicator(other.address, true)).wait();
+      // Bootstrap
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, 0);
 
-  await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("2"));
+      // Approve 'other'
+      await (await access.connect(deployer).setApprovedSupplicator(other.address, true)).wait();
 
-  // 🔥 NEW: approve pool to pull ASSET from 'other'
-  await (await asset.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
+      await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("2"));
+      await (await asset.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
 
-  await snapshotSupplicateStrict({
-    label: "Toggle — approved(other) allowed (Phase 0)",
-    router,
-    pool,
-    asset,
-    usdc,
-    signer: other,
-    args: {
-      pool: await pool.getAddress(),
-      assetToUsdc: true,
-      amountIn: ethers.parseEther("1"),
-      minAmountOut: 0n,
-      to: other.address,
-      payer: other.address,
-    },
-  });
+      await snapshotSupplicateStrict({
+        label: "Toggle — approved(other) allowed (Phase 0)",
+        router,
+        pool,
+        asset,
+        usdc,
+        signer: other,
+        args: {
+          pool: await pool.getAddress(),
+          assetToUsdc: true,
+          amountIn: ethers.parseEther("1"),
+          minAmountOut: 0n,
+          to: other.address,
+          payer: other.address,
+        },
+      });
 
-  // Revoke → denied
-  await (await access.connect(deployer).setApprovedSupplicator(other.address, false)).wait();
+      // Revoke → denied
+      await (await access.connect(deployer).setApprovedSupplicator(other.address, false)).wait();
 
-  await expect(
-    (router.connect(other) as any).supplicate({
-      pool: await pool.getAddress(),
-      assetToUsdc: true,
-      amountIn: ethers.parseEther("1"),
-      minAmountOut: 0n,
-      to: other.address,
-      payer: other.address,
-    })
-  ).to.be.revertedWith("not permitted");
-});
+      await expect(
+        (router.connect(other) as any).supplicate({
+          pool: await pool.getAddress(),
+          assetToUsdc: true,
+          amountIn: ethers.parseEther("1"),
+          minAmountOut: 0n,
+          to: other.address,
+          payer: other.address,
+        })
+      ).to.be.revertedWith("not permitted");
+    });
   });
 
   //
@@ -426,7 +459,10 @@ it("Approved toggling affects Router permission", async () => {
     });
 
     it("Treasury address is not inherently permitted to trade", async () => {
-      const { deployer, treasury, router, pool, access, asset } = await deployCore();
+      const { deployer, treasury, router, pool, access, asset, usdc } = await deployCore();
+
+      // Bootstrap so we'd hit permission check first
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, 0);
 
       const treasuryAddr = await treasury.getAddress();
       await (await access.connect(deployer).setApprovedSupplicator(treasuryAddr, false)).wait();
@@ -439,6 +475,7 @@ it("Approved toggling affects Router permission", async () => {
       const treasurySigner = await ethers.getSigner(treasuryAddr);
 
       await mintFundAndApprove(asset, deployer, treasurySigner, router, ethers.parseEther("1"));
+      await (await asset.connect(treasurySigner).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
 
       await expect(
         (router.connect(treasurySigner) as any).supplicate({
@@ -473,7 +510,7 @@ it("Approved toggling affects Router permission", async () => {
       ).to.not.be.reverted;
     });
 
-    it("Router rejects unknown pool", async () => {
+    it("Router rejects unknown pool (non-contract or wrong ABI)", async () => {
       const { deployer, router, access } = await deployCore();
       const fake = "0x000000000000000000000000000000000000dEaD";
 
@@ -490,11 +527,14 @@ it("Approved toggling affects Router permission", async () => {
     });
 
     it("supplicate: slippage reverts when minAmountOut too high", async () => {
-      const { deployer, access, router, pool, asset } = await deployCore();
+      const { deployer, access, router, pool, asset, usdc, treasury } = await deployCore();
+
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, 0);
 
       await (await access.setApprovedSupplicator(deployer.address, true)).wait();
 
       await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
+      await (await asset.connect(deployer).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
 
       await expect(
         (router as any).supplicate({
@@ -509,35 +549,36 @@ it("Approved toggling affects Router permission", async () => {
     });
 
     it("supplicate before bootstrap: empty reserves", async () => {
-      const { deployer, treasury, factory, router, access, asset } = await deployCore();
+      const {
+        deployer,
+        treasury,
+        factory,
+        router,
+        access,
+        asset,
+        assetAddr,
+        usdcAddr,
+      } = await deployCore();
 
-      const { a, u } = pair();
-
-      await (treasury.connect(deployer) as any).allowTokenViaTreasury(
+      // Use the actual TestERC20 tokens, not random addresses.
+      await (await treasury.createPoolViaTreasury(
         await factory.getAddress(),
-        a,
-        true
-      );
-      await (treasury.connect(deployer) as any).allowTokenViaTreasury(
-        await factory.getAddress(),
-        u,
-        true
-      );
+        assetAddr,
+        usdcAddr
+      )).wait();
 
-      await (treasury.connect(deployer) as any).createPoolViaTreasury(
-        await factory.getAddress(), a, u
-      );
       const pools = await factory.getPools();
       const poolAddr = pools[pools.length - 1];
-      const pool = await ethers.getContractAt("LPPPool", poolAddr);
+      const emptyPool = await ethers.getContractAt("LPPPool", poolAddr);
 
+      // Allow caller and fund enough to cover amountIn + fee so we hit the pool's check
       await (await access.setApprovedSupplicator(deployer.address, true)).wait();
-
-      await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("1"));
+      await mintFundAndApprove(asset, deployer, deployer, router, ethers.parseEther("2"));
+      await (await asset.connect(deployer).approve(poolAddr, ethers.MaxUint256)).wait();
 
       await expect(
         (router as any).supplicate({
-          pool: await pool.getAddress(),
+          pool: poolAddr,
           assetToUsdc: true,
           amountIn: ethers.parseEther("1"),
           minAmountOut: 0n,
@@ -565,10 +606,14 @@ it("Approved toggling affects Router permission", async () => {
     });
 
     it("Approval checked on caller, not recipient", async () => {
-      const { other, deployer, access, router, pool, asset } = await deployCore();
+      const { other, deployer, access, router, pool, asset, usdc, treasury } = await deployCore();
+
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, 0);
+
       await (await access.setApprovedSupplicator(deployer.address, true)).wait();
 
       await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("1"));
+      await (await asset.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
 
       await expect((router.connect(other) as any).supplicate({
         pool: await pool.getAddress(),

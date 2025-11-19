@@ -151,6 +151,8 @@ describe("Revocation enforcement (AccessManager-gated supplicate)", () => {
     ).to.be.revertedWith("not permitted");
   });
 
+
+
   it("re-approval restores access", async () => {
     const env: CoreEnv | any = await deployCore();
     const { deployer, other, access, router, pool, asset } = env;
@@ -158,27 +160,26 @@ describe("Revocation enforcement (AccessManager-gated supplicate)", () => {
     // Ensure pool has reserves so we don't hit "empty reserves"
     await seedPoolIfNeeded(env);
 
-    // fund 'other' and approvals for a tiny A->U supplication
-    await (
-      await asset
-        .connect(deployer)
-        .mint(other.address, ethers.parseEther("0.1"))
-    ).wait();
+    // ----- compute fee & fund payer with amountIn + fee -----
+    const amountIn = ethers.parseEther("0.1");
+    const BPS      = BigInt(await (router as any).BPS_DENOMINATOR());
+    const FEE_BPS  = BigInt(await (router as any).MCV_FEE_BPS());
+    const fee      = (amountIn * FEE_BPS) / BPS;   // fee pulled by router on input
+    const needed   = amountIn + fee;
+
+    // fund 'other' with enough for principal + fee and approve
+    await (await asset.connect(deployer).mint(other.address, needed)).wait();
     await approveForSupplicate(env, other, /* assetToUsdc */ true);
 
     // revoke, then re-approve
-    await (
-      await access.setApprovedSupplicator(other.address, false)
-    ).wait();
-    await (
-      await access.setApprovedSupplicator(other.address, true)
-    ).wait();
+    await (await access.setApprovedSupplicator(other.address, false)).wait();
+    await (await access.setApprovedSupplicator(other.address, true)).wait();
 
     // now it should succeed
     const tx = await (router.connect(other) as any).supplicate({
       pool: await pool.getAddress(),
       assetToUsdc: true,
-      amountIn: ethers.parseEther("0.1"),
+      amountIn,
       minAmountOut: 0n,
       to: other.address,
       payer: other.address,

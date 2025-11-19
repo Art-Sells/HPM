@@ -10,14 +10,14 @@ Object {
 }
 `;
 
-exports[`Quoter accuracy & sqrt pricing snapshots (Phase 0, no hooks) ASSET->USDC: quote aligns with execution; snapshots deltas & sqrt 2`] = `84557`;
+exports[`Quoter accuracy & sqrt pricing snapshots (Phase 0, no hooks) ASSET->USDC: quote aligns with execution; snapshots deltas & sqrt 2`] = `137502`;
 
 exports[`Quoter accuracy & sqrt pricing snapshots (Phase 0, no hooks) ASSET->USDC: quote aligns with execution; snapshots deltas & sqrt 3`] = `
 Object {
   "callerBalances": Object {
     "after": Object {
-      "a": "100000000000000000000000000",
-      "u": "100000000990099009900990099",
+      "a": "99999999998800000000000000",
+      "u": "100000000990089207037554083",
     },
     "before": Object {
       "a": "100000001000000000000000000",
@@ -25,16 +25,16 @@ Object {
     },
     "delta": Object {
       "a": "0",
-      "u": "990099009900990099",
+      "u": "990089207037554083",
     },
   },
   "direction": "ASSET->USDC",
   "execution": Object {
     "assetOut": "0",
-    "sumOut": "990099009900990099",
-    "usdcOut": "990099009900990099",
+    "sumOut": "990089207037554083",
+    "usdcOut": "990089207037554083",
   },
-  "gasUsed": "84557",
+  "gasUsed": "137502",
   "input": Object {
     "amountIn": "1000000000000000000",
     "minOut": "0",
@@ -62,12 +62,12 @@ Object {
       "sqrtAfter": "200000000000000000000",
       "sqrtBefore": "99",
     },
-    "routerStatic": "990099009900990099",
+    "routerStatic": "990089207037554083",
   },
   "reserves": Object {
     "after": Object {
-      "a": "101000000000000000000",
-      "u": "99009900990099009901",
+      "a": "101001000000000000000",
+      "u": "99009910792962445917",
     },
     "before": Object {
       "a": "100000000000000000000",
@@ -75,7 +75,7 @@ Object {
     },
     "delta": Object {
       "a": "0",
-      "u": "990099009900990099",
+      "u": "990089207037554083",
     },
   },
   "sqrtPriceX96": "79228162514264337593543950336",
@@ -122,7 +122,7 @@ Object {
     "sumOut": "9",
     "usdcOut": "9",
   },
-  "gasUsed": "84497",
+  "gasUsed": "103010",
   "input": Object {
     "amountIn": "10",
     "minOut": "0",
@@ -192,7 +192,7 @@ Object {
     "sumOut": "9",
     "usdcOut": "0",
   },
-  "gasUsed": "84530",
+  "gasUsed": "103059",
   "input": Object {
     "amountIn": "10",
     "minOut": "0",
@@ -250,31 +250,31 @@ Object {
 }
 `;
 
-exports[`Quoter accuracy & sqrt pricing snapshots (Phase 0, no hooks) USDC->ASSET: quote aligns with execution; snapshots deltas & sqrt 2`] = `84590`;
+exports[`Quoter accuracy & sqrt pricing snapshots (Phase 0, no hooks) USDC->ASSET: quote aligns with execution; snapshots deltas & sqrt 2`] = `137528`;
 
 exports[`Quoter accuracy & sqrt pricing snapshots (Phase 0, no hooks) USDC->ASSET: quote aligns with execution; snapshots deltas & sqrt 3`] = `
 Object {
   "callerBalances": Object {
     "after": Object {
-      "a": "100000000990099009900990099",
-      "u": "100000000000000000000000000",
+      "a": "100000000990089207037554083",
+      "u": "99999999998800000000000000",
     },
     "before": Object {
       "a": "100000000000000000000000000",
       "u": "100000001000000000000000000",
     },
     "delta": Object {
-      "a": "990099009900990099",
+      "a": "990089207037554083",
       "u": "0",
     },
   },
   "direction": "USDC->ASSET",
   "execution": Object {
-    "assetOut": "990099009900990099",
-    "sumOut": "990099009900990099",
+    "assetOut": "990089207037554083",
+    "sumOut": "990089207037554083",
     "usdcOut": "0",
   },
-  "gasUsed": "84590",
+  "gasUsed": "137528",
   "input": Object {
     "amountIn": "1000000000000000000",
     "minOut": "0",
@@ -302,19 +302,19 @@ Object {
       "sqrtAfter": "200000000000000000000",
       "sqrtBefore": "99",
     },
-    "routerStatic": "990099009900990099",
+    "routerStatic": "990089207037554083",
   },
   "reserves": Object {
     "after": Object {
-      "a": "99009900990099009901",
-      "u": "101000000000000000000",
+      "a": "99009910792962445917",
+      "u": "101001000000000000000",
     },
     "before": Object {
       "a": "100000000000000000000",
       "u": "100000000000000000000",
     },
     "delta": Object {
-      "a": "990099009900990099",
+      "a": "990089207037554083",
       "u": "0",
     },
   },
