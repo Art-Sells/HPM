@@ -1,5 +1,6 @@
 // test/MEV/test/QuoterMCV.spec.ts
 import hre from "hardhat";
+import { Wallet } from "ethers";
 const { ethers } = hre;
 
 import { expect } from "./shared/expect.ts";
@@ -42,6 +43,58 @@ type SwapParams = {
   payer: string;
 };
 
+const HARDHAT_DEFAULT_KEYS = [
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+  "0x59c6995e998f97a5a0044966f094538cde44d9b1db7cbd4c116d5b1f20ad1d8c",
+  "0x5de4111afa1a4b94908f83103eb1f1706367c2e652dfe2071fe3b043db68f6d7",
+  "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
+  "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c3c1709e1b",
+  "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d82edb26a47ae4aa21",
+  "0x4c2af20bcad0f27c8bd2c450b0e34ca2b30860639a42c4bb10368c110a02872e",
+  "0x4df5e159dea613d5adad66b6edb2c27e3c75d4e463f981c710ddd7db2398f722",
+  "0x6c2336b1f20da2691b6b6e7e0c9f9f5737de18f2d52b75bc93fdb6aa17f24a38",
+  "0x86b5b4cd3e90d6f3ebfdcfd3c5c1355512cb786c3f0adf4adc0ebc1b82b5f29c",
+  "0x8f94c6d344f07c035079847d9c7430f5bb5fd758d4c2dfd1f4cfad7d8c7b7fc8",
+  "0x13e44d20cffa55ab5fd5920ab2f83ad1223f3ff4596d68e46052130f715cbd16",
+  "0x7e62b5935fadd6a4cf4ef3a7606d5b9b5dffbe277d720e5b5066ef8dc8a3c75a",
+  "0x95ced938f7991cd0dfcb48f0a06a40fa1af46ebbb0bbe06c6bbfdceb68e1d52f",
+  "0x3e5e9111ae8bdc5cc18c0ba6f292f717532a64ef2ed4d131a6c26ee361f70a65",
+  "0x2aa5a6bb8cc609f5470a24e03c657b79892c129e2b2f787c06a4f5a27ab1f0b6",
+  "0x1c907fac9baa3319b8888dce884a6c2e3ef6a2fcf99b28729ff6cb298511fece",
+  "0xa3895aae2b206a4ef4d568b4f903fb9c4080a99ac8093835b7e2df17cc6bcbfb",
+  "0x0f4cfea9b63083812a0d8f030f84e9b03bc9425fc1469b7f8f1e8af0ea64a2c3",
+  "0x5e3bf5df1a5d39668b203464ac515cd6b023e7a0d7b49853060c294d9f4cc5aa",
+];
+
+const HARDHAT_DEFAULT_ADDRESSES = HARDHAT_DEFAULT_KEYS.map((pk) =>
+  new Wallet(pk).address.toLowerCase()
+);
+
+async function resolveWalletForSigner(signer: any): Promise<Wallet> {
+  if (typeof signer.privateKey === "string") {
+    return new Wallet(signer.privateKey, ethers.provider);
+  }
+
+  const targetAddr = (await signer.getAddress()).toLowerCase();
+  const accountsConfig = hre.network.config.accounts;
+
+  if (Array.isArray(accountsConfig)) {
+    for (const pk of accountsConfig as string[]) {
+      const wallet = new Wallet(pk);
+      if (wallet.address.toLowerCase() === targetAddr) {
+        return wallet.connect(ethers.provider);
+      }
+    }
+  }
+
+  const idx = HARDHAT_DEFAULT_ADDRESSES.indexOf(targetAddr);
+  if (idx >= 0) {
+    return new Wallet(HARDHAT_DEFAULT_KEYS[idx], ethers.provider);
+  }
+
+  throw new Error(`Unable to resolve private key for signer ${targetAddr}`);
+}
+
 async function buildSignedSwapTx(
   signer: any,
   router: LPPRouter,
@@ -50,13 +103,18 @@ async function buildSignedSwapTx(
 ): Promise<string> {
   const populated = await (router.connect(signer) as any).swap.populateTransaction(params);
   const signerAddr = typeof signer.getAddress === "function" ? await signer.getAddress() : signer.address;
-  const nonce = await ethers.provider.getTransactionCount(signerAddr);
+  const nonce = await ethers.provider.getTransactionCount(signerAddr, "pending");
   const feeData = await ethers.provider.getFeeData();
   const maxFeePerGas = feeData.maxFeePerGas ?? ethers.parseUnits("30", "gwei");
   const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas ?? ethers.parseUnits("2", "gwei");
   const network = await ethers.provider.getNetwork();
 
-  return await signer.signTransaction({
+  const wallet = await resolveWalletForSigner(signer);
+  if (!wallet) {
+    throw new Error("Unable to resolve private key for signer");
+  }
+
+  return await wallet.signTransaction({
     to: populated.to ?? (await router.getAddress()),
     data: populated.data,
     gasLimit: populated.gasLimit ?? gasLimit,
@@ -73,8 +131,8 @@ async function submitBundleAndExecuteSwap(
   harness: MevHarness,
   signedTx: string
 ): Promise<{ receipt: any; bundleHash: string; targetBlock: string }> {
-  const currentBlock = await ethers.provider.getBlockNumber();
-  const targetBlock = `0x${(currentBlock + 1).toString(16)}`;
+  const blockNum = await ethers.provider.getBlockNumber();
+  const targetBlock = `0x${(blockNum + 1).toString(16)}`;
 
   const bundleResult = await submitBundleViaMevShare(harness, {
     version: "v0.1",
@@ -84,10 +142,16 @@ async function submitBundleAndExecuteSwap(
 
   expect(bundleResult.success, "MEV relay should accept bundle").to.equal(true);
 
-  const txResponse = await ethers.provider.broadcastTransaction(signedTx);
-  const receipt = await txResponse.wait();
+  await ethers.provider.send("evm_setAutomine", [false]);
+  try {
+    const txResponse = await ethers.provider.broadcastTransaction(signedTx);
+    await ethers.provider.send("evm_mine", []);
+    const receipt = await txResponse.wait();
+    return { receipt, bundleHash: bundleResult.bundleHash, targetBlock };
+  } finally {
+    await ethers.provider.send("evm_setAutomine", [true]);
+  }
 
-  return { receipt, bundleHash: bundleResult.bundleHash, targetBlock };
 }
 
 async function staticQuoteRaw(

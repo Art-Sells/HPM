@@ -535,7 +535,7 @@ const __dirname = path.dirname(__filename);
 
 const MEV_BOOST_DIR = path.join(__dirname, "..", "mev-boost");
 const MEV_SHARE_DIR = path.join(__dirname, "..", "mev-share");
-const BIN_DIR = path.join(__dirname, "../../.mev-bin");
+const BIN_DIR = path.resolve(path.join(__dirname, "../../.mev-bin"));
 
 export interface MevHarness {
   mevBoostProcess?: ChildProcess;
@@ -591,7 +591,9 @@ async function buildMevBoost(): Promise<string> {
   }
 
   // Copy to bin dir for caching
-  await exec(`cp ${builtPath} ${binPath}`);
+  await fsp.copyFile(builtPath, binPath);
+  // Copy to bin dir for caching
+  await fsp.copyFile(builtPath, binPath);
   return binPath;
 }
 
@@ -623,7 +625,7 @@ async function buildTestCli(): Promise<string> {
     throw new Error("test-cli binary not found after build");
   }
 
-  await exec(`cp ${builtPath} ${binPath}`);
+  await exec(`cp "${builtPath}" "${binPath}"`);
   return binPath;
 }
 
