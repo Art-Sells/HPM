@@ -1,4 +1,4 @@
-// test/SwapMCV.spec.ts
+// test/MEV/test/SwapMCV.spec.ts
 import hre from "hardhat";
 const { ethers } = hre;
 
@@ -7,6 +7,11 @@ import {
   deployCore,
   setupLegacyMevOrbit,
   setupDualMevOrbit,
+  startMevHarness,
+  cleanupMevHarness,
+  submitBundleViaMevBoost,
+  submitBundleViaMevShare,
+  type MevHarness,
 } from "./helpers.ts";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -188,7 +193,32 @@ const canon = (() => {
  * Spec
  * ──────────────────────────────────────────────────────────────────────────── */
 describe("Swap (MCV)", () => {
-it("single-pool legacy orbit (pool×3) — ASSET->USDC, input-fees donated before each hop", async () => {
+  let harness: MevHarness | null = null;
+
+  before(async function () {
+    // Skip if Go is not installed (MEV tests require Go)
+    try {
+      const { exec } = require("child_process");
+      const { promisify } = require("util");
+      const execAsync = promisify(exec);
+      await execAsync("go version");
+    } catch {
+      this.skip(); // Skip all tests in this suite if Go is not available
+      return;
+    }
+
+    // Start MEV harness (mev-boost + mock relay)
+    const hardhatRpcUrl = hre.network.config.url || "http://127.0.0.1:8545";
+    harness = await startMevHarness(hardhatRpcUrl);
+  });
+
+  after(async () => {
+    if (harness) {
+      await cleanupMevHarness();
+    }
+  });
+
+  it("single-pool legacy orbit (pool×3) — ASSET->USDC, input-fees donated before each hop", async () => {
   const env = await deployCore();
   const { deployer, treasury, router, factory, pool, asset, usdc } = env;
 
@@ -226,25 +256,56 @@ it("single-pool legacy orbit (pool×3) — ASSET->USDC, input-fees donated befor
   const b0A = BigInt((await asset.balanceOf(deployer.address)).toString());
   const b0U = BigInt((await usdc.balanceOf(deployer.address)).toString());
 
-  // You can staticCall if you *already* approved (we did)
-  await (router.connect(deployer) as any).swap.staticCall({
-    startPool: poolAddr,
-    assetToUsdc: true,           // legacy mode uses this
-    amountIn,
-    minTotalAmountOut: 0n,
-    to: deployer.address,
-    payer: deployer.address,
-  });
+  if (!harness) {
+    throw new Error("MEV harness not initialized");
+  }
 
-  // EXECUTE
-  const receipt = await (await (router.connect(deployer) as any).swap({
+  // Encode swap call as transaction for bundle submission
+  const swapCalldata = router.interface.encodeFunctionData("swap", [{
     startPool: poolAddr,
     assetToUsdc: true,
     amountIn,
     minTotalAmountOut: 0n,
     to: deployer.address,
     payer: deployer.address,
-  })).wait();
+  }]);
+
+  // Build transaction for bundle
+  const nonce = await ethers.provider.getTransactionCount(deployer.address);
+  const gasPrice = await ethers.provider.getFeeData();
+  const tx = {
+    to: await router.getAddress(),
+    data: swapCalldata,
+    nonce,
+    gasLimit: 500000n,
+    gasPrice: gasPrice.gasPrice || 20000000000n,
+    value: 0n,
+    chainId: (await ethers.provider.getNetwork()).chainId,
+  };
+
+  // Sign transaction
+  const signedTx = await deployer.signTransaction(tx);
+  const txHex = signedTx.serialized;
+
+  // Get current block number
+  const currentBlock = await ethers.provider.getBlockNumber();
+  const targetBlock = `0x${(currentBlock + 1).toString(16)}`;
+
+  // Submit bundle via mev-boost
+  const bundleResult = await submitBundleViaMevBoost(
+    harness,
+    [txHex],
+    targetBlock
+  );
+
+  // Assert relay accepted the bundle
+  expect(bundleResult.success, "MEV relay should accept bundle").to.equal(true);
+  expect(bundleResult.bundleHash.length, "Bundle hash should be returned").to.be.greaterThan(0);
+
+  // Execute the transaction (in real flow, relay/builder would execute; for testing we execute directly)
+  // This simulates the bundle being included in a block
+  const txResponse = await deployer.sendTransaction(tx);
+  const receipt = await txResponse.wait();
 
   // AFTER
   const r1a = BigInt((await pool.reserveAsset()).toString());
