@@ -1,5 +1,6 @@
 // test/MEV/test/SwapMCV.spec.ts
 import hre from "hardhat";
+import { Wallet } from "ethers";
 const { ethers } = hre;
 
 import { expect } from "./shared/expect.ts";
@@ -13,6 +14,7 @@ import {
   submitBundleViaMevShare,
   type MevHarness,
 } from "./helpers.ts";
+import type { LPPRouter } from "../../../typechain-types/index.ts";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Constants & Interfaces
@@ -28,6 +30,154 @@ const DENOM          = 10_000n;
 /* ────────────────────────────────────────────────────────────────────────────
  * Local helpers
  * ──────────────────────────────────────────────────────────────────────────── */
+const HARDHAT_DEFAULT_KEYS = [
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+  "0x59c6995e998f97a5a0044966f094538cde44d9b1db7cbd4c116d5b1f20ad1d8c",
+  "0x5de4111afa1a4b94908f83103eb1f1706367c2e652dfe2071fe3b043db68f6d7",
+  "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
+  "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c3c1709e1b",
+  "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d82edb26a47ae4aa21",
+  "0x4c2af20bcad0f27c8bd2c450b0e34ca2b30860639a42c4bb10368c110a02872e",
+  "0x4df5e159dea613d5adad66b6edb2c27e3c75d4e463f981c710ddd7db2398f722",
+  "0x6c2336b1f20da2691b6b6e7e0c9f9f5737de18f2d52b75bc93fdb6aa17f24a38",
+  "0x86b5b4cd3e90d6f3ebfdcfd3c5c1355512cb786c3f0adf4adc0ebc1b82b5f29c",
+  "0x8f94c6d344f07c035079847d9c7430f5bb5fd758d4c2dfd1f4cfad7d8c7b7fc8",
+  "0x13e44d20cffa55ab5fd5920ab2f83ad1223f3ff4596d68e46052130f715cbd16",
+  "0x7e62b5935fadd6a4cf4ef3a7606d5b9b5dffbe277d720e5b5066ef8dc8a3c75a",
+  "0x95ced938f7991cd0dfcb48f0a06a40fa1af46ebbb0bbe06c6bbfdceb68e1d52f",
+  "0x3e5e9111ae8bdc5cc18c0ba6f292f717532a64ef2ed4d131a6c26ee361f70a65",
+  "0x2aa5a6bb8cc609f5470a24e03c657b79892c129e2b2f787c06a4f5a27ab1f0b6",
+  "0x1c907fac9baa3319b8888dce884a6c2e3ef6a2fcf99b28729ff6cb298511fece",
+  "0xa3895aae2b206a4ef4d568b4f903fb9c4080a99ac8093835b7e2df17cc6bcbfb",
+  "0x0f4cfea9b63083812a0d8f030f84e9b03bc9425fc1469b7f8f1e8af0ea64a2c3",
+  "0x5e3bf5df1a5d39668b203464ac515cd6b023e7a0d7b49853060c294d9f4cc5aa",
+];
+
+const HARDHAT_DEFAULT_ADDRESSES = HARDHAT_DEFAULT_KEYS.map((pk) =>
+  new Wallet(pk).address.toLowerCase()
+);
+
+async function resolveWalletForSigner(signer: any): Promise<Wallet> {
+  if (typeof signer.privateKey === "string") {
+    return new Wallet(signer.privateKey, ethers.provider);
+  }
+
+  const targetAddr = (await signer.getAddress()).toLowerCase();
+  const accountsConfig = hre.network.config.accounts;
+
+  if (Array.isArray(accountsConfig)) {
+    for (const pk of accountsConfig as string[]) {
+      const wallet = new Wallet(pk);
+      if (wallet.address.toLowerCase() === targetAddr) {
+        return wallet.connect(ethers.provider);
+      }
+    }
+  }
+
+  const idx = HARDHAT_DEFAULT_ADDRESSES.indexOf(targetAddr);
+  if (idx >= 0) {
+    return new Wallet(HARDHAT_DEFAULT_KEYS[idx], ethers.provider);
+  }
+
+  throw new Error(`Unable to resolve private key for signer ${targetAddr}`);
+}
+
+async function buildSignedSwapTx(
+  signer: any,
+  router: LPPRouter,
+  params: {
+    startPool: string;
+    assetToUsdc: boolean;
+    amountIn: bigint;
+    minTotalAmountOut: bigint;
+    to: string;
+    payer: string;
+  },
+  gasLimit: bigint = 750_000n
+): Promise<string> {
+  const populated = await (router.connect(signer) as any).swap.populateTransaction(params);
+  const signerAddr = typeof signer.getAddress === "function" ? await signer.getAddress() : signer.address;
+  const nonce = await ethers.provider.getTransactionCount(signerAddr, "pending");
+  const feeData = await ethers.provider.getFeeData();
+  const maxFeePerGas = feeData.maxFeePerGas ?? ethers.parseUnits("30", "gwei");
+  const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas ?? ethers.parseUnits("2", "gwei");
+  const network = await ethers.provider.getNetwork();
+
+  const wallet = await resolveWalletForSigner(signer);
+
+  return await wallet.signTransaction({
+    to: populated.to ?? (await router.getAddress()),
+    data: populated.data,
+    gasLimit: populated.gasLimit ?? gasLimit,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    nonce,
+    type: 2,
+    value: populated.value ?? 0n,
+    chainId: network.chainId,
+  });
+}
+
+type BundleMode = "boost" | "share";
+
+async function submitBundleAndExecuteSwap(
+  harness: MevHarness,
+  signedTx: string,
+  mode: BundleMode = "boost"
+): Promise<{ receipt: any; bundleHash: string; targetBlock: string }> {
+  const currentBlock = await ethers.provider.getBlockNumber();
+  const targetBlock = `0x${(currentBlock + 1).toString(16)}`;
+
+  let bundleResult:
+    | { bundleHash: string; success: boolean }
+    | undefined;
+
+  if (mode === "share") {
+    bundleResult = await submitBundleViaMevShare(harness, {
+      version: "v0.1",
+      inclusion: { block: targetBlock },
+      body: [{ tx: signedTx, canRevert: false }],
+    });
+  } else {
+    bundleResult = await submitBundleViaMevBoost(harness, [signedTx], targetBlock);
+  }
+
+  expect(bundleResult.success, "MEV relay should accept bundle").to.equal(true);
+
+  await ethers.provider.send("evm_setAutomine", [false]);
+  try {
+    const txResponse = await ethers.provider.broadcastTransaction(signedTx);
+    await ethers.provider.send("evm_mine", []);
+    const receipt = await txResponse.wait();
+    return { receipt, bundleHash: bundleResult.bundleHash, targetBlock };
+  } finally {
+    await ethers.provider.send("evm_setAutomine", [true]);
+  }
+}
+
+async function executeSwapViaMev(
+  harness: MevHarness | null,
+  signer: any,
+  router: LPPRouter,
+  params: {
+    startPool: string;
+    assetToUsdc: boolean;
+    amountIn: bigint;
+    minTotalAmountOut: bigint;
+    to: string;
+    payer: string;
+  },
+  mode: BundleMode = "boost"
+): Promise<{ receipt: any; bundleHash: string }> {
+  if (!harness) {
+    throw new Error("MEV harness not initialized");
+  }
+
+  const signedTx = await buildSignedSwapTx(signer, router, params);
+  const { receipt, bundleHash } = await submitBundleAndExecuteSwap(harness, signedTx, mode);
+  return { receipt, bundleHash };
+}
+
 // alias names used later in assertions
 const TREASURY_CUT_BPS = TREASURY_BPS;
 const POOLS_CUT_BPS    = POOLS_DONATE_BPS;
@@ -207,8 +357,8 @@ describe("Swap (MCV)", () => {
       return;
     }
 
-    // Start MEV harness (mev-boost + mock relay)
-    const hardhatRpcUrl = hre.network.config.url || "http://127.0.0.1:8545";
+    const netCfg = hre.network.config as { url?: string };
+    const hardhatRpcUrl = netCfg?.url ?? "http://127.0.0.1:8545";
     harness = await startMevHarness(hardhatRpcUrl);
   });
 
@@ -260,52 +410,24 @@ describe("Swap (MCV)", () => {
     throw new Error("MEV harness not initialized");
   }
 
-  // Encode swap call as transaction for bundle submission
-  const swapCalldata = router.interface.encodeFunctionData("swap", [{
+  const swapParams = {
     startPool: poolAddr,
     assetToUsdc: true,
     amountIn,
     minTotalAmountOut: 0n,
     to: deployer.address,
     payer: deployer.address,
-  }]);
-
-  // Build transaction for bundle
-  const nonce = await ethers.provider.getTransactionCount(deployer.address);
-  const gasPrice = await ethers.provider.getFeeData();
-  const tx = {
-    to: await router.getAddress(),
-    data: swapCalldata,
-    nonce,
-    gasLimit: 500000n,
-    gasPrice: gasPrice.gasPrice || 20000000000n,
-    value: 0n,
-    chainId: (await ethers.provider.getNetwork()).chainId,
   };
 
-  // Sign transaction
-  const signedTx = await deployer.signTransaction(tx);
-  const txHex = signedTx.serialized;
-
-  // Get current block number
-  const currentBlock = await ethers.provider.getBlockNumber();
-  const targetBlock = `0x${(currentBlock + 1).toString(16)}`;
-
-  // Submit bundle via mev-boost
-  const bundleResult = await submitBundleViaMevBoost(
+  const { receipt, bundleHash } = await executeSwapViaMev(
     harness,
-    [txHex],
-    targetBlock
+    deployer,
+    router as LPPRouter,
+    swapParams,
+    "boost"
   );
 
-  // Assert relay accepted the bundle
-  expect(bundleResult.success, "MEV relay should accept bundle").to.equal(true);
-  expect(bundleResult.bundleHash.length, "Bundle hash should be returned").to.be.greaterThan(0);
-
-  // Execute the transaction (in real flow, relay/builder would execute; for testing we execute directly)
-  // This simulates the bundle being included in a block
-  const txResponse = await deployer.sendTransaction(tx);
-  const receipt = await txResponse.wait();
+  expect(bundleHash.length, "Bundle hash should be returned").to.be.greaterThan(0);
 
   // AFTER
   const r1a = BigInt((await pool.reserveAsset()).toString());
@@ -392,6 +514,10 @@ it("single-pool legacy orbit (pool×3) — USDC->ASSET, input-fees donated befor
   const b0A = BigInt((await asset.balanceOf(deployer.address)).toString());
   const b0U = BigInt((await usdc.balanceOf(deployer.address)).toString());
 
+  if (!harness) {
+    throw new Error("MEV harness not initialized");
+  }
+
   // Optional staticCall once approvals are set
   await (router.connect(deployer) as any).swap.staticCall({
     startPool: poolAddr,
@@ -402,15 +528,21 @@ it("single-pool legacy orbit (pool×3) — USDC->ASSET, input-fees donated befor
     payer: deployer.address,
   });
 
-  // EXECUTE
-  const receipt = await (await (router.connect(deployer) as any).swap({
+  const swapParams = {
     startPool: poolAddr,
     assetToUsdc: false,
     amountIn,
     minTotalAmountOut: 0n,
     to: deployer.address,
     payer: deployer.address,
-  })).wait();
+  };
+
+  const { receipt } = await executeSwapViaMev(
+    harness,
+    deployer,
+    router as LPPRouter,
+    swapParams
+  );
 
   // AFTER
   const r1a = BigInt((await pool.reserveAsset()).toString());
@@ -505,15 +637,25 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
   const t0A = BigInt((await asset.balanceOf(await treasury.getAddress())).toString());
   const t0U = BigInt((await usdc.balanceOf(await treasury.getAddress())).toString());
 
-  // EXECUTE (USDC-in on all 3 hops; legacy mode honors assetToUsdc=false)
-  const receipt = await (await (router.connect(deployer) as any).swap({
+  if (!harness) {
+    throw new Error("MEV harness not initialized");
+  }
+
+  const swapParams = {
     startPool: startPoolAddr,
     assetToUsdc: false,
     amountIn,
     minTotalAmountOut: 0n,
     to: deployer.address,
     payer: deployer.address,
-  })).wait();
+  };
+
+  const { receipt } = await executeSwapViaMev(
+    harness,
+    deployer,
+    router as LPPRouter,
+    swapParams
+  );
 
   // AFTER
   const pA1 = await snap(poolA);
@@ -625,15 +767,24 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
         }
       }
 
+      if (!harness) {
+        throw new Error("MEV harness not initialized");
+      }
+
       const before1 = await snapshot();
-      await (router.connect(deployer) as any).swap({
-        startPool,
-        assetToUsdc: true, // ignored for dual-orbit; cursor drives direction
-        amountIn,
-        minTotalAmountOut: 0n,
-        to: deployer.address,
-        payer: deployer.address,
-      });
+      await executeSwapViaMev(
+        harness,
+        deployer,
+        router as LPPRouter,
+        {
+          startPool,
+          assetToUsdc: true, // ignored; orbit drives direction
+          amountIn,
+          minTotalAmountOut: 0n,
+          to: deployer.address,
+          payer: deployer.address,
+        }
+      );
       const after1  = await snapshot();
       const deltas1 = after1.pools.map((aft, i) => {
         const bef = before1.pools[i];
@@ -665,14 +816,19 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
       }
 
       const before2 = await snapshot();
-      await (router.connect(deployer) as any).swap({
-        startPool,
-        assetToUsdc: false, // ignored; POS implies USDC-in
-        amountIn: amountIn2,
-        minTotalAmountOut: 0n,
-        to: deployer.address,
-        payer: deployer.address,
-      });
+      await executeSwapViaMev(
+        harness,
+        deployer,
+        router as LPPRouter,
+        {
+          startPool,
+          assetToUsdc: false,
+          amountIn: amountIn2,
+          minTotalAmountOut: 0n,
+          to: deployer.address,
+          payer: deployer.address,
+        }
+      );
       const after2  = await snapshot();
       const deltas2 = after2.pools.map((aft, i) => {
         const bef = before2.pools[i];
@@ -739,15 +895,24 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
         }
       }
 
+      if (!harness) {
+        throw new Error("MEV harness not initialized");
+      }
+
       const before1 = await snapshot();
-      await (router.connect(deployer) as any).swap({
-        startPool,
-        assetToUsdc: false,
-        amountIn: amountIn1,
-        minTotalAmountOut: 0n,
-        to: deployer.address,
-        payer: deployer.address,
-      });
+      await executeSwapViaMev(
+        harness,
+        deployer,
+        router as LPPRouter,
+        {
+          startPool,
+          assetToUsdc: false,
+          amountIn: amountIn1,
+          minTotalAmountOut: 0n,
+          to: deployer.address,
+          payer: deployer.address,
+        }
+      );
       const after1  = await snapshot();
       const deltas1 = after1.pools.map((aft, i) => {
         const bef = before1.pools[i];
@@ -779,14 +944,19 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
       }
 
       const before2 = await snapshot();
-      await (router.connect(deployer) as any).swap({
-        startPool,
-        assetToUsdc: true,
-        amountIn: amountIn2,
-        minTotalAmountOut: 0n,
-        to: deployer.address,
-        payer: deployer.address,
-      });
+      await executeSwapViaMev(
+        harness,
+        deployer,
+        router as LPPRouter,
+        {
+          startPool,
+          assetToUsdc: true,
+          amountIn: amountIn2,
+          minTotalAmountOut: 0n,
+          to: deployer.address,
+          payer: deployer.address,
+        }
+      );
       const after2  = await snapshot();
       const deltas2 = after2.pools.map((aft, i) => {
         const bef = before2.pools[i];

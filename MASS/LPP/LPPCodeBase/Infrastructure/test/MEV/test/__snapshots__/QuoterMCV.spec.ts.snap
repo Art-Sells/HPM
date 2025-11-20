@@ -5,7 +5,7 @@ Object {
   "amountIn": "1000000000000000000",
   "assetToUsdc": true,
   "bundle": Object {
-    "hash": "0xd314cc0211006262fc708075d23184c5de3ec7c258b634871bd3aba471c2f545",
+    "hash": "0x0cf4aa9b8013f57b34d83cfa9d0919a009cb6c4ca69bd301f38571b10aef7e96",
     "protocol": "mev-share",
   },
   "execution": Object {
@@ -96,7 +96,7 @@ Object {
   "amountIn": "1000000000000000000",
   "assetToUsdc": false,
   "bundle": Object {
-    "hash": "0x6aa9d082330c2d5530585a633afcb374ec965b02e8e1b1bf9536f12528583b6a",
+    "hash": "0xa7f12c4674a28a87154993de403898c8f0316179bebf1785650597320c4bcef7",
     "protocol": "mev-share",
   },
   "execution": Object {
@@ -186,8 +186,8 @@ Object {
 exports[`MCV — searcher-style quoting (no Quoter; eth_call only) dual-orbit flips: after first call (NEG/ASSET-in) → POS/USDC-in; static & deltas snapshot 1`] = `
 Object {
   "bundleHashes": Object {
-    "neg": "0x8ce9f9fbffb3c508761403ead305f47a30cb329059baf2204c06ab4e2bc1a6a0",
-    "pos": "0xe025cbfe2193981f201af3d2ee43ac243e38861c44bb92d7fba64ca33093c894",
+    "neg": "0xfe355bcf8d5ba9f1c4b2f7643ca415d51842c52033b51441e02e759a79e92736",
+    "pos": "0x4aa47f9ec851a1a2554384602312ac5411ce992e000f08a23b6fb16fcf1d8485",
   },
   "flip": "NEG→POS",
   "hops": 3,
