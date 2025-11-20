@@ -533,8 +533,8 @@ async function pathExists(target: string): Promise<boolean> {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const MEV_BOOST_DIR = path.join(__dirname, "../../mev-boost");
-const MEV_SHARE_DIR = path.join(__dirname, "../../mev-share");
+const MEV_BOOST_DIR = path.join(__dirname, "..", "mev-boost");
+const MEV_SHARE_DIR = path.join(__dirname, "..", "mev-share");
 const BIN_DIR = path.join(__dirname, "../../.mev-bin");
 
 export interface MevHarness {
@@ -633,19 +633,57 @@ async function startMockRelay(port: number): Promise<ChildProcess> {
   // In a full implementation, we'd spawn the Go mock relay from server/mock
   // For Hardhat integration, we can use a Node.js HTTP server that proxies to Hardhat
 
+  await fsp.mkdir(BIN_DIR, { recursive: true });
+
   const relayScript = `
     const http = require('http');
-    const { spawn } = require('child_process');
+    const crypto = require('crypto');
     
     const server = http.createServer((req, res) => {
-      // Mock relay endpoints
-      if (req.url === '/eth/v1/builder/status') {
+      const ok = (payload) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok' }));
-      } else {
+        res.end(JSON.stringify(payload));
+      };
+
+      const notFound = () => {
         res.writeHead(404);
         res.end();
+      };
+
+      if (req.method === 'GET' && req.url === '/eth/v1/builder/status') {
+        ok({ status: 'ok' });
+        return;
       }
+
+      if (req.method === 'POST' && req.url === '/eth/v1/builder/blinded_blocks') {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => {
+          ok({
+            status: 'accepted',
+            bundleHash: '0x' + crypto.randomBytes(32).toString('hex'),
+          });
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && req.url === '/mev_sendBundle') {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => {
+          ok({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              bundleHash: '0x' + crypto.randomBytes(32).toString('hex'),
+              status: 'ok',
+            },
+          });
+        });
+        return;
+      }
+
+      notFound();
     });
     
     server.listen(${port}, () => {
@@ -781,11 +819,9 @@ export async function submitBundleViaMevShare(
     id: 1,
     method: "mev_sendBundle",
     params: [bundle],
-  };
-
-  // In a real setup, this would go to mev-share node
-  // For now, we'll proxy through mev-boost or directly to Hardhat
-  const response = await fetch(harness.hardhatRpcUrl, {
+  };  // In this harness, send to the mock relay which mimics mev-share behavior
+  const relayEndpoint = "http://127.0.0.1:" + harness.relayPort + "/mev_sendBundle";
+  const response = await fetch(relayEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(rpcRequest),
