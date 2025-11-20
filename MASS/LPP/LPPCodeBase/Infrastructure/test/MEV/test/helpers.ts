@@ -1,4 +1,4 @@
-// test/helpers.ts
+// test/MEV/test/helpers.ts
 import hre from "hardhat";
 const { ethers } = hre;
 
@@ -10,6 +10,10 @@ import type {
   LPPPool,
   TestERC20,
 } from "../../../typechain-types";
+
+function toMutable<T>(xs: readonly T[] | T[]): T[] {
+  return Array.from(xs as any);
+}
 
 /** Common constants for bootstrap in tests */
 export const A = ethers.parseEther("100");
@@ -170,7 +174,8 @@ export async function ensureNPools(
       )
     ).wait();
   }
-  return await factory.getPools();
+  const pools = await factory.getPools();
+  return toMutable(pools);
 }
 
 /** Ensure exactly 6 pools exist (returns first 6) */
@@ -303,8 +308,8 @@ export async function setupLegacyMevOrbit(
 ): Promise<LegacyMevOrbitSetup> {
   const { factory, treasury, asset, usdc, router, assetAddr, usdcAddr } = env;
   await ensureNPools(factory, treasury, assetAddr, usdcAddr, 3);
-  const allPools = await factory.getPools();
-  const orbit = allPools.slice(0, 3) as [string, string, string];
+  const allPools = toMutable(await factory.getPools());
+  const orbit: [string, string, string] = [allPools[0], allPools[1], allPools[2]];
   const offsets = opts?.offsets ?? [-500, -500, -500];
 
   for (let i = 0; i < orbit.length; i++) {
@@ -326,11 +331,12 @@ export async function setupDualMevOrbit(
 ): Promise<DualMevOrbitSetup> {
   const { factory, treasury, asset, usdc, router, assetAddr, usdcAddr } = env;
   await ensureNPools(factory, treasury, assetAddr, usdcAddr, 6);
-  const subset = (await factory.getPools()).slice(0, 6);
+  const allPools = toMutable(await factory.getPools());
+  const subset = allPools.slice(0, 6);
   if (subset.length < 6) throw new Error("setupDualMevOrbit requires 6 pools");
 
-  const negOrbit = subset.slice(0, 3) as [string, string, string];
-  const posOrbit = subset.slice(3, 6) as [string, string, string];
+  const negOrbit: [string, string, string] = [subset[0], subset[1], subset[2]];
+  const posOrbit: [string, string, string] = [subset[3], subset[4], subset[5]];
 
   const negOffsets = opts?.negOffsets ?? [-500, -500, -500];
   const posOffsets = opts?.posOffsets ?? [500, 500, 500];
@@ -500,4 +506,343 @@ export async function runSwap(params: {
 export async function getReservesLike(pool: LPPPool) {
   const [rA, rU] = await Promise.all([pool.reserveAsset(), pool.reserveUsdc()]);
   return { reserveAsset: BigInt(rA.toString()), reserveUsdc: BigInt(rU.toString()) };
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * MEV Harness: Build & spawn mev-boost/mev-share processes
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+import { spawn, exec as execCallback, ChildProcess } from "child_process";
+import * as fs from "fs";
+import { promises as fsp } from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
+import { promisify } from "util";
+
+const exec = promisify(execCallback);
+
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await fsp.access(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const MEV_BOOST_DIR = path.join(__dirname, "..", "mev-boost");
+const MEV_SHARE_DIR = path.join(__dirname, "..", "mev-share");
+const BIN_DIR = path.resolve(path.join(__dirname, "../../.mev-bin"));
+
+export interface MevHarness {
+  mevBoostProcess?: ChildProcess;
+  mockRelayProcess?: ChildProcess;
+  mevBoostPort: number;
+  relayPort: number;
+  hardhatRpcUrl: string;
+  cleanup: () => Promise<void>;
+}
+
+let harnessInstance: MevHarness | null = null;
+
+/** Ensure Go is installed */
+async function checkGoInstalled(): Promise<boolean> {
+  try {
+    await exec("go version");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Build mev-boost binary */
+async function buildMevBoost(): Promise<string> {
+  const binPath = path.join(BIN_DIR, "mev-boost");
+  if (await pathExists(binPath)) {
+    return binPath;
+  }
+
+  if (!(await checkGoInstalled())) {
+    throw new Error("Go is not installed. Please install Go 1.18+ to run MEV tests.");
+  }
+
+  if (!(await pathExists(MEV_BOOST_DIR))) {
+    throw new Error(`mev-boost directory not found at ${MEV_BOOST_DIR}`);
+  }
+
+  await fsp.mkdir(BIN_DIR, { recursive: true });
+
+  console.log("Building mev-boost...");
+  const { stdout, stderr } = await exec("make build", {
+    cwd: MEV_BOOST_DIR,
+    env: { ...process.env, CGO_ENABLED: "0" },
+  });
+
+  if (stderr && !stderr.includes("warning")) {
+    console.warn("mev-boost build warnings:", stderr);
+  }
+
+  const builtPath = path.join(MEV_BOOST_DIR, "mev-boost");
+  if (!(await pathExists(builtPath))) {
+    throw new Error("mev-boost binary not found after build");
+  }
+
+  // Copy to bin dir for caching
+  await fsp.copyFile(builtPath, binPath);
+  // Copy to bin dir for caching
+  await fsp.copyFile(builtPath, binPath);
+  return binPath;
+}
+
+/** Build test-cli binary */
+async function buildTestCli(): Promise<string> {
+  const binPath = path.join(BIN_DIR, "test-cli");
+  if (await pathExists(binPath)) {
+    return binPath;
+  }
+
+  if (!(await checkGoInstalled())) {
+    throw new Error("Go is not installed. Please install Go 1.18+ to run MEV tests.");
+  }
+
+  await fsp.mkdir(BIN_DIR, { recursive: true });
+
+  console.log("Building test-cli...");
+  const { stderr } = await exec("make build-testcli", {
+    cwd: MEV_BOOST_DIR,
+    env: { ...process.env, CGO_ENABLED: "0" },
+  });
+
+  if (stderr && !stderr.includes("warning")) {
+    console.warn("test-cli build warnings:", stderr);
+  }
+
+  const builtPath = path.join(MEV_BOOST_DIR, "test-cli");
+  if (!(await pathExists(builtPath))) {
+    throw new Error("test-cli binary not found after build");
+  }
+
+  await exec(`cp "${builtPath}" "${binPath}"`);
+  return binPath;
+}
+
+/** Start mock relay (HTTP server that mev-boost connects to) */
+async function startMockRelay(port: number): Promise<ChildProcess> {
+  // For now, we'll use a simple HTTP server that responds to mev-boost requests
+  // In a full implementation, we'd spawn the Go mock relay from server/mock
+  // For Hardhat integration, we can use a Node.js HTTP server that proxies to Hardhat
+
+  await fsp.mkdir(BIN_DIR, { recursive: true });
+
+  const relayScript = `
+    const http = require('http');
+    const crypto = require('crypto');
+    
+    const server = http.createServer((req, res) => {
+      const ok = (payload) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(payload));
+      };
+
+      const notFound = () => {
+        res.writeHead(404);
+        res.end();
+      };
+
+      if (req.method === 'GET' && req.url === '/eth/v1/builder/status') {
+        ok({ status: 'ok' });
+        return;
+      }
+
+      if (req.method === 'POST' && req.url === '/eth/v1/builder/blinded_blocks') {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => {
+          ok({
+            status: 'accepted',
+            bundleHash: '0x' + crypto.randomBytes(32).toString('hex'),
+          });
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && req.url === '/mev_sendBundle') {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => {
+          ok({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              bundleHash: '0x' + crypto.randomBytes(32).toString('hex'),
+              status: 'ok',
+            },
+          });
+        });
+        return;
+      }
+
+      notFound();
+    });
+    
+    server.listen(${port}, () => {
+      console.log('Mock relay listening on port ${port}');
+    });
+  `;
+
+  const scriptPath = path.join(BIN_DIR, "mock-relay.js");
+  fs.writeFileSync(scriptPath, relayScript);
+
+  return spawn("node", [scriptPath], {
+    stdio: ["ignore", "pipe", "pipe"],
+    cwd: BIN_DIR,
+  });
+}
+
+/** Start mev-boost process pointing at Hardhat + mock relay */
+async function startMevBoost(
+  hardhatRpcUrl: string,
+  relayUrl: string,
+  port: number = 18550
+): Promise<ChildProcess> {
+  const mevBoostBin = await buildMevBoost();
+
+  // mev-boost flags: point at relay, disable relay checks for testing
+  const args = [
+    "-relay-check=false", // Disable for testing
+    `-relay=${relayUrl}`,
+    `-addr=:${port}`,
+    "-loglevel=info",
+  ];
+
+  return spawn(mevBoostBin, args, {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      // Point execution layer at Hardhat
+      ENGINE_API_URL: hardhatRpcUrl,
+    },
+  });
+}
+
+/** Start MEV harness: Hardhat + mev-boost + mock relay */
+export async function startMevHarness(
+  hardhatRpcUrl: string = "http://127.0.0.1:8545",
+  options?: {
+    mevBoostPort?: number;
+    relayPort?: number;
+  }
+): Promise<MevHarness> {
+  if (harnessInstance) {
+    return harnessInstance;
+  }
+
+  const relayPort = options?.relayPort ?? 18551;
+  const mevBoostPort = options?.mevBoostPort ?? 18550;
+  const relayUrl = `http://127.0.0.1:${relayPort}`;
+
+  // Start mock relay
+  const mockRelayProcess = await startMockRelay(relayPort);
+
+  // Wait a bit for relay to start
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  // Start mev-boost
+  const mevBoostProcess = await startMevBoost(hardhatRpcUrl, relayUrl, mevBoostPort);
+
+  // Wait for mev-boost to start
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  harnessInstance = {
+    mevBoostProcess,
+    mockRelayProcess,
+    mevBoostPort,
+    relayPort,
+    hardhatRpcUrl,
+    cleanup: async () => {
+      if (mevBoostProcess && !mevBoostProcess.killed) {
+        mevBoostProcess.kill();
+      }
+      if (mockRelayProcess && !mockRelayProcess.killed) {
+        mockRelayProcess.kill();
+      }
+      harnessInstance = null;
+    },
+  };
+
+  return harnessInstance;
+}
+
+/** Submit bundle via mev-boost API (simulating builder submission) */
+export async function submitBundleViaMevBoost(
+  harness: MevHarness,
+  transactions: string[],
+  blockNumber: string
+): Promise<{ bundleHash: string; success: boolean }> {
+  // mev-boost uses Builder API; for testing we'll use test-cli or direct HTTP
+  // This is a simplified version - full implementation would use the Builder API spec
+
+  const response = await fetch(`http://127.0.0.1:${harness.mevBoostPort}/eth/v1/builder/blinded_blocks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      transactions,
+      block_number: blockNumber,
+    }),
+  });
+
+  if (!response.ok) {
+    return { bundleHash: "", success: false };
+  }
+
+  const data = await response.json();
+  return { bundleHash: data.bundleHash || "", success: true };
+}
+
+/** Submit bundle via mev-share JSON-RPC format */
+export async function submitBundleViaMevShare(
+  harness: MevHarness,
+  bundle: {
+    version: string;
+    inclusion: { block: string; maxBlock?: string };
+    body: Array<{ tx: string; canRevert?: boolean } | { hash: string }>;
+    validity?: any;
+    privacy?: any;
+  }
+): Promise<{ bundleHash: string; success: boolean }> {
+  // mev-share uses mev_sendBundle JSON-RPC method
+  // For testing, we'll send to a mock mev-share node or directly to builder
+
+  const rpcRequest = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "mev_sendBundle",
+    params: [bundle],
+  };  // In this harness, send to the mock relay which mimics mev-share behavior
+  const relayEndpoint = "http://127.0.0.1:" + harness.relayPort + "/mev_sendBundle";
+  const response = await fetch(relayEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(rpcRequest),
+  });
+
+  if (!response.ok) {
+    return { bundleHash: "", success: false };
+  }
+
+  const data = await response.json();
+  return {
+    bundleHash: data.result?.bundleHash || "",
+    success: !data.error,
+  };
+}
+
+/** Cleanup MEV harness (kill processes) */
+export async function cleanupMevHarness(): Promise<void> {
+  if (harnessInstance) {
+    await harnessInstance.cleanup();
+  }
 }

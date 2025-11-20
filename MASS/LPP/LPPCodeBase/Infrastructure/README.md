@@ -170,7 +170,7 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
 
 > Focus: prove that *existing MEV searchers* can see & interact with LPP pools using standard CFMM semantics
 
-- [ ] **Clone searcher repos
+- [X] **Clone searcher repos
   - Flashbots
 - [ ] **Add LPP to the search universe:**
   - Test Contract Logic against searcher logic (restructure (only smart contract logic) as needed)
