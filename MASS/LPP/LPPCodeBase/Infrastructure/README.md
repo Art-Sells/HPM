@@ -172,8 +172,7 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
 
 - [X] **Clone searcher repos
   - Flashbots
-- [ ] **Add LPP to the search universe:**
-  - Test Contract Logic against searcher logic (restructure (only smart contract logic) as needed)
+- [X] Test Contract Logic against searcher logic (restructure (only smart contract logic) as needed)
 
 ### 4.1 Test Off Chain
 - [ ] Test 500 events/day cap...
@@ -185,6 +184,7 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
 
 - [ ] **Deploy Smart Contract Logic and prepare logic for searchers... Then watch...**
   - Prepare searcher logic (theGraph, etc)
+- [ ] Adjust bps fees if needed (low or high)
   - If successful, move onto #6.
 
 ---

@@ -5,14 +5,14 @@ Object {
   "amountIn": "1000000000000000000",
   "assetToUsdc": true,
   "bundle": Object {
-    "hash": "0x0cf4aa9b8013f57b34d83cfa9d0919a009cb6c4ca69bd301f38571b10aef7e96",
+    "hash": "0x904a91699923a03fc8db8c579c93ab5f3662cdd24bc93b325266038b2b7bfe5b",
     "protocol": "mev-share",
   },
   "execution": Object {
     "hops": Array [
       Object {
         "amountIn": "1000000000000000000",
-        "amountOut": "990089207037554083",
+        "amountOut": "990000990000990000",
         "assetToUsdc": true,
         "pool": "0xd8058efe0198ae9dD7D563e1b4938Dcbc86A1F81",
         "tokenIn": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
@@ -20,7 +20,7 @@ Object {
       },
       Object {
         "amountIn": "1000000000000000000",
-        "amountOut": "990089207037554083",
+        "amountOut": "990000990000990000",
         "assetToUsdc": true,
         "pool": "0x6D544390Eb535d61e196c87d6B9c80dCD8628Acd",
         "tokenIn": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
@@ -28,20 +28,20 @@ Object {
       },
       Object {
         "amountIn": "1000000000000000000",
-        "amountOut": "990089207037554083",
+        "amountOut": "990000990000990000",
         "assetToUsdc": true,
         "pool": "0xB1eDe3F5AC8654124Cb5124aDf0Fd3885CbDD1F7",
         "tokenIn": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
         "tokenOut": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707",
       },
     ],
-    "userAssetDecrease": "3003600000000000000",
-    "userUsdcOut": "2970267621112662249",
+    "userAssetDecrease": "3036000000000000000",
+    "userUsdcOut": "2970002970002970000",
   },
   "fees": Object {
-    "perHopPools": "1000000000000000",
-    "perHopTotal": "1200000000000000",
-    "perHopTreasury": "200000000000000",
+    "perHopPools": "10000000000000000",
+    "perHopTotal": "12000000000000000",
+    "perHopTreasury": "2000000000000000",
   },
   "note": "NEG set, ASSET-in. Quote via provider.call; no Contract.swap() arg walker.",
   "orbit": Array [
@@ -52,19 +52,19 @@ Object {
   "pools": Object {
     "after": Array [
       Object {
-        "a": "101001000000000000000",
+        "a": "101010000000000000000",
         "pool": "0xd8058efe0198ae9dD7D563e1b4938Dcbc86A1F81",
-        "u": "99009910792962445917",
+        "u": "99009999009999010000",
       },
       Object {
-        "a": "101001000000000000000",
+        "a": "101010000000000000000",
         "pool": "0x6D544390Eb535d61e196c87d6B9c80dCD8628Acd",
-        "u": "99009910792962445917",
+        "u": "99009999009999010000",
       },
       Object {
-        "a": "101001000000000000000",
+        "a": "101010000000000000000",
         "pool": "0xB1eDe3F5AC8654124Cb5124aDf0Fd3885CbDD1F7",
-        "u": "99009910792962445917",
+        "u": "99009999009999010000",
       },
     ],
     "before": Array [
@@ -86,7 +86,7 @@ Object {
     ],
   },
   "role": "MCV — searcher-quote",
-  "routerStatic": "2970267621112662249",
+  "routerStatic": "2970002970002970000",
   "usingNeg": true,
 }
 `;
@@ -96,14 +96,14 @@ Object {
   "amountIn": "1000000000000000000",
   "assetToUsdc": false,
   "bundle": Object {
-    "hash": "0xa7f12c4674a28a87154993de403898c8f0316179bebf1785650597320c4bcef7",
+    "hash": "0x06c4da46ece39ec504607b9f33bbd0f2e09c597033512b52c19faefcffaf0deb",
     "protocol": "mev-share",
   },
   "execution": Object {
     "hops": Array [
       Object {
         "amountIn": "1000000000000000000",
-        "amountOut": "990089207037554083",
+        "amountOut": "990000990000990000",
         "assetToUsdc": false,
         "pool": "0xf9b42E09Fd787d6864D6b2Cd8E1350fc93E6683D",
         "tokenIn": "0xf5059a5D33d5853360D16C683c16e67980206f36",
@@ -111,7 +111,7 @@ Object {
       },
       Object {
         "amountIn": "1000000000000000000",
-        "amountOut": "990089207037554083",
+        "amountOut": "990000990000990000",
         "assetToUsdc": false,
         "pool": "0xd468bF477c0c99095D508c3B0A60f39348d91ac0",
         "tokenIn": "0xf5059a5D33d5853360D16C683c16e67980206f36",
@@ -119,19 +119,19 @@ Object {
       },
       Object {
         "amountIn": "1000000000000000000",
-        "amountOut": "990089207037554083",
+        "amountOut": "990000990000990000",
         "assetToUsdc": false,
         "pool": "0xe481c73B6236153D1dc22E510c51b312CD8E5e3f",
         "tokenIn": "0xf5059a5D33d5853360D16C683c16e67980206f36",
         "tokenOut": "0x851356ae760d987E095750cCeb3bC6014560891C",
       },
     ],
-    "userAssetOut": "2970267621112662249",
+    "userAssetOut": "2970002970002970000",
   },
   "fees": Object {
-    "perHopPools": "1000000000000000",
-    "perHopTotal": "1200000000000000",
-    "perHopTreasury": "200000000000000",
+    "perHopPools": "10000000000000000",
+    "perHopTotal": "12000000000000000",
+    "perHopTreasury": "2000000000000000",
   },
   "flippedToNegAfter": true,
   "note": "POS-first under dual-orbit; raw provider.call for quote, raw tx for exec.",
@@ -143,19 +143,19 @@ Object {
   "pools": Object {
     "after": Array [
       Object {
-        "a": "99009910792962445917",
+        "a": "99009999009999010000",
         "pool": "0xf9b42E09Fd787d6864D6b2Cd8E1350fc93E6683D",
-        "u": "101001000000000000000",
+        "u": "101010000000000000000",
       },
       Object {
-        "a": "99009910792962445917",
+        "a": "99009999009999010000",
         "pool": "0xd468bF477c0c99095D508c3B0A60f39348d91ac0",
-        "u": "101001000000000000000",
+        "u": "101010000000000000000",
       },
       Object {
-        "a": "99009910792962445917",
+        "a": "99009999009999010000",
         "pool": "0xe481c73B6236153D1dc22E510c51b312CD8E5e3f",
-        "u": "101001000000000000000",
+        "u": "101010000000000000000",
       },
     ],
     "before": Array [
@@ -177,7 +177,7 @@ Object {
     ],
   },
   "role": "MCV — searcher-quote",
-  "routerStatic": "2970267621112662249",
+  "routerStatic": "2970002970002970000",
   "startWith": "POS",
   "usingNeg": false,
 }
@@ -186,18 +186,18 @@ Object {
 exports[`MCV — searcher-style quoting (no Quoter; eth_call only) dual-orbit flips: after first call (NEG/ASSET-in) → POS/USDC-in; static & deltas snapshot 1`] = `
 Object {
   "bundleHashes": Object {
-    "neg": "0xfe355bcf8d5ba9f1c4b2f7643ca415d51842c52033b51441e02e759a79e92736",
-    "pos": "0x4aa47f9ec851a1a2554384602312ac5411ce992e000f08a23b6fb16fcf1d8485",
+    "neg": "0x203f53d9e6926d1d425ca0d23dddfab6bf3b58ad9d4b41ec471a9a9a5bc26453",
+    "pos": "0x9586def7986c96804f1ad9f97076f93e93a4d859b134e0f8161c671a260e7fb2",
   },
   "flip": "NEG→POS",
   "hops": 3,
   "lastKnownUserBalances": Object {
-    "asset": "100000002970267621112662249",
-    "usdc": "100000002970267621112662249",
+    "asset": "100000002970002970002970000",
+    "usdc": "100000002970002970002970000",
   },
   "note": "Run #2 after flip — POS, USDC-in. Quote/exec via raw ABI; no argument mutation.",
   "role": "MCV — searcher-quote",
-  "routerStatic": "2970267621112662249",
+  "routerStatic": "2970002970002970000",
   "usingNegAfterFlip": true,
 }
 `;

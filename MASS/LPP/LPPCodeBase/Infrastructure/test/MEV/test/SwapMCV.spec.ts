@@ -14,6 +14,9 @@ import {
   submitBundleViaMevShare,
   type MevHarness,
 } from "./helpers.ts";
+import { exec as execCallback } from "child_process";
+import { promisify } from "util";
+const execAsync = promisify(execCallback);
 import type { LPPRouter } from "../../../typechain-types/index.ts";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -22,9 +25,9 @@ import type { LPPRouter } from "../../../typechain-types/index.ts";
 const IERC20_FQN = "contracts/external/IERC20.sol:IERC20";
 
 // Router fee split (per hop, on INPUT)
-const FEE_BPS        = 12n;   // 0.12%  total per hop
-const TREASURY_BPS   = 2n;    // 0.02%  (of input)
-const POOLS_DONATE_BPS = 10n; // 0.10%  (of input)
+const FEE_BPS        = 120n;   // 1.2%  total per hop
+const TREASURY_BPS   = 20n;    // 0.2%  (of input)
+const POOLS_DONATE_BPS = 100n; // 1%  (of input)
 const DENOM          = 10_000n;
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -348,9 +351,6 @@ describe("Swap (MCV)", () => {
   before(async function () {
     // Skip if Go is not installed (MEV tests require Go)
     try {
-      const { exec } = require("child_process");
-      const { promisify } = require("util");
-      const execAsync = promisify(exec);
       await execAsync("go version");
     } catch {
       this.skip(); // Skip all tests in this suite if Go is not available

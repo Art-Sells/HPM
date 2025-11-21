@@ -12,9 +12,9 @@ contract LPPRouter is ILPPRouter {
 
     /* -------- Fees (public constants = auto getters) -------- */
     uint16 public constant override BPS_DENOMINATOR = 10_000;
-    uint16 public constant override MCV_FEE_BPS      = 12; // 0.12% per hop
-    uint16 public constant override TREASURY_CUT_BPS = 2;  // 0.02% of hop input
-    uint16 public constant POOLS_CUT_BPS             = 10; // 0.10% of hop input
+    uint16 public constant override MCV_FEE_BPS      = 120; // 1.2% per hop
+    uint16 public constant override TREASURY_CUT_BPS = 20;  // .2% of hop input
+    uint16 public constant POOLS_CUT_BPS             = 100; // 1% of hop input
 
     /* -------- Orbit storage -------- */
     struct OrbitConfig { address[3] pools; bool initialized; }

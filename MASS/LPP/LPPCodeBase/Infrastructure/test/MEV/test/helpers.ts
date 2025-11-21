@@ -703,6 +703,8 @@ async function startMockRelay(port: number): Promise<ChildProcess> {
 }
 
 /** Start mev-boost process pointing at Hardhat + mock relay */
+const MOCK_RELAY_PUBKEY = "0x93247f2209abcacf57b75a51dafae777f9dd38bc7053d1af526f220a7489a6d3a2753e5f3e8b1cfe39b56f43611df74a";
+
 async function startMevBoost(
   hardhatRpcUrl: string,
   relayUrl: string,
@@ -710,12 +712,16 @@ async function startMevBoost(
 ): Promise<ChildProcess> {
   const mevBoostBin = await buildMevBoost();
 
+  // mev-boost expects relays in scheme://pubkey@host format
+  const relayTarget = new URL(relayUrl);
+  const relayArg = `${relayTarget.protocol}//${MOCK_RELAY_PUBKEY}@${relayTarget.host}`;
+
   // mev-boost flags: point at relay, disable relay checks for testing
   const args = [
-    "-relay-check=false", // Disable for testing
-    `-relay=${relayUrl}`,
-    `-addr=:${port}`,
-    "-loglevel=info",
+    "--relay-check=false", // Disable for testing
+    `--relay=${relayArg}`,
+    `--addr=127.0.0.1:${port}`,
+    "--loglevel=info",
   ];
 
   return spawn(mevBoostBin, args, {
@@ -782,10 +788,8 @@ export async function submitBundleViaMevBoost(
   transactions: string[],
   blockNumber: string
 ): Promise<{ bundleHash: string; success: boolean }> {
-  // mev-boost uses Builder API; for testing we'll use test-cli or direct HTTP
-  // This is a simplified version - full implementation would use the Builder API spec
-
-  const response = await fetch(`http://127.0.0.1:${harness.mevBoostPort}/eth/v1/builder/blinded_blocks`, {
+  // Hit the mock relay's builder endpoint (same API path mev-boost proxies)
+  const response = await fetch(`http://127.0.0.1:${harness.relayPort}/eth/v1/builder/blinded_blocks`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
