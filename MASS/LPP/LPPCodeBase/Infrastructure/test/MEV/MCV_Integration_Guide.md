@@ -1,218 +1,109 @@
-# LPP Phase 0 — Step-by-Step Guide for MEV / Searcher Integration (On-Chain)
+# LPP Phase 0 — MEV / Searcher Integration (Mainnet-Focused)
 
-## 5A — On-Chain Deployment & Pool Bootstrapping
-
-
-### 5A.1 Freeze Parameters
-
-Create a config file containing:
-
-- **Chain** (e.g., Base Mainnet)
-- **Tokens**
-  - USDC address
-  - ASSET address
-- **Treasury addresses**
-  - treasuryOwner
-  - treasuryOps
-- **AccessManager + Router config**
-  - Daily cap
-  - `mcvFeeBps = 250` (2.5%)
-  - `treasuryCutBps = 50` (0.5%)
-- **Pool topology**
-  - Reference price: 1 ASSET = 1 USDC
-  - Offsets: −500, −499, +499, +500 bps
-  - Seed TVL: 1 ASSET + 1 USDC
+This guide is for **real deployments** (e.g. Base mainnet).  We are wiring six pools, dual 3-hop orbits, and the LPPRouter daily-cap guard exactly as implemented in `contracts/`.  Local Hardhat reproductions are optional; validation happens against live infrastructure.
 
 ---
 
-### 5A.2 Deploy Contracts
+## 1. Freeze Deployment Inputs
 
-Deploy in this order:
+| Item | Value / Notes |
+| --- | --- |
+| Chain + RPC | Target L1/L2 plus archival RPC endpoints. |
+| Tokens | ASSET + USDC addresses (1:1 reference price). |
+| Operators | `treasuryOwner` (cold) controls LPPTreasury; `treasuryOps` (warm) executes bootstraps. |
+| Router fees | Hard-coded: `MCV_FEE_BPS=120`, `TREASURY_CUT_BPS=20`, `POOLS_DONATE_BPS=100`. |
+| Daily cap | Default 500 events/day UTC. Adjustable via `setDailyEventCapViaTreasury`. |
+| Pool topology | Six pools with identical assets. NEG orbit = 3× −500 bps. POS orbit = 3× +500 bps. |
+| Seed TVL | ≥100 ASSET + 100 USDC per pool (mirrors unit tests; scale symmetrically). |
 
-1. `LPPAccessManager`
-2. `LPPTreasury`
-3. `LPPFactory`
-4. `LPPRouter`
-
-Example Hardhat script:
-
-```ts
-// scripts/deployPhase0.ts
-import { ethers } from "hardhat";
-
-async function main() {
-  const [deployer] = await ethers.getSigners();
-
-  const AccessManager = await ethers.getContractFactory("LPPAccessManager");
-  const accessManager = await AccessManager.deploy();
-  await accessManager.waitForDeployment();
-
-  const Treasury = await ethers.getContractFactory("LPPTreasury");
-  const treasury = await Treasury.deploy(await accessManager.getAddress());
-  await treasury.waitForDeployment();
-
-  const Factory = await ethers.getContractFactory("LPPFactory");
-  const factory = await Factory.deploy(await treasury.getAddress());
-  await factory.waitForDeployment();
-
-  const Router = await ethers.getContractFactory("LPPRouter");
-  const router = await Router.deploy(
-    await factory.getAddress(),
-    await accessManager.getAddress(),
-    await treasury.getAddress()
-  );
-  await router.waitForDeployment();
-
-  console.log("AccessManager:", await accessManager.getAddress());
-  console.log("Treasury:", await treasury.getAddress());
-  console.log("Factory:", await factory.getAddress());
-  console.log("Router:", await router.getAddress());
-}
-
-main().catch(console.error);
-```
+Publish these values + final contract addresses so searchers and relays have a single source of truth.
 
 ---
 
-### 5A.3 Wire Permissions
+## 2. Deploy & Wire Contracts (On-Chain Only)
 
-From `treasuryOwner`:
+1. Deploy `LPPAccessManager` → `LPPTreasury` → `LPPFactory` → `LPPRouter(accessManager, treasury)`.
+2. Transfer treasury ownership to `treasuryOwner` and whitelist `treasuryOps` via `accessManager.setApprovedSupplicator`.
+3. Record all addresses (AccessManager/Treasury/Factory/Router/ASSET/USDC) in your deployment manifest.
 
-```solidity
-accessManager.setApprovedSupplicator(treasuryOps, true);
-```
-
-Set pausers/admins if required.
+No local verification is needed; the above must happen on the target chain.
 
 ---
 
-### 5A.4 Create the 4 Pools
+## 3. Build the Six-Pool Topology
 
-Using:
+1. **Create pools**
+   ```solidity
+   address pool = factory.createPool(asset, usdc, offsetBps);
+   ```
+   Create three pools at −500 bps and three at +500 bps. Label them Pool0–Pool5 for reference.
 
-```solidity
-factory.createPool(asset, usdc, offsetBps);
-```
+2. **Bootstrap**
+   From `treasuryOps` (approved supplicator):
+   ```solidity
+   ILPPPool(pool).bootstrapInitialize(100 ether, 100 ether, offsetBps);
+   ```
+   Adjust the amounts if you want deeper liquidity, but keep NEG vs POS symmetric.
 
-Create:
+3. **Register dual orbits**
+   Use the treasury forwarder so the router’s `onlyTreasury` check passes:
+   ```solidity
+   treasury.setDualOrbitViaTreasury(
+     address(router),
+     pool0,                        // startPool key advertised to searchers
+     [pool0,pool1,pool2],          // NEG orbit  (ASSET → USDC)
+     [pool3,pool4,pool5],          // POS orbit  (USDC → ASSET)
+     true                          // start with NEG
+   );
+   ```
+   The router flips `useNegNext` after every swap.
 
-- Pool A: −500 bps  
-- Pool B: −499 bps  
-- Pool C: +499 bps  
-- Pool D: +500 bps  
-
-Store addresses in config.
-
----
-
-### 5A.5 Bootstrap Reserves & Prices
-
-From `treasuryOps`:
-
-- Approve pools or Router to pull assets
-- Call:
-
-```solidity
-bootstrapInitialize(
-  reserveAsset,
-  reserveUsdc,
-  priceX96Offset
-);
-```
-
-Seed each pool with **1 ASSET + 1 USDC**.
+4. **(Optional) Set daily cap**
+   ```solidity
+   treasury.setDailyEventCapViaTreasury(address(router), 500);
+   ```
 
 ---
 
-### 5A.6 Live Smoke Tests
+## 4. MEV Execution Surface (Live Chain)
 
-Perform tiny swaps:
+1. **Quote** with `router.getAmountsOutFromStart(startPool, amountIn)` to learn which orbit (NEG or POS) is next and what each hop outputs.
+2. **Approvals**: router needs the per-hop fee; each pool in the active orbit needs allowance for the hop principal.
+3. **Swap params**: build `SwapParams` with the advertised `startPool`, `amountIn`, and a realistic `minTotalAmountOut`. When the dual orbit is configured, `assetToUsdc` is ignored.
+4. **Submit bundle**: encode calldata via `router.interface.encodeFunctionData("swap", [params])`, sign with the searcher key, forward to your relay/builder, and broadcast to the chain once accepted.
+5. **Observe guardrails**:
+   - `DailyEventCapReached(cap)` fires once `dailyEventCount >= dailyEventCap`.
+   - `OrbitFlipped(startPool, nowUsingNeg)` tells you which path will execute next.
+   - `FeeTaken` + `HopExecuted` let you reconstruct execution in real time.
 
-1. **supplicate** on Pool B: USDC → ASSET  
-2. **mcvSupplication** on B → C → D  
-3. Validate:
-   - Profit detection  
-   - 2.5% fee  
-   - Treasury receives 0.5%  
-   - Events are correct  
-
----
-
-## 5B — Searcher Surface (View Methods, Events, Indexer)
-
-### 5B.1 Router View Functions (Bot-Facing)
-
-Add these:
-
-- `getPoolState(pool)`  
-- `quoteSupplication(pool, direction, amountIn)`  
-- `quoteMCVOrbit(pools[], direction, amountIn)`  
-- `buildMCVCalldata(...)` (MEV bundle builder)  
-- `mcvSupplicationAndCallback(...)` (MEV callback entrypoint)  
-- `minTotalAmountOut` for slippage enforcement  
+Everything above happens against the production network; there is no expectation to run Hardhat or the local mev-boost harness.
 
 ---
 
-### 5B.2 Slippage Guard
+## 5. On-Chain Validation Plan
 
-`mcvSupplication` must revert if:
+1. **Dry-run on staging (optional)**: Deploy a low-liquidity copy on a public testnet and run a few bundles end-to-end with your production bot stack to make sure signing, relays, and monitoring work.
 
-```solidity
-amountOut < minTotalAmountOut
-```
+2. **Production smoke tests**:
+   - Submit a minimal ASSET→USDC bundle; confirm three `HopExecuted` events and that treasury receives roughly 0.2% of the input per hop.
+   - Immediately submit the mirror USDC→ASSET bundle; verify `OrbitFlipped` toggled and reserves updated symmetrically.
+   - Hit the configured daily cap, observe the revert, wait 24h (UTC) and confirm `router.getDailyEventWindow()` shows the counter reset.
 
-Emit `SlippageExceeded()`.
-
----
-
-### 5B.3 Events for Indexers
-
-Emit:
-
-```solidity
-event Supplicate(...);
-event MCVSupplicationExecuted(...);
-```
-
-Custom errors:
-
-- `MaxDailyEventsReached()`
-- `OrbitNotSet()`
-- `SlippageExceeded()`
+3. **Monitoring requirements**:
+   - Continuously poll `router.getDailyEventWindow()`.
+   - Track `ILPPPool.reserveAsset` / `reserveUsdc` per pool to catch drift.
+   - Index `FeeTaken`, `HopExecuted`, `OrbitFlipped`, `DailyEventCapUpdated`, and `DailyEventWindowRolled` for dashboards and alerting.
 
 ---
 
-### 5B.4 Indexer / Subgraph
+## 6. Packaging for External Searchers
 
-Entities:
+- Publish ABI + addresses + the parameter file from Section 1.
+- Ship a lightweight SDK or script that:
+  1. Fetches the next orbit via `getAmountsOutFromStart`.
+  2. Builds calldata and target blocks for the relay.
+  3. Handles revert reasons (`DailyEventCapReached`, slippage) so bundles aren’t spammed.
+- Communicate any cap changes via `DailyEventCapUpdated` events or public status pages.
+- Adjust bps fees if needed (low or high)
 
-- `Pool`
-- `MCVOrbit`
-- `MCVEvent`
-
-Track:
-
-- Price changes  
-- TVL  
-- MCV execution frequency  
-- Profitability  
-
-Searchers can query this or operate purely off RPC.
-
----
-
-## 5C — MEV External Trials
-
-1. Publish SDK with:
-   - `quoteAndBuildBundle(startPool, amountIn)`
-   - Example scripts  
-   - Contract addresses  
-2. Announce availability  
-3. Monitor:
-   - Frequency  
-   - Profit  
-   - Treasury growth  
-   - Pool drift  
-   - Adjust bps fees if needed (low or high)
-
-
+By sticking to this playbook we can take the contracts live, observe them directly on-chain, and give MEV partners a single, deterministic integration surface—without relying on local testing infrastructure.  Update this document every time offsets, fee splits, or guardrails change so downstream teams stay synchronized.
