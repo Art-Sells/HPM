@@ -29,6 +29,8 @@ interface ILPPRouter {
     function BPS_DENOMINATOR() external view returns (uint16);
     function MCV_FEE_BPS() external view returns (uint16);
     function TREASURY_CUT_BPS() external view returns (uint16);
+    function dailyEventCap() external view returns (uint16);
+    function dailyEventCount() external view returns (uint16);
 
     /* ───────── execution surfaces ───────── */
     function supplicate(SupplicateParams calldata p) external returns (uint256 amountOut); // permissioned single-pool
@@ -61,4 +63,8 @@ interface ILPPRouter {
     /* ───────── inspectors used by tests ───────── */
     function getActiveOrbit(address startPool) external view returns (address[3] memory orbit, bool usingNeg);
     function getDualOrbit(address startPool) external view returns (address[3] memory neg, address[3] memory pos, bool usingNeg);
+
+    /* ───────── daily event guard ───────── */
+    function setDailyEventCap(uint16 newCap) external;
+    function getDailyEventWindow() external view returns (uint32 dayIndex, uint16 count, uint16 cap);
 }

@@ -175,16 +175,16 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
 - [X] Test Contract Logic against searcher logic (restructure (only smart contract logic) as needed)
 
 ### 4.1 Test Off Chain
-- [ ] Test 500 events/day cap...
-- [ ] reconfigure all spec tests to test above
+- [x] Reconfigure spec tests to cover the daily cap via mev-boost/mev-share
+- [X] Test 500 events/day cap (MEV harness)
+- [ ] Test Global pause (confirmed only by treasury)
+  - Add on chain pause for router to pause the router and test
 
 ---
 
 ## 5. MEV / Searcher Integration (on-chain)
 
-- [ ] **Deploy Smart Contract Logic and prepare logic for searchers... Then watch...**
-  - Prepare searcher logic (theGraph, etc)
-- [ ] Adjust bps fees if needed (low or high)
+- [ ] **Start work on MCV Integration (look at .md)**
   - If successful, move onto #6.
 
 ---

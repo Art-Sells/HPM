@@ -109,6 +109,10 @@ contract LPPTreasury is ILPPTreasury {
         ILPPRouter(router).setDualOrbit(startPool, neg, pos, startWithNeg);
     }
 
+    function setDailyEventCapViaTreasury(address router, uint16 newCap) external onlyOwner {
+        ILPPRouter(router).setDailyEventCap(newCap);
+    }
+
     // -----------------------------------------------------------------------
     // Direct bootstrap (no MintHook, Phase 0)
     // -----------------------------------------------------------------------

@@ -37,6 +37,8 @@ interface ILPPTreasury {
         address[3] calldata pools
     ) external;
 
+    function setDailyEventCapViaTreasury(address router, uint16 newCap) external;
+
     // -----------------------------------------------------------------------
     // Bootstrap
     // -----------------------------------------------------------------------
