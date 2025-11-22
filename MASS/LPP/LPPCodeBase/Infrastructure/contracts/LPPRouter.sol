@@ -12,9 +12,17 @@ contract LPPRouter is ILPPRouter {
 
     /* -------- Fees (public constants = auto getters) -------- */
     uint16 public constant override BPS_DENOMINATOR = 10_000;
-    uint16 public constant override MCV_FEE_BPS      = 12; // 0.12% per hop
-    uint16 public constant override TREASURY_CUT_BPS = 2;  // 0.02% of hop input
-    uint16 public constant POOLS_CUT_BPS             = 10; // 0.10% of hop input
+    uint16 public constant override MCV_FEE_BPS      = 120; // 1.2% per hop
+    uint16 public constant override TREASURY_CUT_BPS = 20;  // .2% of hop input
+    uint16 public constant POOLS_CUT_BPS             = 100; // 1% of hop input
+
+    /* -------- Daily cap tracking -------- */
+    uint16 public override dailyEventCap = 500;
+    uint16 public override dailyEventCount;
+    uint32 private _dailyEventDay;
+
+    /* -------- Pause state -------- */
+    bool public paused;
 
     /* -------- Orbit storage -------- */
     struct OrbitConfig { address[3] pools; bool initialized; }
@@ -30,11 +38,17 @@ contract LPPRouter is ILPPRouter {
 
     /* -------- Errors -------- */
     error OrbitNotSet(address startPool);
+    error DailyEventCapReached(uint16 cap);
+    error RouterPaused();
 
     /* -------- Events (MEV traces, admin) -------- */
     event OrbitUpdated(address indexed startPool, address[3] pools);
     event DualOrbitUpdated(address indexed startPool, address[3] neg, address[3] pos, bool startWithNeg);
     event OrbitFlipped(address indexed startPool, bool nowUsingNeg);
+    event DailyEventCapUpdated(uint16 newCap);
+    event DailyEventWindowRolled(uint32 indexed dayIndex);
+    event Paused(address indexed account);
+    event Unpaused(address indexed account);
 
     event FeeTaken(
         address indexed pool,
@@ -66,12 +80,14 @@ contract LPPRouter is ILPPRouter {
 
     /* -------- Auth -------- */
     modifier onlyTreasury() { require(msg.sender == treasury, "not treasury"); _; }
+    modifier whenNotPaused() { if (paused) revert RouterPaused(); _; }
 
     constructor(address accessManager, address treasury_) {
         require(accessManager != address(0), "zero access");
         require(treasury_ != address(0), "zero treasury");
         access = ILPPAccessManager(accessManager);
         treasury = treasury_;
+        _dailyEventDay = _currentDay();
     }
 
     /* ───────────────────────────────────────────
@@ -146,12 +162,51 @@ contract LPPRouter is ILPPRouter {
     }
 
     /* ───────────────────────────────────────────
+       Daily event guard administration & view
+       ─────────────────────────────────────────── */
+
+    function setDailyEventCap(uint16 newCap) external override onlyTreasury {
+        require(newCap > 0, "cap zero");
+        dailyEventCap = newCap;
+        if (dailyEventCount > newCap) {
+            dailyEventCount = newCap;
+        }
+        emit DailyEventCapUpdated(newCap);
+    }
+
+    /* ───────────────────────────────────────────
+       Pause control (treasury-only)
+       ─────────────────────────────────────────── */
+
+    function pause() external onlyTreasury {
+        if (paused) return; // idempotent
+        paused = true;
+        emit Paused(msg.sender);
+    }
+
+    function unpause() external onlyTreasury {
+        if (!paused) return; // idempotent
+        paused = false;
+        emit Unpaused(msg.sender);
+    }
+
+    function getDailyEventWindow()
+        external
+        view
+        override
+        returns (uint32 dayIndex, uint16 count, uint16 cap)
+    {
+        return (_dailyEventDay, dailyEventCount, dailyEventCap);
+    }
+
+    /* ───────────────────────────────────────────
        Single-pool (permissioned) — NO orbit flip
        ─────────────────────────────────────────── */
 
     function supplicate(SupplicateParams calldata p)
         external
         override
+        whenNotPaused
         returns (uint256 amountOut)
     {
         require(access.isApprovedSupplicator(msg.sender), "not permitted");
@@ -182,9 +237,11 @@ contract LPPRouter is ILPPRouter {
     function swap(SwapParams calldata p)
         external
         override
+        whenNotPaused
         returns (uint256 totalOut)
     {
         require(p.amountIn > 0, "zero input");
+        _preCheckDailyCap();
 
         (address[3] memory orbit, bool assetToUsdc, address tokenIn, address tokenOut) =
             _resolveOrbitAndTokens(p.startPool, p.assetToUsdc);
@@ -222,6 +279,8 @@ contract LPPRouter is ILPPRouter {
             d.useNegNext = !d.useNegNext;
             emit OrbitFlipped(p.startPool, d.useNegNext);
         }
+
+        _incrementDailyCount();
     }
 
     /* ───────────────────────────────────────────
@@ -297,6 +356,30 @@ contract LPPRouter is ILPPRouter {
         address u = ILPPPool(orbit[0]).usdc();
         tokenIn  = assetToUsdc ? a : u;
         tokenOut = assetToUsdc ? u : a;
+    }
+
+    function _preCheckDailyCap() internal {
+        _syncDailyWindow();
+        if (dailyEventCount >= dailyEventCap) revert DailyEventCapReached(dailyEventCap);
+    }
+
+    function _incrementDailyCount() internal {
+        unchecked {
+            dailyEventCount += 1;
+        }
+    }
+
+    function _syncDailyWindow() internal {
+        uint32 today = _currentDay();
+        if (today != _dailyEventDay) {
+            _dailyEventDay = today;
+            dailyEventCount = 0;
+            emit DailyEventWindowRolled(today);
+        }
+    }
+
+    function _currentDay() internal view returns (uint32) {
+        return uint32(block.timestamp / 1 days);
     }
 
     /// Pull fee on INPUT from `payer`, split to treasury + donate to pool input reserve.

@@ -14,6 +14,9 @@ import {
   submitBundleViaMevShare,
   type MevHarness,
 } from "./helpers.ts";
+import { exec as execCallback } from "child_process";
+import { promisify } from "util";
+const execAsync = promisify(execCallback);
 import type { LPPRouter } from "../../../typechain-types/index.ts";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -22,9 +25,9 @@ import type { LPPRouter } from "../../../typechain-types/index.ts";
 const IERC20_FQN = "contracts/external/IERC20.sol:IERC20";
 
 // Router fee split (per hop, on INPUT)
-const FEE_BPS        = 12n;   // 0.12%  total per hop
-const TREASURY_BPS   = 2n;    // 0.02%  (of input)
-const POOLS_DONATE_BPS = 10n; // 0.10%  (of input)
+const FEE_BPS        = 120n;   // 1.2%  total per hop
+const TREASURY_BPS   = 20n;    // 0.2%  (of input)
+const POOLS_DONATE_BPS = 100n; // 1%  (of input)
 const DENOM          = 10_000n;
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -348,9 +351,6 @@ describe("Swap (MCV)", () => {
   before(async function () {
     // Skip if Go is not installed (MEV tests require Go)
     try {
-      const { exec } = require("child_process");
-      const { promisify } = require("util");
-      const execAsync = promisify(exec);
       await execAsync("go version");
     } catch {
       this.skip(); // Skip all tests in this suite if Go is not available
@@ -980,6 +980,97 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
         orbitRun2: { usingNegBefore: usingNeg1, activeOrbit: orbit1Canon, poolDeltas: deltas2Canon, treasuryDelta: treDelta2 },
         note: "POS-first mirror under independent 3-hop model (per-hop fees).",
       }).to.matchSnapshot("Dual-orbit (POS-first) — per-pool & treasury deltas + flip");
+    });
+  });
+
+  describe("Daily MEV cap guard", () => {
+    async function expectCallException(promise: Promise<unknown>) {
+      try {
+        await promise;
+        expect.fail("expected bundle execution to revert");
+      } catch (err: any) {
+        expect(err?.code ?? err?.message).to.include("CALL_EXCEPTION");
+      }
+    }
+
+    async function configureCapEnv(cap: number) {
+      const env = await deployCore();
+      const { deployer, router, treasury, usdc } = env;
+      const { orbit: orbitPools, startPool } = await setupLegacyMevOrbit(env, {
+        offsets: [-500, -500, -500],
+      });
+
+      await (
+        await (treasury.connect(deployer) as any).setDailyEventCapViaTreasury(
+          await router.getAddress(),
+          cap
+        )
+      ).wait();
+      const capEach = ethers.parseEther("3");
+      await (await usdc.connect(deployer).approve(await router.getAddress(), capEach)).wait();
+      for (const addr of orbitPools) {
+        await (await usdc.connect(deployer).approve(addr, capEach)).wait();
+      }
+
+      return { env, startPool };
+    }
+
+    it("blocks swaps once the configured cap is reached", async () => {
+      if (!harness) throw new Error("MEV harness not initialized");
+
+      const { env, startPool } = await configureCapEnv(2);
+      const { deployer, router } = env;
+
+      const swapParams = {
+        startPool,
+        assetToUsdc: false,
+        amountIn: ethers.parseEther("1"),
+        minTotalAmountOut: 0n,
+        to: deployer.address,
+        payer: deployer.address,
+      };
+
+      for (let i = 0; i < 2; i++) {
+        const { receipt } = await executeSwapViaMev(harness, deployer, router as LPPRouter, swapParams);
+        expect(receipt.status).to.equal(1n, "pre-cap swaps should succeed");
+      }
+
+      await expect(
+        (router.connect(deployer) as any).swap.staticCall(swapParams)
+      ).to.be.revertedWithCustomError(router, "DailyEventCapReached").withArgs(2);
+
+      await expectCallException(executeSwapViaMev(harness, deployer, router as LPPRouter, swapParams));
+    });
+
+    it("resets the cap after 24h has elapsed", async () => {
+      if (!harness) throw new Error("MEV harness not initialized");
+
+      const { env, startPool } = await configureCapEnv(1);
+      const { deployer, router } = env;
+
+      const swapParams = {
+        startPool,
+        assetToUsdc: false,
+        amountIn: ethers.parseEther("1"),
+        minTotalAmountOut: 0n,
+        to: deployer.address,
+        payer: deployer.address,
+      };
+
+      const firstReceipt = await executeSwapViaMev(harness, deployer, router as LPPRouter, swapParams);
+      expect(firstReceipt.receipt.status).to.equal(1n);
+
+      await expect(
+        (router.connect(deployer) as any).swap.staticCall(swapParams)
+      ).to.be.revertedWithCustomError(router, "DailyEventCapReached").withArgs(1);
+
+      await expectCallException(executeSwapViaMev(harness, deployer, router as LPPRouter, swapParams));
+
+      await ethers.provider.send("evm_increaseTime", [24 * 60 * 60 + 5]);
+      await ethers.provider.send("evm_mine", []);
+
+      const { receipt } = await executeSwapViaMev(harness, deployer, router as LPPRouter, swapParams);
+      expect(receipt.status).to.equal(1n, "cap should reset after 1 day");
     });
   });
 
