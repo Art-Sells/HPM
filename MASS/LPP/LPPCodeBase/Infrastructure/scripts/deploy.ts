@@ -9,7 +9,8 @@
 //   - PRIVATE_KEY_DEPLOYER or PRIVATE_KEY: Private key of the deployer account
 //   - BASE_RPC_URL (optional): Override Base mainnet RPC URL (default from guide)
 
-import { ethers } from "hardhat";
+import hre from "hardhat";
+const { ethers } = hre;
 import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
@@ -125,7 +126,8 @@ async function main() {
     },
   };
 
-  const manifestPath = path.join(__dirname, "..", "deployment-manifest.json");
+  // Use process.cwd() to get the project root directory
+  const manifestPath = path.join(process.cwd(), "deployment-manifest.json");
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
   console.log("✓ Deployment manifest saved to:", manifestPath);
 

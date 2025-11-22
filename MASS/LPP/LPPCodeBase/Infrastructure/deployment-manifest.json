@@ -1,0 +1,19 @@
+{
+  "network": "base",
+  "chainId": 8453,
+  "deployedAt": "2025-11-22T16:55:17.092Z",
+  "contracts": {
+    "LPPAccessManager": "0x0729435C4281f03b5b8095Ec2371A009814Ce45d",
+    "LPPTreasury": "0x259c964e22C687dC9746A486a206FA48e8288D4C",
+    "LPPFactory": "0x1b6Ce8517065b3695d15aBde67517bac677939BF",
+    "LPPRouter": "0xD380A0ea6cE68ffBC577248ea0Eb707af55b8572"
+  },
+  "tokens": {
+    "ASSET": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+    "USDC": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+  },
+  "operators": {
+    "treasuryOwner": "0xd9a6714bba0985b279dfcaff0a512ba25f5a03d1",
+    "treasuryOps": "0xd9a6714bba0985b279dfcaff0a512ba25f5a03d1"
+  }
+}

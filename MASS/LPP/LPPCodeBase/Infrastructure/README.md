@@ -193,6 +193,7 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
 
 - [ ] **Prepare for scale-out phase (1,000 pools / 500 orbits and Treasury can withdraw pool amounts (only) no one else):**
   - Remove daily events/cap
+  - test (un)pauseRouter switch from Treasury spec
   - Auto-generation of pool ladders around oracle price.
   - Internal orbit registry (-/+500 orbits (all the same)) and lever to turn off pool orbits.
   - Same fee model extended LPP-wide.
