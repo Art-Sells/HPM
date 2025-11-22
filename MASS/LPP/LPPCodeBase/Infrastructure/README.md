@@ -1,4 +1,4 @@
-# LPP Infrastructure v1 — Phase 0 (No Vesting / No Rebates)
+# LPP Infrastructure v1 — Phase 0
 
 > **Current focus:** Minimal LPP core for MCV testing.
 
