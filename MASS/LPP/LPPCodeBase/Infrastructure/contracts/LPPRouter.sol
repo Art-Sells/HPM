@@ -21,6 +21,9 @@ contract LPPRouter is ILPPRouter {
     uint16 public override dailyEventCount;
     uint32 private _dailyEventDay;
 
+    /* -------- Pause state -------- */
+    bool public paused;
+
     /* -------- Orbit storage -------- */
     struct OrbitConfig { address[3] pools; bool initialized; }
     mapping(address => OrbitConfig) private _orbitOf;
@@ -36,6 +39,7 @@ contract LPPRouter is ILPPRouter {
     /* -------- Errors -------- */
     error OrbitNotSet(address startPool);
     error DailyEventCapReached(uint16 cap);
+    error RouterPaused();
 
     /* -------- Events (MEV traces, admin) -------- */
     event OrbitUpdated(address indexed startPool, address[3] pools);
@@ -43,6 +47,8 @@ contract LPPRouter is ILPPRouter {
     event OrbitFlipped(address indexed startPool, bool nowUsingNeg);
     event DailyEventCapUpdated(uint16 newCap);
     event DailyEventWindowRolled(uint32 indexed dayIndex);
+    event Paused(address indexed account);
+    event Unpaused(address indexed account);
 
     event FeeTaken(
         address indexed pool,
@@ -74,6 +80,7 @@ contract LPPRouter is ILPPRouter {
 
     /* -------- Auth -------- */
     modifier onlyTreasury() { require(msg.sender == treasury, "not treasury"); _; }
+    modifier whenNotPaused() { if (paused) revert RouterPaused(); _; }
 
     constructor(address accessManager, address treasury_) {
         require(accessManager != address(0), "zero access");
@@ -167,6 +174,22 @@ contract LPPRouter is ILPPRouter {
         emit DailyEventCapUpdated(newCap);
     }
 
+    /* ───────────────────────────────────────────
+       Pause control (treasury-only)
+       ─────────────────────────────────────────── */
+
+    function pause() external onlyTreasury {
+        if (paused) return; // idempotent
+        paused = true;
+        emit Paused(msg.sender);
+    }
+
+    function unpause() external onlyTreasury {
+        if (!paused) return; // idempotent
+        paused = false;
+        emit Unpaused(msg.sender);
+    }
+
     function getDailyEventWindow()
         external
         view
@@ -183,6 +206,7 @@ contract LPPRouter is ILPPRouter {
     function supplicate(SupplicateParams calldata p)
         external
         override
+        whenNotPaused
         returns (uint256 amountOut)
     {
         require(access.isApprovedSupplicator(msg.sender), "not permitted");
@@ -213,6 +237,7 @@ contract LPPRouter is ILPPRouter {
     function swap(SwapParams calldata p)
         external
         override
+        whenNotPaused
         returns (uint256 totalOut)
     {
         require(p.amountIn > 0, "zero input");

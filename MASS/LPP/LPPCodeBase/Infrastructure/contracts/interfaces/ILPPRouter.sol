@@ -31,6 +31,7 @@ interface ILPPRouter {
     function TREASURY_CUT_BPS() external view returns (uint16);
     function dailyEventCap() external view returns (uint16);
     function dailyEventCount() external view returns (uint16);
+    function paused() external view returns (bool);
 
     /* ───────── execution surfaces ───────── */
     function supplicate(SupplicateParams calldata p) external returns (uint256 amountOut); // permissioned single-pool
@@ -67,4 +68,8 @@ interface ILPPRouter {
     /* ───────── daily event guard ───────── */
     function setDailyEventCap(uint16 newCap) external;
     function getDailyEventWindow() external view returns (uint32 dayIndex, uint16 count, uint16 cap);
+
+    /* ───────── pause control (treasury-only) ───────── */
+    function pause() external;
+    function unpause() external;
 }

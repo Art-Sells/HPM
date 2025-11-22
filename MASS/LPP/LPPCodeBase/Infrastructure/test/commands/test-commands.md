@@ -10,6 +10,8 @@ yarn hardhat test test/SwapMCV.spec.ts
 yarn hardhat test test/MEV/test/QuoterMCV.spec.ts
 yarn hardhat test test/MEV/test/SwapMCV.spec.ts
 
---Test below after MEV tests complete
+---Test below after MEV (off-chain) tests complete
 yarn hardhat test test/TreasuryWithdrawal.spec.ts
+
+---Test below after MEV (on-chain) tests complete
 yarn hardhat test test/Reentrancy.spec.ts

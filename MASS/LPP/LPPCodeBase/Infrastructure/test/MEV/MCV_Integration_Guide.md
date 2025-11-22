@@ -4,19 +4,34 @@ This guide is for **real deployments** (e.g. Base mainnet).  We are wiring six p
 
 ---
 
-## 1. Freeze Deployment Inputs
+## 1. Pre-Deployment:
 
-| Item | Value / Notes |
-| --- | --- |
-| Chain + RPC | Target L1/L2 plus archival RPC endpoints. |
-| Tokens | ASSET + USDC addresses (1:1 reference price). |
-| Operators | `treasuryOwner` (cold) controls LPPTreasury; `treasuryOps` (warm) executes bootstraps. |
-| Router fees | Hard-coded: `MCV_FEE_BPS=120`, `TREASURY_CUT_BPS=20`, `POOLS_DONATE_BPS=100`. |
-| Daily cap | Default 500 events/day UTC. Adjustable via `setDailyEventCapViaTreasury`. |
-| Pool topology | Six pools with identical assets. NEG orbit = 3× −500 bps. POS orbit = 3× +500 bps. |
-| Seed TVL | ≥100 ASSET + 100 USDC per pool (mirrors unit tests; scale symmetrically). |
+- **Chain + RPC**: *Insert target chain (e.g., Base mainnet) and RPC endpoint here*
+  - Primary RPC: `*insert RPC URL here*`
+  - Fallback RPC: `*insert fallback RPC URL here*` (optional)
 
-Publish these values + final contract addresses so searchers and relays have a single source of truth.
+- **Tokens**:
+  - ASSET address: `*insert ASSET token address here*`
+  - USDC address: `*insert USDC token address here*` (must be 1:1 reference price with ASSET)
+
+- **Operators**:
+  - `treasuryOwner`: `*insert cold wallet address here*` (controls LPPTreasury, should be multisig/cold storage)
+  - `treasuryOps`: `*insert warm wallet address here*` (executes bootstraps, must be approved supplicator)
+
+- **Router fees**: Hard-coded in contract (no action needed)
+  - `MCV_FEE_BPS=120` (1.2% per hop)
+  - `TREASURY_CUT_BPS=20` (0.2% of hop input)
+  - `POOLS_DONATE_BPS=100` (1% of hop input)
+
+- **Daily cap**: `*insert number here*` events/day UTC (default: 500, adjustable via `setDailyEventCapViaTreasury`)
+
+- **Pool topology**: Six pools with identical assets
+  - NEG orbit: 3 pools at −500 bps offset
+  - POS orbit: 3 pools at +500 bps offset
+
+- **Seed TVL**: `*insert amount here*` ASSET + `*insert amount here*` USDC per pool (minimum: 100 each, scale symmetrically)
+
+After deployment, publish these values + final contract addresses so searchers and relays have a single source of truth.
 
 ---
 

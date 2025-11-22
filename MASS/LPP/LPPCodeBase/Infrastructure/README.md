@@ -177,7 +177,7 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
 ### 4.1 Test Off Chain
 - [x] Reconfigure spec tests to cover the daily cap via mev-boost/mev-share
 - [X] Test 500 events/day cap (MEV harness)
-- [ ] Test Global pause (confirmed only by treasury)
+- [X] Test Global pause (confirmed only by treasury)
   - Add on chain pause for router to pause the router and test
 
 ---
@@ -196,10 +196,6 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
   - Auto-generation of pool ladders around oracle price.
   - Internal orbit registry (-/+500 orbits (all the same)) and lever to turn off pool orbits.
   - Same fee model extended LPP-wide.
-  - retest with spec files, add security (test all edge cases [testERC20 mints, thousands of tiny positions, multi-hop atomic functions, and rebalancers increase bug risk, etc]) and expand delete all ("you"s)
-  
-## 7. Prepare to buildPublic indexer & SDK
-  - Ship a tiny TS SDK:
-	•	quoteAndBuildBundle(startPool, amountIn) → returns totalOut, per-hop out, calldata, gas estimate, & suggested minTotalAmountOut.
-	•	Include examples for common builders (Flashbots-style bundles, private RPCs, etc.).
-	•	Why: fastest way to 3rd-party adoption.
+  - add security (test all edge cases [testERC20 mints, thousands of tiny positions, multi-hop atomic functions, and rebalancers increase bug risk, etc]) and expand delete all ("you"s)
+- [ ] Run all security tests through the test-commands again before deployment.
+

@@ -113,6 +113,18 @@ contract LPPTreasury is ILPPTreasury {
         ILPPRouter(router).setDailyEventCap(newCap);
     }
 
+    /// @notice Pause the router (swaps, supplications, etc.)
+    /// Calls Router.pause() as the Treasury contract so it passes Router's onlyTreasury check.
+    function pauseRouterViaTreasury(address router) external onlyOwner {
+        ILPPRouter(router).pause();
+    }
+
+    /// @notice Unpause the router
+    /// Calls Router.unpause() as the Treasury contract so it passes Router's onlyTreasury check.
+    function unpauseRouterViaTreasury(address router) external onlyOwner {
+        ILPPRouter(router).unpause();
+    }
+
     // -----------------------------------------------------------------------
     // Direct bootstrap (no MintHook, Phase 0)
     // -----------------------------------------------------------------------
