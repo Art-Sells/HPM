@@ -6,30 +6,28 @@ This guide is for **real deployments** (e.g. Base mainnet).  We are wiring six p
 
 ## 1. Pre-Deployment:
 
-- **Chain + RPC**: *Insert target chain (e.g., Base mainnet) and RPC endpoint here*
-  - Primary RPC: `*insert RPC URL here*`
-  - Fallback RPC: `*insert fallback RPC URL here*` (optional)
+- **Chain**: *Base Mainnet*
+  - Primary RPC: `*https://base-mainnet.infura.io/v3/4885ed01637e4a6f91c2c7fcd1714f68*`
 
 - **Tokens**:
-  - ASSET address: `*insert ASSET token address here*`
-  - USDC address: `*insert USDC token address here*` (must be 1:1 reference price with ASSET)
+  - ASSET (cbBTC) address: `*0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf*`
+  - USDC address: `*0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913*` (must be 1:1 reference price with ASSET)
 
 - **Operators**:
-  - `treasuryOwner`: `*insert cold wallet address here*` (controls LPPTreasury, should be multisig/cold storage)
-  - `treasuryOps`: `*insert warm wallet address here*` (executes bootstraps, must be approved supplicator)
+  - `treasuryOwner` + `treasuryOps`: `*0xd9a6714bba0985b279dfcaff0a512ba25f5a03d1*` (controls LPPTreasury, executes bootstraps, and approves supplicators)
 
 - **Router fees**: Hard-coded in contract (no action needed)
   - `MCV_FEE_BPS=120` (1.2% per hop)
   - `TREASURY_CUT_BPS=20` (0.2% of hop input)
   - `POOLS_DONATE_BPS=100` (1% of hop input)
 
-- **Daily cap**: `*insert number here*` events/day UTC (default: 500, adjustable via `setDailyEventCapViaTreasury`)
+- **Daily cap**: `*500*` events/day UTC (default: 500, adjustable via `setDailyEventCapViaTreasury`)
 
 - **Pool topology**: Six pools with identical assets
   - NEG orbit: 3 pools at −500 bps offset
   - POS orbit: 3 pools at +500 bps offset
 
-- **Seed TVL**: `*insert amount here*` ASSET + `*insert amount here*` USDC per pool (minimum: 100 each, scale symmetrically)
+- **Seed TVL**: `*.000012*` ASSET (cbBTC) + `*1*` USDC per pool
 
 After deployment, publish these values + final contract addresses so searchers and relays have a single source of truth.
 
