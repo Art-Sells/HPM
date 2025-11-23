@@ -88,6 +88,11 @@ No local verification is needed; the above must happen on the target chain.
      );
    }
    ```
+
+  **Set daily cap**
+   ```solidity
+   treasury.setDailyEventCapViaTreasury(address(router), 500);
+   ```
    **Important Notes**:
    - The router contract now supports **variable-length orbits** (any number of pools).
    - The `startPool` is a **lookup key** to identify the orbit configuration. By registering the same orbit config under all pool addresses, searchers can use **any pool address** as `SwapParams.startPool`.
@@ -97,14 +102,14 @@ No local verification is needed; the above must happen on the target chain.
    - **Example**: If a searcher uses `pool2` (a POS pool) as `startPool` but sets `assetToUsdc: true`, they will swap through the NEG orbit (pool0, pool1).
    - After each swap, all pools in the chosen orbit will have their offsets flipped (e.g., -500 bps → +500 bps, or vice versa).
 
-4. **(Optional) Set daily cap**
-   ```solidity
-   treasury.setDailyEventCapViaTreasury(address(router), 500);
-   ```
 
 ---
 
-## 4. MEV Execution Surface (Live Chain)
+## 4. MEV Execution Surface (Documentation for Searchers)
+
+**Note**: This section is **documentation for MEV searchers/bots** on how to interact with the contracts. It is NOT about manually executing swaps. The goal is to deploy the contracts and **observe if MEV bots automatically discover and use them**.
+
+For searchers/bots to interact with the contracts:
 
 1. **Quote** with `router.getAmountsOutFromStartWithDirection(startPool, amountIn, useNegOrbit)` to get quotes for a specific orbit, or use `router.getAmountsOutFromStart(startPool, amountIn)` for the default (NEG orbit).
 2. **Choose orbit**: Set `assetToUsdc` in `SwapParams` to select which orbit to use:
@@ -124,7 +129,7 @@ No local verification is needed; the above must happen on the target chain.
    - `OffsetFlipped(newOffset)` is emitted by each pool after a swap, showing the new offset after flipping.
    - `FeeTaken` + `HopExecuted` let you reconstruct execution in real time.
 
-Everything above happens against the production network; there is no expectation to run Hardhat or the local mev-boost harness.
+**Testing Strategy**: After deploying (Sections 2-3), monitor the contracts for the events above. If MEV bots discover the contracts, you will see `HopExecuted`, `OrbitFlipped`, and `OffsetFlipped` events appearing on-chain without any manual intervention.
 
 ---
 
