@@ -178,7 +178,7 @@ export async function ensureNPools(
   return toMutable(pools);
 }
 
-/** Ensure exactly 6 pools exist (returns first 6) */
+/** Ensure exactly 6 pools exist (returns first 6) - DEPRECATED: use ensureNPools instead */
 export async function ensureSixPools(
   factory: LPPFactory,
   treasury: LPPTreasury,
@@ -253,8 +253,8 @@ export async function wireDualOrbit(
   treasury: LPPTreasury,
   router: LPPRouter,
   startPool: string,
-  neg: [string, string, string],
-  pos: [string, string, string],
+  neg: string[],
+  pos: string[],
   startWithNeg = true
 ) {
   await (
@@ -291,8 +291,8 @@ export interface LegacyMevOrbitSetup {
 
 export interface DualMevOrbitSetup {
   pools: string[];
-  negOrbit: [string, string, string];
-  posOrbit: [string, string, string];
+  negOrbit: string[];
+  posOrbit: string[];
   startPool: string;
 }
 
@@ -330,16 +330,16 @@ export async function setupDualMevOrbit(
   }
 ): Promise<DualMevOrbitSetup> {
   const { factory, treasury, asset, usdc, router, assetAddr, usdcAddr } = env;
-  await ensureNPools(factory, treasury, assetAddr, usdcAddr, 6);
+  await ensureNPools(factory, treasury, assetAddr, usdcAddr, 4);
   const allPools = toMutable(await factory.getPools());
-  const subset = allPools.slice(0, 6);
-  if (subset.length < 6) throw new Error("setupDualMevOrbit requires 6 pools");
+  const subset = allPools.slice(0, 4);
+  if (subset.length < 4) throw new Error("setupDualMevOrbit requires 4 pools");
 
-  const negOrbit: [string, string, string] = [subset[0], subset[1], subset[2]];
-  const posOrbit: [string, string, string] = [subset[3], subset[4], subset[5]];
+  const negOrbit: string[] = [subset[0], subset[1]];  // 2 pools for NEG orbit
+  const posOrbit: string[] = [subset[2], subset[3]];  // 2 pools for POS orbit
 
-  const negOffsets = opts?.negOffsets ?? [-500, -500, -500];
-  const posOffsets = opts?.posOffsets ?? [500, 500, 500];
+  const negOffsets = opts?.negOffsets ?? [-500, -500];
+  const posOffsets = opts?.posOffsets ?? [500, 500];
 
   for (let i = 0; i < negOrbit.length; i++) {
     await bootstrapIfNeeded(negOrbit[i], treasury, asset, usdc, pickOffset(negOffsets, i, -500));
@@ -357,6 +357,14 @@ export async function setupDualMevOrbit(
     posOrbit,
     opts?.startWithNeg ?? true
   );
+
+  // Set router address on all pools so router can call flipOffset
+  const routerAddr = await router.getAddress();
+  const [deployer] = await ethers.getSigners();
+  for (const poolAddr of subset) {
+    const pool = await ethers.getContractAt("LPPPool", poolAddr);
+    await (await pool.connect(deployer)).setRouter(routerAddr);
+  }
 
   return { pools: subset, negOrbit, posOrbit, startPool };
 }
@@ -428,13 +436,20 @@ export async function runSupplicate(params: {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * MEV path (3-hop MCV SWAP) — public, no supplicator role required
+ * MEV path (multi-hop MCV SWAP) — public, no supplicator role required
  * ──────────────────────────────────────────────────────────────────────────── */
 
 /** Quote like a searcher: uses Router.getAmountsOutFromStart (no storage peeking) */
-export async function mevQuote(router: LPPRouter, startPool: string, amountIn: bigint) {
-  const q = await (router as any).getAmountsOutFromStart(startPool, amountIn);
-  // q = [assetToUsdc(bool), orbit(address[3]), perHop(uint256[3]), total(uint256)]
+export async function mevQuote(router: LPPRouter, startPool: string, amountIn: bigint, useNegOrbit?: boolean) {
+  let q;
+  if (useNegOrbit !== undefined) {
+    // Use the new function that allows specifying orbit direction
+    q = await (router as any).getAmountsOutFromStartWithDirection(startPool, amountIn, useNegOrbit);
+  } else {
+    // Default to NEG orbit for backwards compatibility
+    q = await (router as any).getAmountsOutFromStart(startPool, amountIn);
+  }
+  // q = [assetToUsdc(bool), orbit(address[]), perHop(uint256[]), total(uint256)]
   return {
     assetToUsdc: Boolean(q[0]),
     orbit: q[1] as string[],
@@ -458,8 +473,8 @@ export async function prepareSwapApprovals(params: {
   await approveMaxMany(tokenIn, caller, orbit);
 }
 
-/** Execute a 3-hop swap (MCV).
- *  - We first quote to know direction + tokenIn (so we don’t read custom storage)
+/** Execute a multi-hop swap (MCV).
+ *  - We first quote to know direction + tokenIn (so we don't read custom storage)
  *  - Then do approvals and call router.swap(...)
  */
 export async function runSwap(params: {

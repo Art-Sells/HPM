@@ -9,6 +9,7 @@ interface ILPPPool {
     event Burn(address indexed lp, uint256 liquidity, uint256 amountAssetOut, uint256 amountUsdcOut);
     event Supplicate(address indexed caller, bool assetToUsdc, uint256 amountIn, uint256 amountOut);
     event Donation(bool isUsdc, uint256 amount);
+    event OffsetFlipped(int16 newOffset);
 
     // Token getters
     function asset() external view returns (address);
@@ -18,6 +19,7 @@ interface ILPPPool {
     function treasury() external view returns (address);
     function hook() external view returns (address);
     function factory() external view returns (address);
+    function router() external view returns (address);
 
     // Reserve getters
     function reserveAsset() external view returns (uint256);
@@ -71,4 +73,10 @@ interface ILPPPool {
 
     // Target offset bps persisted at bootstrap
     function targetOffsetBps() external view returns (int16);
+    
+    // Set router address (one-time, treasury/factory only)
+    function setRouter(address router_) external;
+    
+    // Flip offset sign (called by router after swap)
+    function flipOffset() external;
 }

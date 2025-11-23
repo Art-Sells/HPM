@@ -86,24 +86,24 @@ contract LPPTreasury is ILPPTreasury {
     // Router forwarders (Router requires onlyTreasury)
     // -----------------------------------------------------------------------
 
-    /// @notice Configure a 3-pool orbit on the Router.
+    /// @notice Configure a multi-pool orbit on the Router.
     /// Calls Router.setOrbit(startPool, pools) as the Treasury contract
     /// so it passes Router's onlyTreasury check.
     function setOrbitViaTreasury(
         address router,
         address startPool,
-        address[3] calldata pools
+        address[] calldata pools
     ) external onlyOwner {
         ILPPRouter(router).setOrbit(startPool, pools);
     }
 
-    /// @notice Configure dual 3-pool orbits (NEG = -500, POS = +500) and initial side.
+    /// @notice Configure dual multi-pool orbits (NEG = -500, POS = +500) and initial side.
     /// Calls Router.setDualOrbit(...) via Treasury so it passes Router's onlyTreasury check.
     function setDualOrbitViaTreasury(
         address router,
         address startPool,
-        address[3] calldata neg,
-        address[3] calldata pos,
+        address[] calldata neg,
+        address[] calldata pos,
         bool startWithNeg
     ) external onlyOwner {
         ILPPRouter(router).setDualOrbit(startPool, neg, pos, startWithNeg);

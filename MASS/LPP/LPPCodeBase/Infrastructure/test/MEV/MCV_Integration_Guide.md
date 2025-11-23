@@ -1,6 +1,6 @@
 # LPP Phase 0 — MEV / Searcher Integration (Mainnet-Focused)
 
-This guide is for **real deployments** (e.g. Base mainnet).  We are wiring six pools, dual 3-hop orbits, and the LPPRouter daily-cap guard exactly as implemented in `contracts/`.  Local Hardhat reproductions are optional; validation happens against live infrastructure.
+This guide is for **real deployments** (e.g. Base mainnet).  We are wiring four pools, dual 2-hop orbits, and the LPPRouter daily-cap guard exactly as implemented in `contracts/`.  Local Hardhat reproductions are optional; validation happens against live infrastructure.
 
 ---
 
@@ -23,9 +23,9 @@ This guide is for **real deployments** (e.g. Base mainnet).  We are wiring six p
 
 - **Daily cap**: `*500*` events/day UTC (default: 500, adjustable via `setDailyEventCapViaTreasury`)
 
-- **Pool topology**: Six pools with identical assets
-  - NEG orbit: 3 pools at −500 bps offset
-  - POS orbit: 3 pools at +500 bps offset
+- **Pool topology**: Four pools with identical assets
+  - NEG orbit: 2 pools at −500 bps offset
+  - POS orbit: 2 pools at +500 bps offset
 
 - **Seed TVL**: `*.000012*` ASSET (cbBTC) + `*1*` USDC per pool
 
@@ -43,33 +43,59 @@ No local verification is needed; the above must happen on the target chain.
 
 ---
 
-## 3. Build the Six-Pool Topology
+## 3. Build the Four-Pool Topology
 
 1. **Create pools**
    ```solidity
-   address pool = factory.createPool(asset, usdc, offsetBps);
+   address pool = factory.createPool(asset, usdc);
    ```
-   Create three pools at −500 bps and three at +500 bps. Label them Pool0–Pool5 for reference.
+   Create 2 pools at −500 bps and 2 pools at +500 bps. Label them Pool0–Pool3 for reference:
+   - Pool0, Pool1: NEG orbit (−500 bps)
+   - Pool2, Pool3: POS orbit (+500 bps)
 
 2. **Bootstrap**
-   From `treasuryOps` (approved supplicator):
+   From `treasuryOps` via treasury:
    ```solidity
-   ILPPPool(pool).bootstrapInitialize(100 ether, 100 ether, offsetBps);
+   treasury.bootstrapViaTreasury(pool, amountAsset, amountUsdc, offsetBps);
    ```
+   Bootstrap each pool with the appropriate offset:
+   - Pool0, Pool1: `offsetBps = -500`
+   - Pool2, Pool3: `offsetBps = +500`
    Adjust the amounts if you want deeper liquidity, but keep NEG vs POS symmetric.
 
 3. **Register dual orbits**
-   Use the treasury forwarder so the router’s `onlyTreasury` check passes:
+   Use the treasury forwarder so the router's `onlyTreasury` check passes. **Register the same orbit configuration under ALL pool addresses** so searchers can use any pool as the `startPool` lookup key:
+   
    ```solidity
-   treasury.setDualOrbitViaTreasury(
-     address(router),
-     pool0,                        // startPool key advertised to searchers
-     [pool0,pool1,pool2],          // NEG orbit  (ASSET → USDC)
-     [pool3,pool4,pool5],          // POS orbit  (USDC → ASSET)
-     true                          // start with NEG
-   );
+   // Register the same orbit config under all 4 pools
+   address[] memory negOrbit = new address[](2);
+   negOrbit[0] = pool0;  // NEG: -500 bps
+   negOrbit[1] = pool1;  // NEG: -500 bps
+   
+   address[] memory posOrbit = new address[](2);
+   posOrbit[0] = pool2;  // POS: +500 bps
+   posOrbit[1] = pool3;  // POS: +500 bps
+   
+   // Register under each pool address so searchers can start from any pool
+   address[4] memory allPools = [pool0, pool1, pool2, pool3];
+   for (uint i = 0; i < 4; i++) {
+     treasury.setDualOrbitViaTreasury(
+       address(router),
+       allPools[i],                 // startPool: any pool can be used as lookup key
+       negOrbit,                    // NEG orbit: 2 pools (pool0, pool1)
+       posOrbit,                    // POS orbit: 2 pools (pool2, pool3)
+       true                          // deprecated: kept for backwards compatibility
+     );
+   }
    ```
-   The router flips `useNegNext` after every swap.
+   **Important Notes**:
+   - The router contract now supports **variable-length orbits** (any number of pools).
+   - The `startPool` is a **lookup key** to identify the orbit configuration. By registering the same orbit config under all pool addresses, searchers can use **any pool address** as `SwapParams.startPool`.
+   - Searchers choose which orbit to use via the `assetToUsdc` parameter in `SwapParams`:
+     - `assetToUsdc: true` → NEG orbit (pool0, pool1 - 2 pools)
+     - `assetToUsdc: false` → POS orbit (pool2, pool3 - 2 pools)
+   - **Example**: If a searcher uses `pool2` (a POS pool) as `startPool` but sets `assetToUsdc: true`, they will swap through the NEG orbit (pool0, pool1).
+   - After each swap, all pools in the chosen orbit will have their offsets flipped (e.g., -500 bps → +500 bps, or vice versa).
 
 4. **(Optional) Set daily cap**
    ```solidity
@@ -80,13 +106,22 @@ No local verification is needed; the above must happen on the target chain.
 
 ## 4. MEV Execution Surface (Live Chain)
 
-1. **Quote** with `router.getAmountsOutFromStart(startPool, amountIn)` to learn which orbit (NEG or POS) is next and what each hop outputs.
-2. **Approvals**: router needs the per-hop fee; each pool in the active orbit needs allowance for the hop principal.
-3. **Swap params**: build `SwapParams` with the advertised `startPool`, `amountIn`, and a realistic `minTotalAmountOut`. When the dual orbit is configured, `assetToUsdc` is ignored.
-4. **Submit bundle**: encode calldata via `router.interface.encodeFunctionData("swap", [params])`, sign with the searcher key, forward to your relay/builder, and broadcast to the chain once accepted.
-5. **Observe guardrails**:
+1. **Quote** with `router.getAmountsOutFromStartWithDirection(startPool, amountIn, useNegOrbit)` to get quotes for a specific orbit, or use `router.getAmountsOutFromStart(startPool, amountIn)` for the default (NEG orbit).
+2. **Choose orbit**: Set `assetToUsdc` in `SwapParams` to select which orbit to use:
+   - `assetToUsdc: true` → NEG orbit (all -500 bps pools, ASSET → USDC)
+   - `assetToUsdc: false` → POS orbit (all +500 bps pools, USDC → ASSET)
+3. **Approvals**: router needs the per-hop fee; each pool in the chosen orbit needs allowance for the hop principal.
+4. **Swap params**: build `SwapParams` with:
+   - `startPool`: **Any pool address** that was registered in `setDualOrbit` (this is just the lookup key to find the orbit config; the actual swap goes through the chosen orbit)
+   - `amountIn`: The input amount (same amount used for all hops in the orbit)
+   - `assetToUsdc`: Your orbit choice (true = NEG orbit, false = POS orbit) - **this determines which pools you swap through, regardless of which pool you use as `startPool`**
+   - `minTotalAmountOut`: Realistic slippage protection
+   - The swap will execute through **all pool addresses** in the chosen orbit sequentially (e.g., 2 pools for a 2-pool orbit)
+5. **Submit bundle**: encode calldata via `router.interface.encodeFunctionData("swap", [params])`, sign with the searcher key, forward to your relay/builder, and broadcast to the chain once accepted.
+6. **Observe guardrails**:
    - `DailyEventCapReached(cap)` fires once `dailyEventCount >= dailyEventCap`.
-   - `OrbitFlipped(startPool, nowUsingNeg)` tells you which path will execute next.
+   - `OrbitFlipped(startPool, usedNegOrbit)` indicates which orbit was used (true = NEG, false = POS).
+   - `OffsetFlipped(newOffset)` is emitted by each pool after a swap, showing the new offset after flipping.
    - `FeeTaken` + `HopExecuted` let you reconstruct execution in real time.
 
 Everything above happens against the production network; there is no expectation to run Hardhat or the local mev-boost harness.
@@ -98,14 +133,14 @@ Everything above happens against the production network; there is no expectation
 1. **Dry-run on staging (optional)**: Deploy a low-liquidity copy on a public testnet and run a few bundles end-to-end with your production bot stack to make sure signing, relays, and monitoring work.
 
 2. **Production smoke tests**:
-   - Submit a minimal ASSET→USDC bundle; confirm three `HopExecuted` events and that treasury receives roughly 0.2% of the input per hop.
-   - Immediately submit the mirror USDC→ASSET bundle; verify `OrbitFlipped` toggled and reserves updated symmetrically.
+   - Submit a minimal ASSET→USDC bundle (with `assetToUsdc: true` to use NEG orbit); confirm `HopExecuted` events for pool0 and pool1 (2 events total), that treasury receives roughly 0.2% of the input per hop, and that both NEG orbit pools (pool0, pool1) have their offsets flipped (from -500 to +500 bps).
+   - Immediately submit the mirror USDC→ASSET bundle (with `assetToUsdc: false` to use POS orbit); verify `OrbitFlipped` indicates POS orbit was used, confirm `HopExecuted` events for pool2 and pool3 (2 events total), reserves updated symmetrically, and both POS orbit pools (pool2, pool3) have their offsets flipped (from +500 to -500 bps).
    - Hit the configured daily cap, observe the revert, wait 24h (UTC) and confirm `router.getDailyEventWindow()` shows the counter reset.
 
 3. **Monitoring requirements**:
    - Continuously poll `router.getDailyEventWindow()`.
    - Track `ILPPPool.reserveAsset` / `reserveUsdc` per pool to catch drift.
-   - Index `FeeTaken`, `HopExecuted`, `OrbitFlipped`, `DailyEventCapUpdated`, and `DailyEventWindowRolled` for dashboards and alerting.
+   - Index `FeeTaken`, `HopExecuted`, `OrbitFlipped`, `OffsetFlipped` (from pools), `DailyEventCapUpdated`, and `DailyEventWindowRolled` for dashboards and alerting.
 
 ---
 
@@ -113,9 +148,10 @@ Everything above happens against the production network; there is no expectation
 
 - Publish ABI + addresses + the parameter file from Section 1.
 - Ship a lightweight SDK or script that:
-  1. Fetches the next orbit via `getAmountsOutFromStart`.
-  2. Builds calldata and target blocks for the relay.
-  3. Handles revert reasons (`DailyEventCapReached`, slippage) so bundles aren’t spammed.
+  1. Allows searchers to choose their orbit (NEG or POS) based on market conditions.
+  2. Fetches quotes for the chosen orbit via `getAmountsOutFromStartWithDirection(startPool, amountIn, useNegOrbit)`.
+  3. Builds calldata with the appropriate `assetToUsdc` value and target blocks for the relay.
+  4. Handles revert reasons (`DailyEventCapReached`, slippage) so bundles aren't spammed.
 - Communicate any cap changes via `DailyEventCapUpdated` events or public status pages.
 - Adjust bps fees if needed (low or high)
 

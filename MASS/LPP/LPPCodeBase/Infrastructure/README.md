@@ -198,5 +198,6 @@ Use case: **Treasury maintenance** and simple rebalancing, not profit extraction
   - Internal orbit registry (-/+500 orbits (all the same)) and lever to turn off pool orbits.
   - Same fee model extended LPP-wide.
   - add security (test all edge cases [testERC20 mints, thousands of tiny positions, multi-hop atomic functions, and rebalancers increase bug risk, etc]) and expand delete all ("you"s)
+  - Re-deploy and save treasuryOps/Owner o.chn
 - [ ] Run all security tests through the test-commands again before deployment.
 

@@ -1,13 +1,12 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`Swap (MCV) 3-pool dual-orbit — deltas + automatic flip uses NEG set first, flips to POS after each swap; shows per-pool & treasury deltas 1`] = `
+exports[`Swap (MCV) 2-pool dual-orbit — searcher chooses orbit, pool offsets flip searcher chooses NEG orbit first, then POS; pool offsets flip after each swap; shows per-pool & treasury deltas 1`] = `
 Object {
-  "note": "NEG-first under independent 3-hop model (per-hop fees); run #1 ASSET-in, run #2 USDC-in.",
+  "note": "Searcher chooses orbit via assetToUsdc; pool offsets flip after each swap. Run #1: NEG orbit (ASSET-in), Run #2: POS orbit (USDC-in).",
   "orbitRun1": Object {
     "activeOrbit": Array [
       "POOL#0",
       "POOL#1",
-      "POOL#2",
     ],
     "poolDeltas": Array [
       Object {
@@ -21,8 +20,8 @@ Object {
         "pool": "POOL#1",
       },
       Object {
-        "deltaA": "1010000000000000000",
-        "deltaU": "-990000990000990000",
+        "deltaA": "0",
+        "deltaU": "0",
         "pool": "POOL#2",
       },
       Object {
@@ -30,28 +29,17 @@ Object {
         "deltaU": "0",
         "pool": "POOL#3",
       },
-      Object {
-        "deltaA": "0",
-        "deltaU": "0",
-        "pool": "POOL#4",
-      },
-      Object {
-        "deltaA": "0",
-        "deltaU": "0",
-        "pool": "POOL#5",
-      },
     ],
     "treasuryDelta": Object {
-      "deltaA": "6000000000000000",
+      "deltaA": "4000000000000000",
       "deltaU": "0",
     },
     "usingNegBefore": true,
   },
   "orbitRun2": Object {
     "activeOrbit": Array [
+      "POOL#2",
       "POOL#3",
-      "POOL#4",
-      "POOL#5",
     ],
     "poolDeltas": Array [
       Object {
@@ -65,8 +53,8 @@ Object {
         "pool": "POOL#1",
       },
       Object {
-        "deltaA": "0",
-        "deltaU": "0",
+        "deltaA": "-990000990000990000",
+        "deltaU": "1010000000000000000",
         "pool": "POOL#2",
       },
       Object {
@@ -74,20 +62,10 @@ Object {
         "deltaU": "1010000000000000000",
         "pool": "POOL#3",
       },
-      Object {
-        "deltaA": "-990000990000990000",
-        "deltaU": "1010000000000000000",
-        "pool": "POOL#4",
-      },
-      Object {
-        "deltaA": "-990000990000990000",
-        "deltaU": "1010000000000000000",
-        "pool": "POOL#5",
-      },
     ],
     "treasuryDelta": Object {
       "deltaA": "0",
-      "deltaU": "6000000000000000",
+      "deltaU": "4000000000000000",
     },
     "usingNegBefore": false,
   },
@@ -96,99 +74,77 @@ Object {
 }
 `;
 
-exports[`Swap (MCV) 3-pool dual-orbit — deltas + automatic flip uses POS set first, flips to NEG after each swap; shows per-pool & treasury deltas 1`] = `
+exports[`Swap (MCV) 2-pool dual-orbit — searcher chooses orbit, pool offsets flip searcher chooses POS orbit first, then NEG; pool offsets flip after each swap; shows per-pool & treasury deltas 1`] = `
 Object {
-  "note": "POS-first mirror under independent 3-hop model (per-hop fees).",
+  "note": "Searcher chooses orbit via assetToUsdc; pool offsets flip after each swap. Run #1: POS orbit (USDC-in), Run #2: NEG orbit (ASSET-in).",
   "orbitRun1": Object {
     "activeOrbit": Array [
-      "POOL#6",
-      "POOL#7",
-      "POOL#8",
+      "POOL#4",
+      "POOL#5",
     ],
     "poolDeltas": Array [
       Object {
         "deltaA": "0",
         "deltaU": "0",
-        "pool": "POOL#9",
-      },
-      Object {
-        "deltaA": "0",
-        "deltaU": "0",
-        "pool": "POOL#10",
-      },
-      Object {
-        "deltaA": "0",
-        "deltaU": "0",
-        "pool": "POOL#11",
-      },
-      Object {
-        "deltaA": "-990000990000990000",
-        "deltaU": "1010000000000000000",
         "pool": "POOL#6",
       },
       Object {
-        "deltaA": "-990000990000990000",
-        "deltaU": "1010000000000000000",
+        "deltaA": "0",
+        "deltaU": "0",
         "pool": "POOL#7",
       },
       Object {
         "deltaA": "-990000990000990000",
         "deltaU": "1010000000000000000",
-        "pool": "POOL#8",
+        "pool": "POOL#4",
+      },
+      Object {
+        "deltaA": "-990000990000990000",
+        "deltaU": "1010000000000000000",
+        "pool": "POOL#5",
       },
     ],
     "treasuryDelta": Object {
       "deltaA": "0",
-      "deltaU": "6000000000000000",
+      "deltaU": "4000000000000000",
     },
     "usingNegBefore": false,
   },
   "orbitRun2": Object {
     "activeOrbit": Array [
-      "POOL#9",
-      "POOL#10",
-      "POOL#11",
+      "POOL#6",
+      "POOL#7",
     ],
     "poolDeltas": Array [
       Object {
         "deltaA": "1010000000000000000",
         "deltaU": "-990000990000990000",
-        "pool": "POOL#9",
-      },
-      Object {
-        "deltaA": "1010000000000000000",
-        "deltaU": "-990000990000990000",
-        "pool": "POOL#10",
-      },
-      Object {
-        "deltaA": "1010000000000000000",
-        "deltaU": "-990000990000990000",
-        "pool": "POOL#11",
-      },
-      Object {
-        "deltaA": "0",
-        "deltaU": "0",
         "pool": "POOL#6",
       },
       Object {
-        "deltaA": "0",
-        "deltaU": "0",
+        "deltaA": "1010000000000000000",
+        "deltaU": "-990000990000990000",
         "pool": "POOL#7",
       },
       Object {
         "deltaA": "0",
         "deltaU": "0",
-        "pool": "POOL#8",
+        "pool": "POOL#4",
+      },
+      Object {
+        "deltaA": "0",
+        "deltaU": "0",
+        "pool": "POOL#5",
       },
     ],
     "treasuryDelta": Object {
-      "deltaA": "6000000000000000",
+      "deltaA": "4000000000000000",
       "deltaU": "0",
     },
     "usingNegBefore": true,
   },
   "role": "MCV",
-  "startPool": "POOL#9",
+  "startPool": "POOL#6",
 }
 `;
 

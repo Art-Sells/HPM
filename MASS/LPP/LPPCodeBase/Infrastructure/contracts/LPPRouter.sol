@@ -25,13 +25,13 @@ contract LPPRouter is ILPPRouter {
     bool public paused;
 
     /* -------- Orbit storage -------- */
-    struct OrbitConfig { address[3] pools; bool initialized; }
+    struct OrbitConfig { address[] pools; bool initialized; }
     mapping(address => OrbitConfig) private _orbitOf;
 
     struct DualOrbit {
-        address[3] neg;     // NEG set  => ASSET-in  (asset->usdc)
-        address[3] pos;     // POS set  => USDC-in   (usdc->asset)
-        bool useNegNext;    // flips on each swap() call
+        address[] neg;     // NEG set  => ASSET-in  (asset->usdc)
+        address[] pos;     // POS set  => USDC-in   (usdc->asset)
+        bool useNegNext;    // deprecated - kept for backwards compatibility, not used
         bool initialized;
     }
     mapping(address => DualOrbit) private _dualOrbit;
@@ -42,9 +42,9 @@ contract LPPRouter is ILPPRouter {
     error RouterPaused();
 
     /* -------- Events (MEV traces, admin) -------- */
-    event OrbitUpdated(address indexed startPool, address[3] pools);
-    event DualOrbitUpdated(address indexed startPool, address[3] neg, address[3] pos, bool startWithNeg);
-    event OrbitFlipped(address indexed startPool, bool nowUsingNeg);
+    event OrbitUpdated(address indexed startPool, address[] pools);
+    event DualOrbitUpdated(address indexed startPool, address[] neg, address[] pos, bool startWithNeg);
+    event OrbitFlipped(address indexed startPool, bool usedNegOrbit);
     event DailyEventCapUpdated(uint16 newCap);
     event DailyEventWindowRolled(uint32 indexed dayIndex);
     event Paused(address indexed account);
@@ -94,20 +94,24 @@ contract LPPRouter is ILPPRouter {
        Orbit config (legacy single + dual)
        ─────────────────────────────────────────── */
 
-    function setOrbit(address startPool, address[3] calldata pools_) external onlyTreasury {
+    function setOrbit(address startPool, address[] calldata pools_) external onlyTreasury {
         require(startPool != address(0), "orbit: zero start");
-        require(pools_[0] != address(0) && pools_[1] != address(0) && pools_[2] != address(0), "orbit: zero pool");
+        require(pools_.length > 0, "orbit: empty");
+        for (uint256 i = 0; i < pools_.length; i++) {
+            require(pools_[i] != address(0), "orbit: zero pool");
+        }
 
         address a0 = ILPPPool(pools_[0]).asset();
         address u0 = ILPPPool(pools_[0]).usdc();
-        require(ILPPPool(pools_[1]).asset() == a0 && ILPPPool(pools_[1]).usdc() == u0, "orbit: mismatched pair");
-        require(ILPPPool(pools_[2]).asset() == a0 && ILPPPool(pools_[2]).usdc() == u0, "orbit: mismatched pair");
+        for (uint256 i = 1; i < pools_.length; i++) {
+            require(ILPPPool(pools_[i]).asset() == a0 && ILPPPool(pools_[i]).usdc() == u0, "orbit: mismatched pair");
+        }
 
         _orbitOf[startPool] = OrbitConfig({ pools: pools_, initialized: true });
         emit OrbitUpdated(startPool, pools_);
     }
 
-    function getOrbit(address startPool) external view returns (address[3] memory pools) {
+    function getOrbit(address startPool) external view returns (address[] memory pools) {
         OrbitConfig memory cfg = _orbitOf[startPool];
         require(cfg.initialized, "orbit: not set");
         return cfg.pools;
@@ -115,17 +119,21 @@ contract LPPRouter is ILPPRouter {
 
     function setDualOrbit(
         address startPool,
-        address[3] calldata neg,
-        address[3] calldata pos,
+        address[] calldata neg,
+        address[] calldata pos,
         bool startWithNeg
     ) external onlyTreasury {
         require(startPool != address(0), "dual: zero start");
-        for (uint256 i = 0; i < 3; i++) {
+        require(neg.length > 0 && pos.length > 0, "dual: empty orbit");
+        require(neg.length == pos.length, "dual: length mismatch");
+        
+        for (uint256 i = 0; i < neg.length; i++) {
             require(neg[i] != address(0) && pos[i] != address(0), "dual: zero pool");
         }
+        
         address a0 = ILPPPool(neg[0]).asset();
         address u0 = ILPPPool(neg[0]).usdc();
-        for (uint256 i = 1; i < 3; i++) {
+        for (uint256 i = 1; i < neg.length; i++) {
             require(ILPPPool(neg[i]).asset() == a0 && ILPPPool(neg[i]).usdc() == u0, "dual: NEG mismatch");
             require(ILPPPool(pos[i]).asset() == a0 && ILPPPool(pos[i]).usdc() == u0, "dual: POS mismatch");
         }
@@ -144,21 +152,23 @@ contract LPPRouter is ILPPRouter {
     function getActiveOrbit(address startPool)
         external
         view
-        returns (address[3] memory orbit, bool usingNeg)
+        returns (address[] memory orbit, bool usingNeg)
     {
         DualOrbit memory d = _dualOrbit[startPool];
         require(d.initialized, "dual: not set");
-        return (d.useNegNext ? d.neg : d.pos, d.useNegNext);
+        // No longer tracks active orbit - searchers choose. Return NEG as default.
+        return (d.neg, true);
     }
 
     function getDualOrbit(address startPool)
         external
         view
-        returns (address[3] memory neg, address[3] memory pos, bool usingNeg)
+        returns (address[] memory neg, address[] memory pos, bool usingNeg)
     {
         DualOrbit memory d = _dualOrbit[startPool];
         require(d.initialized, "dual: not set");
-        return (d.neg, d.pos, d.useNegNext);
+        // usingNeg is no longer meaningful since searchers choose. Return false as placeholder.
+        return (d.neg, d.pos, false);
     }
 
     /* ───────────────────────────────────────────
@@ -243,14 +253,14 @@ contract LPPRouter is ILPPRouter {
         require(p.amountIn > 0, "zero input");
         _preCheckDailyCap();
 
-        (address[3] memory orbit, bool assetToUsdc, address tokenIn, address tokenOut) =
+        (address[] memory orbit, bool assetToUsdc, address tokenIn, address tokenOut) =
             _resolveOrbitAndTokens(p.startPool, p.assetToUsdc);
 
         address payer = p.payer == address(0) ? msg.sender : p.payer;
         address to    = p.to    == address(0) ? msg.sender : p.to;
 
         unchecked {
-            for (uint256 i = 0; i < 3; i++) {
+            for (uint256 i = 0; i < orbit.length; i++) {
                 address pool = orbit[i];
 
                 _takeInputFeeAndDonate(pool, tokenIn, payer, p.amountIn);
@@ -274,10 +284,15 @@ contract LPPRouter is ILPPRouter {
 
         IERC20(tokenOut).transfer(to, totalOut);
 
+        // After swap completes, flip the offset of each pool in the orbit
         DualOrbit storage d = _dualOrbit[p.startPool];
         if (d.initialized) {
-            d.useNegNext = !d.useNegNext;
-            emit OrbitFlipped(p.startPool, d.useNegNext);
+            unchecked {
+                for (uint256 i = 0; i < orbit.length; i++) {
+                    ILPPPool(orbit[i]).flipOffset();
+                }
+            }
+            emit OrbitFlipped(p.startPool, assetToUsdc); // emit which orbit was used
         }
 
         _incrementDailyCount();
@@ -289,14 +304,16 @@ contract LPPRouter is ILPPRouter {
 
     function getAmountsOut(
         uint256 amountIn,
-        address[3] calldata orbit,
+        address[] calldata orbit,
         bool assetToUsdc
-    ) external view override returns (uint256[3] memory perHop, uint256 total) {
+    ) external view override returns (uint256[] memory perHop, uint256 total) {
         require(amountIn > 0, "amountIn=0");
+        require(orbit.length > 0, "empty orbit");
         uint256 x = amountIn;
+        perHop = new uint256[](orbit.length);
 
         unchecked {
-            for (uint256 i = 0; i < 3; i++) {
+            for (uint256 i = 0; i < orbit.length; i++) {
                 address pool = orbit[i];
                 require(pool != address(0), "zero pool");
 
@@ -323,12 +340,32 @@ contract LPPRouter is ILPPRouter {
         override
         returns (
             bool assetToUsdc,
-            address[3] memory orbit,
-            uint256[3] memory perHop,
+            address[] memory orbit,
+            uint256[] memory perHop,
             uint256 total
         )
     {
-        (orbit, assetToUsdc, , ) = _resolveOrbitAndTokens(startPool, /*legacy*/ false);
+        // Default to NEG orbit (ASSET→USDC) for backwards compatibility
+        // Searchers should use getAmountsOutFromStartWithDirection to specify
+        return this.getAmountsOutFromStartWithDirection(startPool, amountIn, true);
+    }
+    
+    /// @notice Get amounts out for a specific orbit direction (searcher's choice)
+    function getAmountsOutFromStartWithDirection(
+        address startPool,
+        uint256 amountIn,
+        bool useNegOrbit
+    )
+        external
+        view
+        returns (
+            bool assetToUsdc,
+            address[] memory orbit,
+            uint256[] memory perHop,
+            uint256 total
+        )
+    {
+        (orbit, assetToUsdc, , ) = _resolveOrbitAndTokens(startPool, useNegOrbit);
         (perHop, total) = this.getAmountsOut(amountIn, orbit, assetToUsdc);
     }
 
@@ -336,22 +373,25 @@ contract LPPRouter is ILPPRouter {
        Internals
        ─────────────────────────────────────────── */
 
-    function _resolveOrbitAndTokens(address startPool, bool legacyAssetToUsdc)
+    function _resolveOrbitAndTokens(address startPool, bool searcherAssetToUsdc)
         internal
         view
-        returns (address[3] memory orbit, bool assetToUsdc, address tokenIn, address tokenOut)
+        returns (address[] memory orbit, bool assetToUsdc, address tokenIn, address tokenOut)
     {
         DualOrbit memory d = _dualOrbit[startPool];
         if (d.initialized) {
-            orbit = d.useNegNext ? d.neg : d.pos;
-            assetToUsdc = d.useNegNext ? true : false;
+            // Use searcher's choice: assetToUsdc=true means NEG orbit (ASSET→USDC)
+            // assetToUsdc=false means POS orbit (USDC→ASSET)
+            orbit = searcherAssetToUsdc ? d.neg : d.pos;
+            assetToUsdc = searcherAssetToUsdc;
         } else {
             OrbitConfig memory cfg = _orbitOf[startPool];
             if (!cfg.initialized) revert OrbitNotSet(startPool);
             orbit = cfg.pools;
-            assetToUsdc = legacyAssetToUsdc;
+            assetToUsdc = searcherAssetToUsdc;
         }
 
+        require(orbit.length > 0, "empty orbit");
         address a = ILPPPool(orbit[0]).asset();
         address u = ILPPPool(orbit[0]).usdc();
         tokenIn  = assetToUsdc ? a : u;

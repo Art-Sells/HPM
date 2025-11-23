@@ -723,10 +723,10 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
   });
 
   /* ────────────────────────────────────────────────────────────────────────
-   * 3-pool dual-orbit — deltas + automatic flip
+   * 2-pool dual-orbit — deltas + automatic flip
    * ──────────────────────────────────────────────────────────────────────── */
-  describe("3-pool dual-orbit — deltas + automatic flip", () => {
-    it("uses NEG set first, flips to POS after each swap; shows per-pool & treasury deltas", async () => {
+  describe("2-pool dual-orbit — searcher chooses orbit, pool offsets flip", () => {
+    it("searcher chooses NEG orbit first, then POS; pool offsets flip after each swap; shows per-pool & treasury deltas", async () => {
       const env = await deployCore();
       const { deployer, router, treasury, factory, asset, usdc } = env;
 
@@ -747,18 +747,25 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
         return { pools: arr, treA, treU };
       };
 
-      /* ----------------------- RUN #1 — NEG set (ASSET-in) ----------------------- */
+      /* ----------------------- RUN #1 — NEG set (ASSET-in) - Searcher chooses NEG orbit ----------------------- */
       const amountIn = ethers.parseEther("1");
-      const active0   = await (router as any).getActiveOrbit(startPool);
-      const usingNeg0 = active0[1] as boolean;
-      const orbit0    = active0[0] as string[];
-      expect(usingNeg0).to.equal(true);
+      const dualOrbit = await (router as any).getDualOrbit(startPool);
+      const orbit0 = dualOrbit[0] as string[]; // NEG orbit
+      const usingNeg0 = true; // Searcher chooses NEG orbit
 
-      // fund + approve ASSET for all three hops
+      // Check initial pool offsets (should be -500 for NEG orbit pools)
+      const offsetsBefore1 = await Promise.all(orbit0.map(async (addr) => {
+        const pool = await ethers.getContractAt("LPPPool", addr);
+        return (await pool.targetOffsetBps()).toString();
+      }));
+      expect(offsetsBefore1.every(o => o === "-500")).to.be.true;
+
+      // fund + approve ASSET for all hops
       {
         const feePerHop = feeFromInput(amountIn);
-        const totalFee  = feePerHop * 3n;
-        const totalIn   = amountIn * 3n;
+        const numHops = BigInt(orbit0.length);
+        const totalFee  = feePerHop * numHops;
+        const totalIn   = amountIn * numHops;
 
         await (await env.asset.connect(deployer).mint(deployer.address, totalIn + totalFee)).wait();
         await (await env.asset.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
@@ -778,7 +785,7 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
         router as LPPRouter,
         {
           startPool,
-          assetToUsdc: true, // ignored; orbit drives direction
+          assetToUsdc: true, // Searcher chooses NEG orbit (ASSET→USDC)
           amountIn,
           minTotalAmountOut: 0n,
           to: deployer.address,
@@ -792,21 +799,30 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
       });
       const treDelta1 = { deltaA: (after1.treA - before1.treA).toString(), deltaU: (after1.treU - before1.treU).toString() };
 
-      // Flipped to POS
-      const activeAfter1 = await (router as any).getActiveOrbit(startPool);
-      expect(activeAfter1[1] as boolean).to.equal(false);
+      // Pools in NEG orbit should have flipped offsets (from -500 to +500)
+      const offsetsAfter1 = await Promise.all(orbit0.map(async (addr) => {
+        const pool = await ethers.getContractAt("LPPPool", addr);
+        return (await pool.targetOffsetBps()).toString();
+      }));
+      expect(offsetsAfter1.every(o => o === "500")).to.be.true;
 
-      /* ----------------------- RUN #2 — POS set (USDC-in) ------------------------ */
+      /* ----------------------- RUN #2 — POS set (USDC-in) - Searcher chooses POS orbit ------------------------ */
       const amountIn2 = ethers.parseEther("1");
-      const active1   = await (router as any).getActiveOrbit(startPool);
-      const usingNeg1 = active1[1] as boolean;
-      const orbit1    = active1[0] as string[];
-      expect(usingNeg1).to.equal(false);
+      const orbit1 = dualOrbit[1] as string[]; // POS orbit
+      const usingNeg1 = false; // Searcher chooses POS orbit
+
+      // Check initial pool offsets for POS orbit (should be +500)
+      const offsetsBefore2 = await Promise.all(orbit1.map(async (addr) => {
+        const pool = await ethers.getContractAt("LPPPool", addr);
+        return (await pool.targetOffsetBps()).toString();
+      }));
+      expect(offsetsBefore2.every(o => o === "500")).to.be.true;
 
       {
         const feePerHop = feeFromInput(amountIn2);
-        const totalFee  = feePerHop * 3n;
-        const totalIn   = amountIn2 * 3n;
+        const numHops = BigInt(orbit1.length);
+        const totalFee  = feePerHop * numHops;
+        const totalIn   = amountIn2 * numHops;
 
         await (await env.usdc.connect(deployer).mint(deployer.address, totalIn + totalFee)).wait();
         await (await env.usdc.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
@@ -836,9 +852,12 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
       });
       const treDelta2 = { deltaA: (after2.treA - before2.treA).toString(), deltaU: (after2.treU - before2.treU).toString() };
 
-      // Flipped back to NEG
-      const activeAfter2 = await (router as any).getActiveOrbit(startPool);
-      expect(activeAfter2[1] as boolean).to.equal(true);
+      // Pools in POS orbit should have flipped offsets (from +500 to -500)
+      const offsetsAfter2 = await Promise.all(orbit1.map(async (addr) => {
+        const pool = await ethers.getContractAt("LPPPool", addr);
+        return (await pool.targetOffsetBps()).toString();
+      }));
+      expect(offsetsAfter2.every(o => o === "-500")).to.be.true;
 
       // Canonicalize addresses for deterministic snapshots
       const orbit0Canon  = orbit0.map(canon);
@@ -851,11 +870,11 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
         startPool: canon(startPool),
         orbitRun1: { usingNegBefore: usingNeg0, activeOrbit: orbit0Canon, poolDeltas: deltas1Canon, treasuryDelta: treDelta1 },
         orbitRun2: { usingNegBefore: usingNeg1, activeOrbit: orbit1Canon, poolDeltas: deltas2Canon, treasuryDelta: treDelta2 },
-        note: "NEG-first under independent 3-hop model (per-hop fees); run #1 ASSET-in, run #2 USDC-in.",
+        note: "Searcher chooses orbit via assetToUsdc; pool offsets flip after each swap. Run #1: NEG orbit (ASSET-in), Run #2: POS orbit (USDC-in).",
       }).to.matchSnapshot("Dual-orbit — per-pool & treasury deltas + flip (NEG-first fixed)");
     });
 
-    it("uses POS set first, flips to NEG after each swap; shows per-pool & treasury deltas", async () => {
+    it("searcher chooses POS orbit first, then NEG; pool offsets flip after each swap; shows per-pool & treasury deltas", async () => {
       const env = await deployCore();
       const { deployer, router, treasury, factory, asset, usdc } = env;
 
@@ -876,17 +895,24 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
         return { pools: arr, treA, treU };
       };
 
-      /* ----------------------- RUN #1 — POS (USDC-in) ----------------------- */
+      /* ----------------------- RUN #1 — POS (USDC-in) - Searcher chooses POS orbit ----------------------- */
       const amountIn1 = ethers.parseEther("1");
-      const active0   = await (router as any).getActiveOrbit(startPool);
-      const usingNeg0 = active0[1] as boolean;
-      const orbit0    = active0[0] as string[];
-      expect(usingNeg0).to.equal(false);
+      const dualOrbit = await (router as any).getDualOrbit(startPool);
+      const orbit0 = dualOrbit[1] as string[]; // POS orbit
+      const usingNeg0 = false; // Searcher chooses POS orbit
+
+      // Check initial pool offsets (should be +500 for POS orbit pools)
+      const offsetsBefore1 = await Promise.all(orbit0.map(async (addr) => {
+        const pool = await ethers.getContractAt("LPPPool", addr);
+        return (await pool.targetOffsetBps()).toString();
+      }));
+      expect(offsetsBefore1.every(o => o === "500")).to.be.true;
 
       {
         const feePerHop = feeFromInput(amountIn1);
-        const totalFee  = feePerHop * 3n;
-        const totalIn   = amountIn1 * 3n;
+        const numHops = BigInt(orbit0.length);
+        const totalFee  = feePerHop * numHops;
+        const totalIn   = amountIn1 * numHops;
 
         await (await env.usdc.connect(deployer).mint(deployer.address, totalIn + totalFee)).wait();
         await (await env.usdc.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
@@ -906,7 +932,7 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
         router as LPPRouter,
         {
           startPool,
-          assetToUsdc: false,
+          assetToUsdc: false, // Searcher chooses POS orbit (USDC→ASSET)
           amountIn: amountIn1,
           minTotalAmountOut: 0n,
           to: deployer.address,
@@ -920,21 +946,30 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
       });
       const treDelta1 = { deltaA: (after1.treA - before1.treA).toString(), deltaU: (after1.treU - before1.treU).toString() };
 
-      // Flipped to NEG
-      const activeAfter1 = await (router as any).getActiveOrbit(startPool);
-      expect(activeAfter1[1] as boolean).to.equal(true);
+      // Pools in POS orbit should have flipped offsets (from +500 to -500)
+      const offsetsAfter1 = await Promise.all(orbit0.map(async (addr) => {
+        const pool = await ethers.getContractAt("LPPPool", addr);
+        return (await pool.targetOffsetBps()).toString();
+      }));
+      expect(offsetsAfter1.every(o => o === "-500")).to.be.true;
 
-      /* ----------------------- RUN #2 — NEG (ASSET-in) ----------------------- */
+      /* ----------------------- RUN #2 — NEG (ASSET-in) - Searcher chooses NEG orbit ----------------------- */
       const amountIn2 = ethers.parseEther("1");
-      const active1   = await (router as any).getActiveOrbit(startPool);
-      const usingNeg1 = active1[1] as boolean;
-      const orbit1    = active1[0] as string[];
-      expect(usingNeg1).to.equal(true);
+      const orbit1 = dualOrbit[0] as string[]; // NEG orbit
+      const usingNeg1 = true; // Searcher chooses NEG orbit
+
+      // Check initial pool offsets for NEG orbit (should be -500)
+      const offsetsBefore2 = await Promise.all(orbit1.map(async (addr) => {
+        const pool = await ethers.getContractAt("LPPPool", addr);
+        return (await pool.targetOffsetBps()).toString();
+      }));
+      expect(offsetsBefore2.every(o => o === "-500")).to.be.true;
 
       {
         const feePerHop = feeFromInput(amountIn2);
-        const totalFee  = feePerHop * 3n;
-        const totalIn   = amountIn2 * 3n;
+        const numHops = BigInt(orbit1.length);
+        const totalFee  = feePerHop * numHops;
+        const totalIn   = amountIn2 * numHops;
 
         await (await env.asset.connect(deployer).mint(deployer.address, totalIn + totalFee)).wait();
         await (await env.asset.connect(deployer).approve(await router.getAddress(), ethers.MaxUint256)).wait();
@@ -964,9 +999,12 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
       });
       const treDelta2 = { deltaA: (after2.treA - before2.treA).toString(), deltaU: (after2.treU - before2.treU).toString() };
 
-      // Flipped back to POS
-      const activeAfter2 = await (router as any).getActiveOrbit(startPool);
-      expect(activeAfter2[1] as boolean).to.equal(false);
+      // Pools in NEG orbit should have flipped offsets (from -500 to +500)
+      const offsetsAfter2 = await Promise.all(orbit1.map(async (addr) => {
+        const pool = await ethers.getContractAt("LPPPool", addr);
+        return (await pool.targetOffsetBps()).toString();
+      }));
+      expect(offsetsAfter2.every(o => o === "500")).to.be.true;
 
       const orbit0Canon  = orbit0.map(canon);
       const orbit1Canon  = orbit1.map(canon);
@@ -978,7 +1016,7 @@ it("swap orbit — snapshot pools & treasury, deltas, offsets, hop order", async
         startPool: canon(startPool),
         orbitRun1: { usingNegBefore: usingNeg0, activeOrbit: orbit0Canon, poolDeltas: deltas1Canon, treasuryDelta: treDelta1 },
         orbitRun2: { usingNegBefore: usingNeg1, activeOrbit: orbit1Canon, poolDeltas: deltas2Canon, treasuryDelta: treDelta2 },
-        note: "POS-first mirror under independent 3-hop model (per-hop fees).",
+        note: "Searcher chooses orbit via assetToUsdc; pool offsets flip after each swap. Run #1: POS orbit (USDC-in), Run #2: NEG orbit (ASSET-in).",
       }).to.matchSnapshot("Dual-orbit (POS-first) — per-pool & treasury deltas + flip");
     });
   });

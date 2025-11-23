@@ -1,12 +1,12 @@
 {
   "network": "base",
   "chainId": 8453,
-  "deployedAt": "2025-11-22T16:55:17.092Z",
+  "deployedAt": "2025-11-23T00:09:03.992Z",
   "contracts": {
-    "LPPAccessManager": "0x0729435C4281f03b5b8095Ec2371A009814Ce45d",
-    "LPPTreasury": "0x259c964e22C687dC9746A486a206FA48e8288D4C",
-    "LPPFactory": "0x1b6Ce8517065b3695d15aBde67517bac677939BF",
-    "LPPRouter": "0xD380A0ea6cE68ffBC577248ea0Eb707af55b8572"
+    "LPPAccessManager": "0xf89Cac243d9C99e59ceddC9F6a0479c718C28ea2",
+    "LPPTreasury": "0x2B12D3CB3769538896E94707a3Bb1d335CE5B20b",
+    "LPPFactory": "0x6e5f60615f45d4A1716764A20dbD3EdE014F23ed",
+    "LPPRouter": "0x44EF6fcbfb077752a50b9f1B3F666936484ef4a7"
   },
   "tokens": {
     "ASSET": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
