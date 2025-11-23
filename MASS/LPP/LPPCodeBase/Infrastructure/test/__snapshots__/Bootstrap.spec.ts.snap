@@ -1,6 +1,6 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`Bootstrap bootstrap initializes reserves and price 1`] = `199356`;
+exports[`Bootstrap bootstrap initializes reserves and price 1`] = `199516`;
 
 exports[`Bootstrap bootstrap initializes reserves and price 2`] = `
 Object {
@@ -30,23 +30,23 @@ Object {
 }
 `;
 
-exports[`Bootstrap cannot bootstrap twice (idempotency enforced) 1`] = `199356`;
+exports[`Bootstrap cannot bootstrap twice (idempotency enforced) 1`] = `199516`;
 
-exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 1`] = `1486229`;
+exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 1`] = `1660127`;
 
-exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 2`] = `1486229`;
+exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 2`] = `1660127`;
 
-exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 3`] = `1486229`;
+exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 3`] = `1660127`;
 
-exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 4`] = `1486229`;
+exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 4`] = `1660127`;
 
-exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 5`] = `222440`;
+exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 5`] = `222600`;
 
-exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 6`] = `222440`;
+exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 6`] = `222600`;
 
-exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 7`] = `222080`;
+exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 7`] = `222240`;
 
-exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 8`] = `222080`;
+exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 8`] = `222240`;
 
 exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 9`] = `
 Object {

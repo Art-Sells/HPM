@@ -12,17 +12,17 @@ interface ILPPRouter {
         address payer;         // who pays principal/fee (defaults msg.sender if zero)
     }
 
-    /* ───────── 3-hop MCV (MEV) ─────────
+    /* ───────── Multi-hop MCV (MEV) ─────────
        One struct only; MEVs quote with swap.staticCall(SwapParams({...}))
        Set minTotalAmountOut=0 for pure quotes.
     */
     struct SwapParams {
         address startPool;         // key that selects the orbit
-        bool    assetToUsdc;       // ignored if dual-orbit is configured; used for legacy single-orbit
-        uint256 amountIn;          // SAME amount per hop (3 hops)
+        bool    assetToUsdc;       // selects orbit: true = NEG, false = POS
+        uint256 amountIn;          // SAME amount per hop
         address payer;             // defaults msg.sender if zero
         address to;                // defaults msg.sender if zero
-        uint256 minTotalAmountOut; // aggregate slippage guard across the 3 hops (0 to ignore)
+        uint256 minTotalAmountOut; // aggregate slippage guard across all hops (0 to ignore)
     }
 
     /* ───────── constants used in fee math ───────── */
@@ -35,14 +35,14 @@ interface ILPPRouter {
 
     /* ───────── execution surfaces ───────── */
     function supplicate(SupplicateParams calldata p) external returns (uint256 amountOut); // permissioned single-pool
-    function swap(SwapParams calldata p) external returns (uint256 totalAmountOut);        // MEV 3-hop (quote via staticCall)
+    function swap(SwapParams calldata p) external returns (uint256 totalAmountOut);        // MEV multi-hop (quote via staticCall)
 
     /* ───────── quoting helpers ───────── */
     function getAmountsOut(
         uint256 amountIn,
-        address[3] calldata orbit,
+        address[] calldata orbit,
         bool assetToUsdc
-    ) external view returns (uint256[3] memory perHop, uint256 total);
+    ) external view returns (uint256[] memory perHop, uint256 total);
 
     function getAmountsOutFromStart(
         address startPool,
@@ -52,18 +52,18 @@ interface ILPPRouter {
         view
         returns (
             bool assetToUsdc,         // derived from active set if dual-orbit
-            address[3] memory orbit,  // the three pools used for this call
-            uint256[3] memory perHop,
+            address[] memory orbit,  // the pools used for this call
+            uint256[] memory perHop,
             uint256 total
         );
 
     /* ───────── treasury-only orbit wiring ───────── */
-    function setOrbit(address startPool, address[3] calldata pools) external;
-    function setDualOrbit(address startPool, address[3] calldata neg, address[3] calldata pos, bool startWithNeg) external;
+    function setOrbit(address startPool, address[] calldata pools) external;
+    function setDualOrbit(address startPool, address[] calldata neg, address[] calldata pos, bool startWithNeg) external;
 
     /* ───────── inspectors used by tests ───────── */
-    function getActiveOrbit(address startPool) external view returns (address[3] memory orbit, bool usingNeg);
-    function getDualOrbit(address startPool) external view returns (address[3] memory neg, address[3] memory pos, bool usingNeg);
+    function getActiveOrbit(address startPool) external view returns (address[] memory orbit, bool usingNeg);
+    function getDualOrbit(address startPool) external view returns (address[] memory neg, address[] memory pos, bool usingNeg);
 
     /* ───────── daily event guard ───────── */
     function setDailyEventCap(uint16 newCap) external;

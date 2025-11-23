@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import { IERC20 } from "./external/IERC20.sol";
 import { ILPPPool } from "./interfaces/ILPPPool.sol";
+import { ILPPTreasury } from "./interfaces/ILPPTreasury.sol";
 
 contract LPPPool is ILPPPool {
     // ─────────────────────────────────────────────────────────────────────────────
@@ -14,6 +15,7 @@ contract LPPPool is ILPPPool {
     address public immutable override treasury; // project-level authority
     address public immutable override factory;  // deploying factory (authorized to set hook)
     address public override hook;               // optional hook (unused in Phase 0, kept for future)
+    address public router;                      // router address (authorized to flip offsets)
 
     // ─────────────────────────────────────────────────────────────────────────────
     // State
@@ -112,6 +114,35 @@ contract LPPPool is ILPPPool {
         emit Initialized(amtA, amtU);
 
         _touchAndSync();
+    }
+
+    /// @notice Set the router address (can only be called once by treasury owner, treasury, or factory)
+    function setRouter(address router_) external {
+        require(router == address(0), "router set");
+        require(router_ != address(0), "zero router");
+        require(msg.sender == treasury || msg.sender == factory || msg.sender == ILPPTreasury(treasury).owner(), "only auth");
+        router = router_;
+    }
+
+    /// @notice Flip the offset sign (e.g., -500 bps → +500 bps, or vice versa) and recalculate price.
+    /// Can only be called by router, treasury, or factory after a swap.
+    function flipOffset() external {
+        require(msg.sender == treasury || msg.sender == factory || msg.sender == router, "only auth");
+        require(initialized, "not initialized");
+
+        // Flip the offset sign
+        int16 newOffset = -targetOffsetBps;
+        
+        // Recalculate price with new offset using current reserves
+        require(reserveAsset > 0 && reserveUsdc > 0, "empty reserves");
+        uint256 baseX96 = (reserveUsdc << 96) / reserveAsset;
+        int256 combined = int256(uint256(baseX96)) * (10000 + int256(newOffset));
+        require(combined > 0, "bad offset");
+        _priceX96 = uint256(combined) / 10000;
+        
+        targetOffsetBps = newOffset;
+        
+        emit OffsetFlipped(newOffset);
     }
 
     function mintFromHook(address to, uint256 amtA, uint256 amtU)

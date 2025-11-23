@@ -239,11 +239,10 @@ describe("MCV — searcher-style quoting (no Quoter; eth_call only)", () => {
 
     const amountIn = ethers.parseEther("1");
 
-    // read active orbit (clone ethers.Result → plain array)
-    const active0 = await (router as any).getActiveOrbit(startPool);
-    const orbit0  = Array.from(active0[0] as readonly string[]);
-    const usingNeg0 = Boolean(active0[1]);
-    expect(usingNeg0).to.equal(true); // NEG ⇒ ASSET-in
+    // Get NEG orbit (searcher chooses NEG orbit via assetToUsdc=true)
+    const dualOrbit = await (router as any).getDualOrbit(startPool);
+    const orbit0  = Array.from(dualOrbit[0] as readonly string[]); // NEG orbit
+    const usingNeg0 = true; // Searcher chooses NEG orbit
 
     const pool0 = await ethers.getContractAt("LPPPool", orbit0[0]) as unknown as LPPPool;
     const tokens = await getTokensFromPool(pool0);
@@ -253,10 +252,11 @@ describe("MCV — searcher-style quoting (no Quoter; eth_call only)", () => {
     const MCV_FEE = BigInt(await (router as any).MCV_FEE_BPS());
     const TRE_CUT = BigInt(await (router as any).TREASURY_CUT_BPS());
     const perHopFee = (amountIn * MCV_FEE) / BPS;
-    const feeAll    = perHopFee * 3n;
+    const numHops = BigInt(orbit0.length);
+    const feeAll    = perHopFee * numHops;
 
     // fund + approvals (ASSET-in)
-    await (await (env.asset as TestERC20).connect(deployer).mint(deployer.address, amountIn * 3n + feeAll)).wait();
+    await (await (env.asset as TestERC20).connect(deployer).mint(deployer.address, amountIn * numHops + feeAll)).wait();
     await approveForMCV({ token: tokens.asset, payer: deployer, router, orbit: orbit0, amountIn });
 
     // BEFORE snapshots
@@ -348,7 +348,7 @@ describe("MCV — searcher-style quoting (no Quoter; eth_call only)", () => {
         hops: hopTrace,
       },
       pools: { before: poolsBefore, after:  poolsAfter },
-      note: "NEG set, ASSET-in. Quote via provider.call; no Contract.swap() arg walker.",
+      note: "Searcher chooses NEG orbit (ASSET-in). Quote via provider.call; no Contract.swap() arg walker.",
     }).to.matchSnapshot("MCV — NEG first (ASSET-in) — static==exec (+hop proof)");
   });
 
@@ -366,11 +366,10 @@ describe("MCV — searcher-style quoting (no Quoter; eth_call only)", () => {
 
     const amountIn = ethers.parseEther("1");
 
-    // POS ⇒ USDC-in (clone Result)
-    const active0 = await (router as any).getActiveOrbit(startPool);
-    const orbit0  = Array.from(active0[0] as readonly string[]);
-    const usingNeg0 = Boolean(active0[1]);
-    expect(usingNeg0).to.equal(false);
+    // Get POS orbit (searcher chooses POS orbit via assetToUsdc=false)
+    const dualOrbit = await (router as any).getDualOrbit(startPool);
+    const orbit0  = Array.from(dualOrbit[1] as readonly string[]); // POS orbit
+    const usingNeg0 = false; // Searcher chooses POS orbit
 
     const pool0 = await ethers.getContractAt("LPPPool", orbit0[0]) as unknown as LPPPool;
     const tokens = await getTokensFromPool(pool0);
@@ -379,9 +378,10 @@ describe("MCV — searcher-style quoting (no Quoter; eth_call only)", () => {
     const MCV_FEE = BigInt(await (router as any).MCV_FEE_BPS());
     const TRE_CUT = BigInt(await (router as any).TREASURY_CUT_BPS());
     const perHopFee = (amountIn * MCV_FEE) / BPS;
-    const totalFee  = perHopFee * 3n;
+    const numHops = BigInt(orbit0.length);
+    const totalFee  = perHopFee * numHops;
 
-    await (await (env.usdc as TestERC20).connect(deployer).mint(deployer.address, amountIn * 3n + totalFee)).wait();
+    await (await (env.usdc as TestERC20).connect(deployer).mint(deployer.address, amountIn * numHops + totalFee)).wait();
     await approveForMCV({ token: tokens.usdc, payer: deployer, router, orbit: orbit0, amountIn });
 
     const poolsBefore = await Promise.all(
@@ -446,8 +446,12 @@ describe("MCV — searcher-style quoting (no Quoter; eth_call only)", () => {
 
     expect(userAssetOut, "exec vs static (searcher quote)").to.equal(staticOut);
 
-    const flipped = await (router as any).getActiveOrbit(startPool);
-    expect(Boolean(flipped[1])).to.equal(true);
+    // Pools in POS orbit should have flipped offsets (from +500 to -500)
+    const offsetsAfter = await Promise.all(orbit0.map(async (addr) => {
+      const pool = await ethers.getContractAt("LPPPool", addr);
+      return (await pool.targetOffsetBps()).toString();
+    }));
+    expect(offsetsAfter.every(o => o === "-500")).to.be.true;
 
     expect({
       role: "MCV — searcher-quote",
@@ -471,8 +475,8 @@ describe("MCV — searcher-style quoting (no Quoter; eth_call only)", () => {
         hops: hopTrace,
       },
       pools: { before: poolsBefore, after:  poolsAfter },
-      flippedToNegAfter: Boolean((await (router as any).getActiveOrbit(startPool))[1]),
-      note: "POS-first under dual-orbit; raw provider.call for quote, raw tx for exec.",
+      poolOffsetsFlipped: true,
+      note: "Searcher chooses POS orbit; pool offsets flip after swap. Raw provider.call for quote, raw tx for exec.",
     }).to.matchSnapshot("MCV — POS first (USDC-in) — static==exec (+hop proof)");
   });
 
@@ -492,11 +496,17 @@ describe("MCV — searcher-style quoting (no Quoter; eth_call only)", () => {
     let bundleHashNeg = "";
     let bundleHashPos = "";
 
-    // ----- RUN #1: NEG / ASSET-in -----
+    // ----- RUN #1: NEG / ASSET-in - Searcher chooses NEG orbit -----
     {
-      const active0 = await (router as any).getActiveOrbit(startPool);
-      const orbit0  = Array.from(active0[0] as readonly string[]);
-      expect(Boolean(active0[1])).to.equal(true);
+      const dualOrbit = await (router as any).getDualOrbit(startPool);
+      const orbit0  = Array.from(dualOrbit[0] as readonly string[]); // NEG orbit
+      
+      // Check initial offsets (should be -500)
+      const offsetsBefore1 = await Promise.all(orbit0.map(async (addr) => {
+        const pool = await ethers.getContractAt("LPPPool", addr);
+        return (await pool.targetOffsetBps()).toString();
+      }));
+      expect(offsetsBefore1.every(o => o === "-500")).to.be.true;
 
       const pool0 = await ethers.getContractAt("LPPPool", orbit0[0]) as unknown as LPPPool;
       const tokens = await getTokensFromPool(pool0);
@@ -504,8 +514,9 @@ describe("MCV — searcher-style quoting (no Quoter; eth_call only)", () => {
       const BPS = BigInt(await (router as any).BPS_DENOMINATOR());
       const MCV_FEE = BigInt(await (router as any).MCV_FEE_BPS());
       const perHopFee = (amountIn * MCV_FEE) / BPS;
+      const numHops = BigInt(orbit0.length);
 
-      await (await (env.asset as TestERC20).connect(deployer).mint(deployer.address, amountIn * 3n + perHopFee * 3n)).wait();
+      await (await (env.asset as TestERC20).connect(deployer).mint(deployer.address, amountIn * numHops + perHopFee * numHops)).wait();
       await approveForMCV({ token: tokens.asset, payer: deployer, router, orbit: orbit0, amountIn });
 
       const negParams: SwapParams = {
@@ -526,16 +537,26 @@ describe("MCV — searcher-style quoting (no Quoter; eth_call only)", () => {
       const submission = await submitBundleAndExecuteSwap(harness, signedTxNeg);
       bundleHashNeg = submission.bundleHash ?? "";
 
-      const flipped = await (router as any).getActiveOrbit(startPool);
-      expect(Boolean(flipped[1])).to.equal(false);
+      // Pools in NEG orbit should have flipped offsets (from -500 to +500)
+      const offsetsAfter1 = await Promise.all(orbit0.map(async (addr) => {
+        const pool = await ethers.getContractAt("LPPPool", addr);
+        return (await pool.targetOffsetBps()).toString();
+      }));
+      expect(offsetsAfter1.every(o => o === "500")).to.be.true;
       expect(staticA >= 0n).to.equal(true);
     }
 
-    // ----- RUN #2: POS / USDC-in -----
+    // ----- RUN #2: POS / USDC-in - Searcher chooses POS orbit -----
     {
-      const active1 = await (router as any).getActiveOrbit(startPool);
-      const orbit1  = Array.from(active1[0] as readonly string[]);
-      expect(Boolean(active1[1])).to.equal(false);
+      const dualOrbit = await (router as any).getDualOrbit(startPool);
+      const orbit1  = Array.from(dualOrbit[1] as readonly string[]); // POS orbit
+      
+      // Check initial offsets (should be +500)
+      const offsetsBefore2 = await Promise.all(orbit1.map(async (addr) => {
+        const pool = await ethers.getContractAt("LPPPool", addr);
+        return (await pool.targetOffsetBps()).toString();
+      }));
+      expect(offsetsBefore2.every(o => o === "500")).to.be.true;
 
       const pool1 = await ethers.getContractAt("LPPPool", orbit1[0]) as unknown as LPPPool;
       const tokens = await getTokensFromPool(pool1);
@@ -543,8 +564,9 @@ describe("MCV — searcher-style quoting (no Quoter; eth_call only)", () => {
       const BPS = BigInt(await (router as any).BPS_DENOMINATOR());
       const MCV_FEE = BigInt(await (router as any).MCV_FEE_BPS());
       const perHopFee = (amountIn * MCV_FEE) / BPS;
+      const numHops = BigInt(orbit1.length);
 
-      await (await (env.usdc as TestERC20).connect(deployer).mint(deployer.address, amountIn * 3n + perHopFee * 3n)).wait();
+      await (await (env.usdc as TestERC20).connect(deployer).mint(deployer.address, amountIn * numHops + perHopFee * numHops)).wait();
       await approveForMCV({ token: tokens.usdc, payer: deployer, router, orbit: orbit1, amountIn });
 
       const posParams: SwapParams = {
@@ -568,10 +590,17 @@ describe("MCV — searcher-style quoting (no Quoter; eth_call only)", () => {
       const bA = await bal((await getTokensFromPool(await ethers.getContractAt("LPPPool", orbit1[0]) as unknown as LPPPool)).asset, deployer.address);
       const bU = await bal((await getTokensFromPool(await ethers.getContractAt("LPPPool", orbit1[0]) as unknown as LPPPool)).usdc,  deployer.address);
 
+      // Pools in POS orbit should have flipped offsets (from +500 to -500)
+      const offsetsAfter2 = await Promise.all(orbit1.map(async (addr) => {
+        const pool = await ethers.getContractAt("LPPPool", addr);
+        return (await pool.targetOffsetBps()).toString();
+      }));
+      expect(offsetsAfter2.every(o => o === "-500")).to.be.true;
+
       expect({
         role: "MCV — searcher-quote",
-        flip: "NEG→POS",
-        usingNegAfterFlip: Boolean((await (router as any).getActiveOrbit(startPool))[1]),
+        flip: "NEG→POS (searcher chooses)",
+        poolOffsetsFlipped: true,
         routerStatic: staticOut2.toString(),
         lastKnownUserBalances: { asset: bA.toString(), usdc: bU.toString() },
         hops: (rcpt2?.logs ?? []).filter((l: any) => l.topics?.[0] === ethers.id("HopExecuted(address,bool,address,address,uint256,uint256)")).length,

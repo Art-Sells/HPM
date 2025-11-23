@@ -1,12 +1,12 @@
 {
   "network": "base",
   "chainId": 8453,
-  "deployedAt": "2025-11-22T16:55:17.092Z",
+  "deployedAt": "2025-11-23T00:09:03.992Z",
   "contracts": {
-    "LPPAccessManager": "0x0729435C4281f03b5b8095Ec2371A009814Ce45d",
-    "LPPTreasury": "0x259c964e22C687dC9746A486a206FA48e8288D4C",
-    "LPPFactory": "0x1b6Ce8517065b3695d15aBde67517bac677939BF",
-    "LPPRouter": "0xD380A0ea6cE68ffBC577248ea0Eb707af55b8572"
+    "LPPAccessManager": "0xf89Cac243d9C99e59ceddC9F6a0479c718C28ea2",
+    "LPPTreasury": "0x2B12D3CB3769538896E94707a3Bb1d335CE5B20b",
+    "LPPFactory": "0x6e5f60615f45d4A1716764A20dbD3EdE014F23ed",
+    "LPPRouter": "0x44EF6fcbfb077752a50b9f1B3F666936484ef4a7"
   },
   "tokens": {
     "ASSET": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
@@ -15,5 +15,45 @@
   "operators": {
     "treasuryOwner": "0xd9a6714bba0985b279dfcaff0a512ba25f5a03d1",
     "treasuryOps": "0xd9a6714bba0985b279dfcaff0a512ba25f5a03d1"
-  }
+  },
+  "pools": {
+    "pool0": {
+      "address": "0xb5889070070C9A666bd411E4D882e3E545f74aE0",
+      "offset": -500,
+      "orbit": "NEG"
+    },
+    "pool1": {
+      "address": "0xa6c62A4edf110703f69505Ea8fAD940aDc6EAF9D",
+      "offset": -500,
+      "orbit": "NEG"
+    },
+    "pool2": {
+      "address": "0x439634467E0322759b1a7369a552204ea42A3463",
+      "offset": 500,
+      "orbit": "POS"
+    },
+    "pool3": {
+      "address": "0xB1a5D1943612BbEE35ee7720f3a4bba74Fdc68b7",
+      "offset": 500,
+      "orbit": "POS"
+    }
+  },
+  "topology": {
+    "negOrbit": [
+      "0xb5889070070C9A666bd411E4D882e3E545f74aE0",
+      "0xa6c62A4edf110703f69505Ea8fAD940aDc6EAF9D"
+    ],
+    "posOrbit": [
+      "0x439634467E0322759b1a7369a552204ea42A3463",
+      "0xB1a5D1943612BbEE35ee7720f3a4bba74Fdc68b7"
+    ],
+    "registeredUnder": [
+      "0xb5889070070C9A666bd411E4D882e3E545f74aE0",
+      "0xa6c62A4edf110703f69505Ea8fAD940aDc6EAF9D",
+      "0x439634467E0322759b1a7369a552204ea42A3463",
+      "0xB1a5D1943612BbEE35ee7720f3a4bba74Fdc68b7"
+    ]
+  },
+  "section3CompletedAt": "2025-11-23T03:14:23.907Z",
+  "poolManifestPath": "/Users/Jeyak1/Library/Mobile Documents/com~apple~CloudDocs/Documents/Arells/People/HPM/MASS/LPP/LPPCodeBase/Infrastructure/pool-manifest.json"
 }

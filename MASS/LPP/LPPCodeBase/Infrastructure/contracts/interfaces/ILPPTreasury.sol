@@ -34,7 +34,15 @@ interface ILPPTreasury {
     function setOrbitViaTreasury(
         address router,
         address startPool,
-        address[3] calldata pools
+        address[] calldata pools
+    ) external;
+
+    function setDualOrbitViaTreasury(
+        address router,
+        address startPool,
+        address[] calldata neg,
+        address[] calldata pos,
+        bool startWithNeg
     ) external;
 
     function setDailyEventCapViaTreasury(address router, uint16 newCap) external;
