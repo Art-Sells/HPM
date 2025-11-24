@@ -17,7 +17,13 @@ import * as path from "path";
 dotenv.config();
 
 async function main() {
-  const provider = ethers.provider;
+  // Try using Base public RPC if BASE_RPC_URL is not set, for better error messages
+  let provider = ethers.provider;
+  if (!process.env.BASE_RPC_URL) {
+    console.log("⚠ Using default RPC. For better error messages, set BASE_RPC_URL in .env");
+    console.log("   Example: BASE_RPC_URL=https://mainnet.base.org");
+  }
+  provider = ethers.provider;
 
   // Load deployer private key from environment
   const deployerPk = process.env.PRIVATE_KEY_DEPLOYER || process.env.PRIVATE_KEY;
@@ -556,6 +562,7 @@ async function main() {
 
   // Step 5: Register dual orbits
   console.log("\n5. Registering dual orbits...");
+  let orbitRegistrationFailed = false;
   
   // Verify deployer is treasury owner (already checked in step 1c)
   const deployerAddress = await deployer.getAddress();
@@ -699,129 +706,164 @@ async function main() {
       }
       console.log(`      ✓ Router treasury verified: ${routerTreasuryCheck}`);
       
-      // Try the transaction - use a reasonable gas limit
-      // The RPC error suggests it needs ~27k gas, but we'll use 100k for safety
-      console.log(`      Attempting transaction...`);
+      // Try to get revert reason using callStatic first (for debugging)
+      console.log(`      Attempting to simulate transaction to get revert reason...`);
+      let revertReason = "unknown";
       try {
-        // Get current fee data from provider - Base should have very low gas prices
-        const feeData = await provider.getFeeData();
-        // Use provider's suggested fees, but ensure they're reasonable
-        let maxFeePerGas = feeData.maxFeePerGas || feeData.gasPrice || ethers.parseUnits("0.1", "gwei");
-        let maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || ethers.parseUnits("0.001", "gwei");
-        
-        // Cap at 1 gwei to avoid excessive fees (Base should be much lower)
-        const maxAllowed = ethers.parseUnits("1", "gwei");
-        if (maxFeePerGas > maxAllowed) {
-          console.log(`      ⚠ Provider suggested ${ethers.formatUnits(maxFeePerGas, "gwei")} gwei, capping at 1 gwei`);
-          maxFeePerGas = maxAllowed;
+        await treasury.setDualOrbitViaTreasury.staticCall(
+          routerAddr,
+          pools[i],
+          negOrbit,
+          posOrbit,
+          true
+        );
+        console.log(`      ✓ Simulation succeeded - transaction should work`);
+      } catch (simError: any) {
+        // Try to extract revert reason
+        if (simError.reason) {
+          revertReason = simError.reason;
+        } else if (simError.data) {
+          // Try to decode the error data
+          try {
+            const routerIface = RouterFactory.interface;
+            const decoded = routerIface.parseError(simError.data);
+            if (decoded) {
+              revertReason = `${decoded.name}: ${JSON.stringify(decoded.args)}`;
+            } else {
+              // Try to decode as a require string (Error(string))
+              const dataStr = simError.data.toString();
+              if (dataStr.startsWith("0x08c379a0")) {
+                // Error(string) selector - 0x08c379a0 is keccak256("Error(string)")[:4]
+                try {
+                  const abiCoder = new ethers.AbiCoder();
+                  const decoded = abiCoder.decode(["string"], "0x" + dataStr.slice(10));
+                  revertReason = decoded[0];
+                } catch {
+                  revertReason = `Error data: ${dataStr.slice(0, 100)}...`;
+                }
+              } else {
+                revertReason = `Error data: ${dataStr.slice(0, 100)}...`;
+              }
+            }
+          } catch {
+            revertReason = simError.message || "execution reverted";
+          }
+        } else {
+          revertReason = simError.message || "execution reverted";
         }
-        
-        console.log(`      Using gas price: ${ethers.formatUnits(maxFeePerGas, "gwei")} gwei (priority: ${ethers.formatUnits(maxPriorityFeePerGas, "gwei")} gwei)`);
-        
-        // Try to estimate actual gas needed first
-        let gasLimit = 50000n; // Start with 50k - the error said ~27k was needed
-        try {
-          const estimatedGas = await treasury.setDualOrbitViaTreasury.estimateGas(
-            routerAddr,
-            pools[i],
-            negOrbit,
-            posOrbit,
-            true
-          );
-          // Use 150% of estimated gas for safety
-          gasLimit = (estimatedGas * 150n) / 100n;
-          console.log(`      Estimated gas: ${estimatedGas.toString()}, using: ${gasLimit.toString()}`);
-        } catch {
-          // If estimation fails, use 50k
-          console.log(`      Gas estimation failed, using default: ${gasLimit.toString()}`);
-        }
-        
-        const estimatedCost = maxFeePerGas * gasLimit;
-        console.log(`      Estimated cost: ${ethers.formatEther(estimatedCost)} ETH ($${(Number(estimatedCost) / 1e18 * 2500).toFixed(6)} at $2500/ETH)`);
-        
+        console.error(`      ⚠ Simulation failed: ${revertReason}`);
+        console.error(`      ⚠ This indicates the transaction will revert. Continuing anyway to see actual error...`);
+      }
+      
+      // Send the transaction directly
+      console.log(`      Sending transaction...`);
+      try {
         const tx = await treasury.setDualOrbitViaTreasury(
           routerAddr,
           pools[i],  // startPool: any pool can be used as lookup key
           negOrbit,  // NEG orbit: 2 pools (pool0, pool1)
           posOrbit,  // POS orbit: 2 pools (pool2, pool3)
-          true,      // deprecated: kept for backwards compatibility
-          { 
-            gasLimit: gasLimit,
-            maxFeePerGas: maxFeePerGas,
-            maxPriorityFeePerGas: maxPriorityFeePerGas
-          }
+          true       // deprecated: kept for backwards compatibility
         );
+        
+        // Check if transaction was actually broadcast
+        if (!tx.hash) {
+          throw new Error("Transaction hash is missing - transaction was not broadcast");
+        }
+        
         console.log(`      ✓ Transaction sent (tx: ${tx.hash})`);
-        console.log(`      Waiting for confirmation (this may take 10-30 seconds)...`);
         console.log(`      View on BaseScan: https://basescan.org/tx/${tx.hash}`);
         
-        // Wait for confirmation with progress updates
-        const receiptPromise = tx.wait();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Transaction confirmation timeout after 60 seconds")), 60000)
-        );
+        // Wait a moment to see if it appears on-chain
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // Show progress every 5 seconds
-        const progressInterval = setInterval(() => {
-          process.stdout.write(".");
-        }, 5000);
-        
+        // Check if transaction exists on-chain
         try {
-          const receipt = await Promise.race([receiptPromise, timeoutPromise]) as any;
-          clearInterval(progressInterval);
-          process.stdout.write("\n");
-          
-          // Check if transaction actually succeeded
-          if (receipt && receipt.status === 1) {
-            console.log(`   ✓ Dual orbit registered under Pool${i} as startPool`);
+          const txReceipt = await provider.getTransactionReceipt(tx.hash);
+          if (txReceipt) {
+            console.log(`      ✓ Transaction found on-chain (status: ${txReceipt.status})`);
+            if (txReceipt.status === 1) {
+              console.log(`   ✓ Dual orbit registered under Pool${i} as startPool`);
+            } else {
+              throw new Error(`Transaction failed with status ${txReceipt.status}`);
+            }
           } else {
-            throw new Error(`Transaction failed with status ${receipt?.status}`);
+            console.log(`      ⚠ Transaction not yet found on-chain, waiting for confirmation...`);
+            const receipt = await tx.wait();
+            if (receipt && receipt.status === 1) {
+              console.log(`   ✓ Dual orbit registered under Pool${i} as startPool`);
+            } else {
+              throw new Error(`Transaction failed with status ${receipt?.status}`);
+            }
           }
-        } catch (txError: any) {
-          clearInterval(progressInterval);
-          process.stdout.write("\n");
-          // If transaction fails, try to get more details
-          console.error(`      ❌ Transaction failed: ${txError.message}`);
-          if (txError.reason) {
-            console.error(`      Revert reason: ${txError.reason}`);
+        } catch (checkError: any) {
+          if (checkError.message.includes("not yet found")) {
+            // Transaction is pending, wait for it
+            console.log(`      Waiting for transaction confirmation...`);
+            const receipt = await tx.wait();
+            if (receipt && receipt.status === 1) {
+              console.log(`   ✓ Dual orbit registered under Pool${i} as startPool`);
+            } else {
+              throw new Error(`Transaction failed with status ${receipt?.status}`);
+            }
+          } else {
+            throw checkError;
           }
-          if (txError.transaction) {
-            console.error(`      Transaction hash: ${txError.transaction.hash}`);
-          }
-          if (txError.data) {
-            console.error(`      Error data: ${txError.data.substring(0, 200)}...`);
-          }
-          // Check if this is a timeout - if so, the transaction might still be pending
-          if (txError.message.includes("timeout")) {
-            console.error(`      ⚠ Transaction confirmation timed out, but transaction may still be pending.`);
-            console.error(`      ⚠ Check the transaction hash on a blockchain explorer.`);
-          }
-          throw txError;
         }
-      } catch (error: any) {
-        console.error(`   ❌ Failed to register orbit for Pool${i}:`, error.message);
-        if (error.data) {
-          console.error(`   Error data:`, error.data);
-        }
-        // Try to decode revert reason if available
-        if (error.reason) {
-          console.error(`   Revert reason:`, error.reason);
+      } catch (txError: any) {
+        console.error(`   ❌ Failed to send/broadcast transaction for Pool${i}:`);
+        console.error(`      Error: ${txError.message}`);
+        console.error(`      Simulated revert reason: ${revertReason}`);
+        
+        // Try to get detailed revert reason from actual transaction
+        if (txError.reason) {
+          console.error(`      Transaction revert reason: ${txError.reason}`);
         }
         
-        // Check if orbits aren't set AND pools have funds - this is a recovery scenario
-        const poolState = poolsState[i];
-        if (poolState.hasFunds && !poolState.initialized) {
-          console.error(`   ⚠ WARNING: Pool${i} has funds (${poolState.addr}) but is not initialized.`);
-          console.error(`   ⚠ Funds cannot be directly withdrawn from pools - they are locked in reserves.`);
-          console.error(`   ⚠ Consider using swaps to recover funds if needed.`);
+        // Try to decode error data
+        if (txError.data) {
+          console.error(`      Error data: ${txError.data}`);
+          try {
+            const routerIface = RouterFactory.interface;
+            const decoded = routerIface.parseError(txError.data);
+            if (decoded) {
+              console.error(`      Decoded router error: ${decoded.name}(${JSON.stringify(decoded.args)})`);
+            }
+          } catch {
+            try {
+              const treasuryIface = treasury.interface;
+              const decoded = treasuryIface.parseError(txError.data);
+              if (decoded) {
+                console.error(`      Decoded treasury error: ${decoded.name}(${JSON.stringify(decoded.args)})`);
+              }
+            } catch {
+              // Not a standard error
+            }
+          }
         }
         
-        // Don't throw - continue to try other pools, but log the failure
-        console.error(`   ⚠ Continuing with other pools...`);
+        if (txError.transaction?.hash) {
+          console.error(`      Transaction hash: ${txError.transaction.hash}`);
+          console.error(`      ⚠ Transaction may be pending or rejected by RPC node`);
+          console.error(`      ⚠ Check BaseScan: https://basescan.org/tx/${txError.transaction.hash}`);
+        }
+        
+        // Check for specific error patterns
+        if (txError.message.includes("not treasury")) {
+          console.error(`      ⚠ 'not treasury' error - router's onlyTreasury check is failing`);
+          console.error(`      ⚠ Router treasury: ${routerTreasuryCheck}, Our treasury: ${treasuryAddr}`);
+        }
+        if (txError.message.includes("dual:") || txError.reason?.includes("dual:")) {
+          console.error(`      ⚠ This is a validation error from setDualOrbit`);
+          console.error(`      ⚠ Check: zero addresses, empty orbits, length mismatch, or token pair mismatch`);
+        }
+        
+        throw txError; // Re-throw to mark this pool as failed
       }
-    } catch (outerError: any) {
-      // This catch handles any errors from the outer try block (line 630)
-      console.error(`   ❌ Failed to register orbit for Pool${i}:`, outerError.message);
+    } catch (error: any) {
+      console.error(`   ❌ Failed to register orbit for Pool${i}: ${error.message}`);
+      // Don't throw - continue to try other pools, but mark this as failed
+      orbitRegistrationFailed = true;
       console.error(`   ⚠ Continuing with other pools...`);
     }
   }
@@ -854,35 +896,53 @@ async function main() {
     console.log(`      treasury.unpauseRouterViaTreasury(${routerAddr})`);
   }
 
-  // Step 6: Set daily cap (REQUIRED - router must remain paused until this is set)
-  console.log("\n6. Setting daily event cap (REQUIRED)...");
-  const dailyCap = 500; // From guide
-  const currentCap = await router.dailyEventCap();
-  if (currentCap === dailyCap) {
-    console.log(`   ⏭ Daily event cap already set to ${dailyCap}, skipping`);
+  // Step 6: Set daily cap (ONLY if orbits were registered successfully)
+  if (orbitRegistrationFailed) {
+    console.log("\n6. Setting daily event cap...");
+    console.log(`   ⚠ SKIPPING - Orbits were not registered successfully.`);
+    console.log(`   ⚠ Daily cap will be set after orbits are fixed.`);
   } else {
-    try {
-      const maxFeePerGas = ethers.parseUnits("0.1", "gwei");
-      const maxPriorityFeePerGas = ethers.parseUnits("0.001", "gwei");
-      console.log(`   Sending transaction to set daily cap to ${dailyCap}...`);
-      const capTx = await treasury.setDailyEventCapViaTreasury(routerAddr, dailyCap, { 
-        gasLimit: 100000n,
-        maxFeePerGas: maxFeePerGas,
-        maxPriorityFeePerGas: maxPriorityFeePerGas
-      });
-      console.log(`   ✓ Transaction sent (tx: ${capTx.hash})`);
-      console.log(`   View on BaseScan: https://basescan.org/tx/${capTx.hash}`);
-      console.log(`   Waiting for confirmation (this may take 10-30 seconds)...`);
-      const receipt = await capTx.wait();
-      if (receipt && receipt.status === 1) {
-        console.log(`   ✓ Daily event cap set to: ${dailyCap}`);
-      } else {
-        throw new Error(`Transaction failed with status ${receipt?.status}`);
+    console.log("\n6. Setting daily event cap (REQUIRED)...");
+    const dailyCap = 500; // From guide
+    const currentCap = await router.dailyEventCap();
+    if (currentCap === dailyCap) {
+      console.log(`   ⏭ Daily event cap already set to ${dailyCap}, skipping`);
+    } else {
+      try {
+        console.log(`   Sending transaction to set daily cap to ${dailyCap}...`);
+        const capTx = await treasury.setDailyEventCapViaTreasury(routerAddr, dailyCap);
+        
+        if (!capTx.hash) {
+          throw new Error("Transaction hash is missing - transaction was not broadcast");
+        }
+        
+        console.log(`   ✓ Transaction sent (tx: ${capTx.hash})`);
+        console.log(`   View on BaseScan: https://basescan.org/tx/${capTx.hash}`);
+        
+        // Check if transaction exists on-chain
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const txReceipt = await provider.getTransactionReceipt(capTx.hash);
+        if (txReceipt) {
+          console.log(`   ✓ Transaction found on-chain (status: ${txReceipt.status})`);
+          if (txReceipt.status === 1) {
+            console.log(`   ✓ Daily event cap set to: ${dailyCap}`);
+          } else {
+            throw new Error(`Transaction failed with status ${txReceipt.status}`);
+          }
+        } else {
+          console.log(`   Waiting for confirmation...`);
+          const receipt = await capTx.wait();
+          if (receipt && receipt.status === 1) {
+            console.log(`   ✓ Daily event cap set to: ${dailyCap}`);
+          } else {
+            throw new Error(`Transaction failed with status ${receipt?.status}`);
+          }
+        }
+      } catch (capError: any) {
+        console.error(`   ❌ Failed to set daily event cap: ${capError.message}`);
+        console.error(`   ⚠ Router will remain PAUSED until daily cap is set.`);
+        throw new Error(`Failed to set daily event cap. Router must remain paused.`);
       }
-    } catch (capError: any) {
-      console.error(`   ❌ Failed to set daily event cap: ${capError.message}`);
-      console.error(`   ⚠ Router will remain PAUSED until daily cap is set.`);
-      throw new Error(`Failed to set daily event cap. Router must remain paused.`);
     }
   }
   
@@ -893,13 +953,7 @@ async function main() {
     if (!wasPaused) {
       console.log(`   Unpausing router...`);
       try {
-        const maxFeePerGas = ethers.parseUnits("0.1", "gwei");
-        const maxPriorityFeePerGas = ethers.parseUnits("0.001", "gwei");
-        const unpauseTx = await treasury.unpauseRouterViaTreasury(routerAddr, { 
-          gasLimit: 100000n,
-          maxFeePerGas: maxFeePerGas,
-          maxPriorityFeePerGas: maxPriorityFeePerGas
-        });
+        const unpauseTx = await treasury.unpauseRouterViaTreasury(routerAddr);
         await unpauseTx.wait();
         console.log(`   ✓ Router unpaused - swaps are now enabled`);
       } catch (unpauseError: any) {
