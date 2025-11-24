@@ -32,6 +32,16 @@ Object {
 
 exports[`Bootstrap cannot bootstrap twice (idempotency enforced) 1`] = `199516`;
 
+exports[`Bootstrap topology (bootstrap + orbits) bootstraps four pools and sets dual orbits atomically 1`] = `1660100`;
+
+exports[`Bootstrap topology (bootstrap + orbits) bootstraps four pools and sets dual orbits atomically 2`] = `1660100`;
+
+exports[`Bootstrap topology (bootstrap + orbits) bootstraps four pools and sets dual orbits atomically 3`] = `1660100`;
+
+exports[`Bootstrap topology (bootstrap + orbits) bootstraps four pools and sets dual orbits atomically 4`] = `1660100`;
+
+exports[`Bootstrap topology (bootstrap + orbits) bootstraps four pools and sets dual orbits atomically 5`] = `1478261`;
+
 exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 1`] = `1660127`;
 
 exports[`Offset bootstrap seeding seeds four pools off-center and snapshots drift (bps) 2`] = `1660127`;

@@ -65,4 +65,17 @@ interface ILPPTreasury {
         uint256 amountAsset,
         uint256 amountUsdc
     ) external;
+
+    // -----------------------------------------------------------------------
+    // Topology bootstrap
+    // -----------------------------------------------------------------------
+    function bootstrapTopology(
+        address[4] calldata pools,
+        uint256[4] calldata amountsAsset,
+        uint256[4] calldata amountsUsdc,
+        int256[4] calldata offsetsBps,
+        address router,
+        address[] calldata negOrbit,
+        address[] calldata posOrbit
+    ) external;
 }

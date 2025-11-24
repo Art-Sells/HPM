@@ -347,3 +347,86 @@ describe("Offset bootstrap seeding", () => {
     await snapshotPriceDetail(poolD, "Offset seed — Pool D (+500 bps)");
   });
 });
+
+describe("Bootstrap topology (bootstrap + orbits)", () => {
+  it("bootstraps four pools and sets dual orbits atomically", async () => {
+    const e: any = await deployCore();
+
+    const treasury = e.treasury as LPPTreasury;
+    const factory  = e.factory as LPPFactory;
+    const router   = e.router as any;
+    const asset    = e.asset as TestERC20;
+    const usdc     = e.usdc as TestERC20;
+    const deployer = e.deployer;
+
+    const assetAddr = await asset.getAddress();
+    const usdcAddr  = await usdc.getAddress();
+
+    // Create four pools
+    const pool0 = await newPoolViaTreasuryWithTokens(treasury, factory, assetAddr, usdcAddr);
+    const pool1 = await newPoolViaTreasuryWithTokens(treasury, factory, assetAddr, usdcAddr);
+    const pool2 = await newPoolViaTreasuryWithTokens(treasury, factory, assetAddr, usdcAddr);
+    const pool3 = await newPoolViaTreasuryWithTokens(treasury, factory, assetAddr, usdcAddr);
+
+    const pool0Addr = await pool0.getAddress();
+    const pool1Addr = await pool1.getAddress();
+    const pool2Addr = await pool2.getAddress();
+    const pool3Addr = await pool3.getAddress();
+
+    const amtA = ethers.parseEther("1"); // 1 ASSET
+    const amtU = ethers.parseEther("1"); // 1 USDC
+
+    // Fund Treasury with enough for all four pools
+    await fundTreasuryForBootstrap(
+      asset,
+      usdc,
+      deployer,
+      treasury,
+      amtA * 4n,
+      amtU * 4n
+    );
+
+    // Bootstrap all 4 pools and set orbits atomically
+    const pools = [pool0Addr, pool1Addr, pool2Addr, pool3Addr];
+    const amountsAsset = [amtA, amtA, amtA, amtA];
+    const amountsUsdc = [amtU, amtU, amtU, amtU];
+    const offsetsBps = [-500n, -500n, 500n, 500n];
+    const negOrbit = [pool0Addr, pool1Addr];
+    const posOrbit = [pool2Addr, pool3Addr];
+    const routerAddr = await router.getAddress();
+
+    const tx = await (treasury as any).bootstrapTopology(
+      pools,
+      amountsAsset,
+      amountsUsdc,
+      offsetsBps,
+      routerAddr,
+      negOrbit,
+      posOrbit
+    );
+    const rcpt = await tx.wait();
+    await snapshotGasCost(rcpt!.gasUsed);
+
+    // Verify all pools are bootstrapped
+    expect(await (pool0 as any).initialized()).to.be.true;
+    expect(await (pool1 as any).initialized()).to.be.true;
+    expect(await (pool2 as any).initialized()).to.be.true;
+    expect(await (pool3 as any).initialized()).to.be.true;
+
+    // Verify orbits are set for all pools
+    for (const poolAddr of pools) {
+      const dualOrbit = await router.getDualOrbit(poolAddr);
+      // getDualOrbit returns (neg, pos, usingNeg) - if it doesn't revert, orbit is initialized
+      expect(dualOrbit[0]).to.deep.equal(negOrbit); // NEG orbit
+      expect(dualOrbit[1]).to.deep.equal(posOrbit); // POS orbit
+      expect(dualOrbit[0].length).to.equal(2); // Should have 2 pools
+      expect(dualOrbit[1].length).to.equal(2); // Should have 2 pools
+    }
+
+    // Verify offsets
+    expect(await (pool0 as any).targetOffsetBps()).to.equal(-500n);
+    expect(await (pool1 as any).targetOffsetBps()).to.equal(-500n);
+    expect(await (pool2 as any).targetOffsetBps()).to.equal(500n);
+    expect(await (pool3 as any).targetOffsetBps()).to.equal(500n);
+  });
+});
