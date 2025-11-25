@@ -135,9 +135,7 @@ For searchers/bots to interact with the contracts:
 
 ## 5. On-Chain Validation Plan
 
-1. **Dry-run on staging (optional)**: Deploy a low-liquidity copy on a public testnet and run a few bundles end-to-end with your production bot stack to make sure signing, relays, and monitoring work.
-
-2. **Production smoke tests**:
+1. **Production smoke tests**:
    - Submit a minimal ASSET→USDC bundle (with `assetToUsdc: true` to use NEG orbit); confirm `HopExecuted` events for pool0 and pool1 (2 events total), that treasury receives roughly 0.2% of the input per hop, and that both NEG orbit pools (pool0, pool1) have their offsets flipped (from -500 to +500 bps).
    - Immediately submit the mirror USDC→ASSET bundle (with `assetToUsdc: false` to use POS orbit); verify `OrbitFlipped` indicates POS orbit was used, confirm `HopExecuted` events for pool2 and pool3 (2 events total), reserves updated symmetrically, and both POS orbit pools (pool2, pool3) have their offsets flipped (from +500 to -500 bps).
    - Hit the configured daily cap, observe the revert, wait 24h (UTC) and confirm `router.getDailyEventWindow()` shows the counter reset.
@@ -159,5 +157,16 @@ For searchers/bots to interact with the contracts:
   4. Handles revert reasons (`DailyEventCapReached`, slippage) so bundles aren't spammed.
 - Communicate any cap changes via `DailyEventCapUpdated` events or public status pages.
 - Adjust bps fees if needed (low or high)
+
+### 6.5
+- Test routerPause and test to see if swaps will go through... before:
+
+## 7. Integrate with aggregators (required)
+- 1inch: Add your router to their routing system
+- ParaSwap: Integrate your pools into their aggregator
+- OpenOcean: Add your router as a liquidity source
+- Matcha: Integrate with 0x protocol
+
+Without aggregator integration, most bots won't see your pools.
 
 By sticking to this playbook we can take the contracts live, observe them directly on-chain, and give MEV partners a single, deterministic integration surface—without relying on local testing infrastructure.  Update this document every time offsets, fee splits, or guardrails change so downstream teams stay synchronized.

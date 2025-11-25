@@ -1,0 +1,41 @@
+{
+  "swaps": [
+    {
+      "swap": "0.02 USDC → cbBTC (POS orbit)",
+      "error": "Cannot convert a BigInt value to a number"
+    },
+    {
+      "swap": "0.0000002 cbBTC → USDC (NEG orbit)",
+      "error": "Cannot convert a BigInt value to a number"
+    }
+  ],
+  "tokens": {
+    "ASSET": {
+      "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "symbol": "cbBTC",
+      "decimals": "8"
+    },
+    "USDC": {
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "symbol": "USDC",
+      "decimals": "6"
+    }
+  },
+  "topology": {
+    "negOrbit": [
+      "0xCD76315Ebbc78c84e7b797F584FD74FC231d11ac",
+      "0x5cA7Ed9235b050e2A0Aa1b98009d0a050ba02f0b"
+    ],
+    "posOrbit": [
+      "0x7dF15B4C456C1dDB9386AFD891e95658DBEF42c0",
+      "0x49F3e41B7877549fe22d7b7815E02218b55059A8"
+    ],
+    "registeredUnder": [
+      "0xCD76315Ebbc78c84e7b797F584FD74FC231d11ac",
+      "0x5cA7Ed9235b050e2A0Aa1b98009d0a050ba02f0b",
+      "0x7dF15B4C456C1dDB9386AFD891e95658DBEF42c0",
+      "0x49F3e41B7877549fe22d7b7815E02218b55059A8"
+    ]
+  },
+  "createdAt": "2025-11-25T04:41:50.078Z"
+}
