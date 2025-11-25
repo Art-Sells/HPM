@@ -184,17 +184,17 @@ async function main() {
   // 1e. Check specific pools from previous run (if any)
   console.log("\n   1e. Checking pools from previous run...");
   const previousRunPools = [
-    "0xb5889070070C9A666bd411E4D882e3E545f74aE0", // Pool0
-    "0xa6c62A4edf110703f69505Ea8fAD940aDc6EAF9D", // Pool1
-    "0x439634467E0322759b1a7369a552204ea42A3463", // Pool2
-    "0xB1a5D1943612BbEE35ee7720f3a4bba74Fdc68b7", // Pool3
+    "0xAF007693E88a9fcC9904b3dB3cfa043A70CB3b8b", // Pool0 from bootstrap tx 0xaf52e973...
+    "0xeA1F4410fA12CAa9b0a192b05825B42c5F752AA7", // Pool1 from bootstrap tx 0xaf52e973...
+    "0x11f1D5363AaB6D90f4578Df237B7a6f905E6373C", // Pool2 from bootstrap tx 0xaf52e973...
+    "0xE827b58175f0Ff97f03b98Bf1e9a2135C72B33D0", // Pool3 from bootstrap tx 0xaf52e973...
   ];
   
   let previousPoolsBootstrapped = 0;
   const validPreviousPools: string[] = [];
   for (const poolAddr of previousRunPools) {
     try {
-      const pool = PoolFactory.attach(poolAddr).connect(provider);
+      const pool = PoolFactory.attach(poolAddr).connect(deployer);
       const isPool = await factory.isPool(poolAddr);
       const isInitialized = await pool.initialized();
       if (isPool && isInitialized) {
@@ -314,7 +314,7 @@ async function main() {
   // Check which pools need bootstrapping
   const poolsAlreadyBootstrapped = await Promise.all(
     pools.map(async (poolAddr) => {
-      const pool = PoolFactory.attach(poolAddr).connect(provider);
+      const pool = PoolFactory.attach(poolAddr).connect(deployer);
       return await pool.initialized();
     })
   );
@@ -358,10 +358,10 @@ async function main() {
     console.log(`   ${needBootstrap} pools need bootstrapping...`);
     
     // Parse amounts using correct decimals
-    // ASSET: 0.000012 (cbBTC has 8 decimals)
-    // USDC: 1.0 (USDC has 6 decimals)
-    const SEED_AMOUNT_ASSET = ethers.parseUnits("0.000012", assetDecimals);
-    const SEED_AMOUNT_USDC = ethers.parseUnits("1", usdcDecimals);
+    // ASSET: 0.000006 (cbBTC has 8 decimals) - per MCV_Integration_Guide.md Section 1
+    // USDC: 0.5 (USDC has 6 decimals) - per MCV_Integration_Guide.md Section 1
+    const SEED_AMOUNT_ASSET = ethers.parseUnits("0.000006", assetDecimals);
+    const SEED_AMOUNT_USDC = ethers.parseUnits("0.5", usdcDecimals);
     const requiredAsset = SEED_AMOUNT_ASSET * 4n; // Always need for all 4 pools
     const requiredUsdc = SEED_AMOUNT_USDC * 4n;
 
@@ -452,7 +452,7 @@ async function main() {
       
       // Verify all pools are bootstrapped
       for (let i = 0; i < 4; i++) {
-        const pool = PoolFactory.attach(pools[i]);
+        const pool = PoolFactory.attach(pools[i]).connect(deployer);
         const isInitialized = await pool.initialized();
         if (!isInitialized) {
           throw new Error(`Pool${i} bootstrap succeeded but pool is not initialized`);
@@ -518,7 +518,7 @@ async function main() {
   
   // Get detailed information for each pool
   for (let i = 0; i < 4; i++) {
-    const pool = PoolFactory.attach(pools[i]).connect(provider);
+    const pool = PoolFactory.attach(pools[i]).connect(deployer);
     const isInitialized = await pool.initialized();
     const reserveAsset = await pool.reserveAsset();
     const reserveUsdc = await pool.reserveUsdc();
