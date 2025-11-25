@@ -81,13 +81,20 @@ async function main() {
     PoolFactory.attach(pools.pool3.address).connect(provider),
   ];
   
-  // Helper to get pool state
+  // Helper to get pool state (including on-chain offset)
   async function getPoolState(poolAddr: string, poolContract: any) {
     const reserveAsset = await poolContract.reserveAsset();
     const reserveUsdc = await poolContract.reserveUsdc();
-    const targetOffsetBps = await poolContract.targetOffsetBps();
+    const targetOffsetBps = await poolContract.targetOffsetBps(); // Query on-chain!
     const priceX96 = await poolContract.priceX96();
-    const price = Number(priceX96) / Math.pow(2, 96);
+    
+    // priceX96 is in Q96 format: (reserveUsdc << 96) / reserveAsset
+    // This gives the ratio of RAW amounts (with decimals)
+    // To get actual USDC per cbBTC, we need to account for decimal difference:
+    // price = (priceX96 / 2^96) × (10^assetDecimals / 10^usdcDecimals)
+    const priceRatio = Number(priceX96) / Math.pow(2, 96);
+    const decimalAdjustment = Math.pow(10, assetDecimals) / Math.pow(10, usdcDecimals); // 10^8 / 10^6 = 100
+    const price = priceRatio * decimalAdjustment;
     
     return {
       address: poolAddr,
@@ -99,9 +106,9 @@ async function main() {
         raw: reserveUsdc.toString(),
         formatted: ethers.formatUnits(reserveUsdc, usdcDecimals),
       },
-      targetOffsetBps: Number(targetOffsetBps),
+      targetOffsetBps: Number(targetOffsetBps), // On-chain value
       priceX96: priceX96.toString(),
-      price: price.toString(),
+      price: price.toFixed(2), // Format to 2 decimal places (USDC per cbBTC)
     };
   }
   
@@ -242,7 +249,25 @@ async function main() {
         };
       });
     
+    // Parse OffsetFlipped events (event OffsetFlipped(int16 newOffset) - no indexed params)
+    const OffsetFlippedSig = ethers.id("OffsetFlipped(int16)");
+    const offsetFlippedEvents1 = (receipt1.logs ?? [])
+      .filter((l: any) => l.topics && l.topics[0] === OffsetFlippedSig)
+      .map((l: any) => {
+        const [newOffset] = ethers.AbiCoder.defaultAbiCoder().decode(["int16"], l.data);
+        return {
+          pool: l.address, // Event emitted by pool contract
+          newOffset: Number(newOffset),
+        };
+      });
+    
     console.log(`   ✓ Swap completed. ${hopEvents1.length} hops executed`);
+    if (offsetFlippedEvents1.length > 0) {
+      console.log(`   ✓ Offset flipped for ${offsetFlippedEvents1.length} pools`);
+      offsetFlippedEvents1.forEach((e: any) => {
+        console.log(`     Pool ${e.pool}: offset → ${e.newOffset}`);
+      });
+    }
     console.log("");
     
     // Build snapshot entry
@@ -274,7 +299,30 @@ async function main() {
       pools: {
         before: poolsBefore1,
         after: poolsAfter1,
+        offsetChanges: {
+          pool0: {
+            before: poolsBefore1.pool0.targetOffsetBps,
+            after: poolsAfter1.pool0.targetOffsetBps,
+            flipped: poolsBefore1.pool0.targetOffsetBps !== poolsAfter1.pool0.targetOffsetBps,
+          },
+          pool1: {
+            before: poolsBefore1.pool1.targetOffsetBps,
+            after: poolsAfter1.pool1.targetOffsetBps,
+            flipped: poolsBefore1.pool1.targetOffsetBps !== poolsAfter1.pool1.targetOffsetBps,
+          },
+          pool2: {
+            before: poolsBefore1.pool2.targetOffsetBps,
+            after: poolsAfter1.pool2.targetOffsetBps,
+            flipped: poolsBefore1.pool2.targetOffsetBps !== poolsAfter1.pool2.targetOffsetBps,
+          },
+          pool3: {
+            before: poolsBefore1.pool3.targetOffsetBps,
+            after: poolsAfter1.pool3.targetOffsetBps,
+            flipped: poolsBefore1.pool3.targetOffsetBps !== poolsAfter1.pool3.targetOffsetBps,
+          },
+        },
       },
+      offsetFlippedEvents: offsetFlippedEvents1,
       testerBalances: {
         before: {
           asset: {
@@ -442,7 +490,25 @@ async function main() {
         };
       });
     
+    // Parse OffsetFlipped events (event OffsetFlipped(int16 newOffset) - no indexed params)
+    const OffsetFlippedSig = ethers.id("OffsetFlipped(int16)");
+    const offsetFlippedEvents2 = (receipt2.logs ?? [])
+      .filter((l: any) => l.topics && l.topics[0] === OffsetFlippedSig)
+      .map((l: any) => {
+        const [newOffset] = ethers.AbiCoder.defaultAbiCoder().decode(["int16"], l.data);
+        return {
+          pool: l.address, // Event emitted by pool contract
+          newOffset: Number(newOffset),
+        };
+      });
+    
     console.log(`   ✓ Swap completed. ${hopEvents2.length} hops executed`);
+    if (offsetFlippedEvents2.length > 0) {
+      console.log(`   ✓ Offset flipped for ${offsetFlippedEvents2.length} pools`);
+      offsetFlippedEvents2.forEach((e: any) => {
+        console.log(`     Pool ${e.pool}: offset → ${e.newOffset}`);
+      });
+    }
     console.log("");
     
     // Build snapshot entry
@@ -474,7 +540,30 @@ async function main() {
       pools: {
         before: poolsBefore2,
         after: poolsAfter2,
+        offsetChanges: {
+          pool0: {
+            before: poolsBefore2.pool0.targetOffsetBps,
+            after: poolsAfter2.pool0.targetOffsetBps,
+            flipped: poolsBefore2.pool0.targetOffsetBps !== poolsAfter2.pool0.targetOffsetBps,
+          },
+          pool1: {
+            before: poolsBefore2.pool1.targetOffsetBps,
+            after: poolsAfter2.pool1.targetOffsetBps,
+            flipped: poolsBefore2.pool1.targetOffsetBps !== poolsAfter2.pool1.targetOffsetBps,
+          },
+          pool2: {
+            before: poolsBefore2.pool2.targetOffsetBps,
+            after: poolsAfter2.pool2.targetOffsetBps,
+            flipped: poolsBefore2.pool2.targetOffsetBps !== poolsAfter2.pool2.targetOffsetBps,
+          },
+          pool3: {
+            before: poolsBefore2.pool3.targetOffsetBps,
+            after: poolsAfter2.pool3.targetOffsetBps,
+            flipped: poolsBefore2.pool3.targetOffsetBps !== poolsAfter2.pool3.targetOffsetBps,
+          },
+        },
       },
+      offsetFlippedEvents: offsetFlippedEvents2,
       testerBalances: {
         before: {
           asset: {
@@ -557,7 +646,9 @@ async function main() {
         poolInfo[`pool${i}`] = {
           address: poolAddr,
           orbit: allPools[i].orbit,
-          offset: allPools[i].offset,
+          offsetBefore: before.targetOffsetBps,
+          offsetAfter: after.targetOffsetBps,
+          offsetFlipped: before.targetOffsetBps !== after.targetOffsetBps,
           initialized: true,
           reserves: {
             ASSET: {
@@ -569,8 +660,23 @@ async function main() {
               formatted: after.reserveUsdc.formatted,
             },
           },
-          priceX96: after.priceX96,
-          price: after.price,
+          price: {
+            before: {
+              priceX96: before.priceX96,
+              price: before.price,
+            },
+            after: {
+              priceX96: after.priceX96,
+              price: after.price,
+            },
+            change: {
+              priceX96: (BigInt(after.priceX96) - BigInt(before.priceX96)).toString(),
+              price: (Number(after.price) - Number(before.price)).toFixed(2),
+              percentChange: before.price !== "0" && before.price !== "0.00" 
+                ? (((Number(after.price) - Number(before.price)) / Number(before.price)) * 100).toFixed(4) + "%"
+                : "0.0000%",
+            },
+          },
           router: routerAddr.toLowerCase(),
           changes: {
             ASSET: {
