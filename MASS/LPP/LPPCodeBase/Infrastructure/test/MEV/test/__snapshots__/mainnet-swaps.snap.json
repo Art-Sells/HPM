@@ -1,0 +1,255 @@
+{
+  "swaps": [
+    {
+      "swap": "0.02 USDC → cbBTC (POS orbit)",
+      "error": "execution reverted: ERC20: transfer amount exceeds balance"
+    },
+    {
+      "swap": "0.0000002 cbBTC → USDC (NEG orbit)",
+      "input": {
+        "amount": "0.0000002",
+        "token": "cbBTC",
+        "decimals": "8",
+        "raw": "20"
+      },
+      "quote": {
+        "totalOutput": "0.03024",
+        "totalCost": "0.0000004",
+        "totalFees": "0.0",
+        "orbit": [
+          "0xCD76315Ebbc78c84e7b797F584FD74FC231d11ac",
+          "0x5cA7Ed9235b050e2A0Aa1b98009d0a050ba02f0b"
+        ],
+        "perHopOutputs": [
+          {
+            "hop": 0,
+            "amount": "0.01512",
+            "raw": "15120"
+          },
+          {
+            "hop": 1,
+            "amount": "0.01512",
+            "raw": "15120"
+          }
+        ]
+      },
+      "transaction": {
+        "hash": "0xa9158e2f34514cb7c364134c33d0f062bbb82fa664e4d686034f4e0be0b0f843",
+        "blockNumber": 38626752,
+        "gasUsed": "239210",
+        "baseScanUrl": "https://basescan.org/tx/0xa9158e2f34514cb7c364134c33d0f062bbb82fa664e4d686034f4e0be0b0f843"
+      },
+      "pools": {
+        "pool0": {
+          "address": "0xCD76315Ebbc78c84e7b797F584FD74FC231d11ac",
+          "orbit": "NEG",
+          "offset": -500,
+          "initialized": true,
+          "reserves": {
+            "ASSET": {
+              "raw": "640",
+              "formatted": "0.0000064"
+            },
+            "USDC": {
+              "raw": "468751",
+              "formatted": "0.468751"
+            }
+          },
+          "priceX96": "55127134978730822477727741016800",
+          "price": "695.802265625",
+          "router": "0xff3049e2275f911b9d9a8f8433f3b59d7b9ea1d1",
+          "changes": {
+            "ASSET": {
+              "raw": "20",
+              "formatted": "0.0000002"
+            },
+            "USDC": {
+              "raw": "-15120",
+              "formatted": "-0.01512"
+            }
+          }
+        },
+        "pool1": {
+          "address": "0x5cA7Ed9235b050e2A0Aa1b98009d0a050ba02f0b",
+          "orbit": "NEG",
+          "offset": -500,
+          "initialized": true,
+          "reserves": {
+            "ASSET": {
+              "raw": "640",
+              "formatted": "0.0000064"
+            },
+            "USDC": {
+              "raw": "468751",
+              "formatted": "0.468751"
+            }
+          },
+          "priceX96": "55127134978730822477727741016800",
+          "price": "695.802265625",
+          "router": "0xff3049e2275f911b9d9a8f8433f3b59d7b9ea1d1",
+          "changes": {
+            "ASSET": {
+              "raw": "20",
+              "formatted": "0.0000002"
+            },
+            "USDC": {
+              "raw": "-15120",
+              "formatted": "-0.01512"
+            }
+          }
+        },
+        "pool2": {
+          "address": "0x7dF15B4C456C1dDB9386AFD891e95658DBEF42c0",
+          "orbit": "POS",
+          "offset": 500,
+          "initialized": true,
+          "reserves": {
+            "ASSET": {
+              "raw": "396",
+              "formatted": "0.00000396"
+            },
+            "USDC": {
+              "raw": "762208",
+              "formatted": "0.762208"
+            }
+          },
+          "priceX96": "160120596612010130908901375410573",
+          "price": "2021.0060606060606",
+          "router": "0xff3049e2275f911b9d9a8f8433f3b59d7b9ea1d1",
+          "changes": {
+            "ASSET": {
+              "raw": "0",
+              "formatted": "0.0"
+            },
+            "USDC": {
+              "raw": "0",
+              "formatted": "0.0"
+            }
+          }
+        },
+        "pool3": {
+          "address": "0x49F3e41B7877549fe22d7b7815E02218b55059A8",
+          "orbit": "POS",
+          "offset": 500,
+          "initialized": true,
+          "reserves": {
+            "ASSET": {
+              "raw": "396",
+              "formatted": "0.00000396"
+            },
+            "USDC": {
+              "raw": "762208",
+              "formatted": "0.762208"
+            }
+          },
+          "priceX96": "160120596612010130908901375410573",
+          "price": "2021.0060606060606",
+          "router": "0xff3049e2275f911b9d9a8f8433f3b59d7b9ea1d1",
+          "changes": {
+            "ASSET": {
+              "raw": "0",
+              "formatted": "0.0"
+            },
+            "USDC": {
+              "raw": "0",
+              "formatted": "0.0"
+            }
+          }
+        }
+      },
+      "hopExecuted": [
+        {
+          "hop": 0,
+          "pool": "0xCD76315Ebbc78c84e7b797F584FD74FC231d11ac",
+          "direction": "ASSET→USDC",
+          "amountIn": {
+            "raw": "20",
+            "formatted": "0.0000002"
+          },
+          "amountOut": {
+            "raw": "15120",
+            "formatted": "0.01512"
+          },
+          "tokenIn": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+          "tokenOut": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+        },
+        {
+          "hop": 1,
+          "pool": "0x5cA7Ed9235b050e2A0Aa1b98009d0a050ba02f0b",
+          "direction": "ASSET→USDC",
+          "amountIn": {
+            "raw": "20",
+            "formatted": "0.0000002"
+          },
+          "amountOut": {
+            "raw": "15120",
+            "formatted": "0.01512"
+          },
+          "tokenIn": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+          "tokenOut": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+        }
+      ],
+      "testerBalances": {
+        "before": {
+          "asset": {
+            "raw": "459",
+            "formatted": "0.00000459"
+          },
+          "usdc": {
+            "raw": "1293",
+            "formatted": "0.001293"
+          }
+        },
+        "after": {
+          "asset": {
+            "raw": "419",
+            "formatted": "0.00000419"
+          },
+          "usdc": {
+            "raw": "31533",
+            "formatted": "0.031533"
+          }
+        },
+        "changes": {
+          "asset": {
+            "raw": "-40",
+            "formatted": "-0.0000004"
+          },
+          "usdc": {
+            "raw": "30240",
+            "formatted": "0.03024"
+          }
+        }
+      }
+    }
+  ],
+  "tokens": {
+    "ASSET": {
+      "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "symbol": "cbBTC",
+      "decimals": "8"
+    },
+    "USDC": {
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "symbol": "USDC",
+      "decimals": "6"
+    }
+  },
+  "topology": {
+    "negOrbit": [
+      "0xCD76315Ebbc78c84e7b797F584FD74FC231d11ac",
+      "0x5cA7Ed9235b050e2A0Aa1b98009d0a050ba02f0b"
+    ],
+    "posOrbit": [
+      "0x7dF15B4C456C1dDB9386AFD891e95658DBEF42c0",
+      "0x49F3e41B7877549fe22d7b7815E02218b55059A8"
+    ],
+    "registeredUnder": [
+      "0xCD76315Ebbc78c84e7b797F584FD74FC231d11ac",
+      "0x5cA7Ed9235b050e2A0Aa1b98009d0a050ba02f0b",
+      "0x7dF15B4C456C1dDB9386AFD891e95658DBEF42c0",
+      "0x49F3e41B7877549fe22d7b7815E02218b55059A8"
+    ]
+  },
+  "createdAt": "2025-11-25T03:54:12.847Z"
+}
