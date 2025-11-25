@@ -331,6 +331,32 @@ contract LPPRouter is ILPPRouter {
         }
     }
 
+    /// @notice Get quote with total cost (amount extracted from wallet)
+    /// @dev Returns both output amounts AND total input cost (amountIn * numHops + fees)
+    function getAmountsOutWithCost(
+        uint256 amountIn,
+        address[] calldata orbit,
+        bool assetToUsdc
+    ) external view returns (
+        uint256[] memory perHop,
+        uint256 totalOut,
+        uint256 totalInputCost,
+        uint256 totalFees
+    ) {
+        require(amountIn > 0, "amountIn=0");
+        require(orbit.length > 0, "empty orbit");
+        
+        (perHop, totalOut) = this.getAmountsOut(amountIn, orbit, assetToUsdc);
+        
+        // Calculate total cost: amountIn per hop + fees per hop
+        // swap() takes p.amountIn from payer for EACH hop, plus fees on each hop
+        uint256 numHops = uint256(orbit.length);
+        uint256 feePerHop = (amountIn * MCV_FEE_BPS) / BPS_DENOMINATOR;
+        
+        totalFees = feePerHop * numHops;
+        totalInputCost = (amountIn * numHops) + totalFees;
+    }
+
     function getAmountsOutFromStart(
         address startPool,
         uint256 amountIn
@@ -367,6 +393,38 @@ contract LPPRouter is ILPPRouter {
     {
         (orbit, assetToUsdc, , ) = _resolveOrbitAndTokens(startPool, useNegOrbit);
         (perHop, total) = this.getAmountsOut(amountIn, orbit, assetToUsdc);
+    }
+
+    /// @notice Get quote with total cost (amount extracted from wallet)
+    /// @dev Returns output amounts AND total input cost (amountIn * numHops + fees per hop)
+    /// This is what MEV bots need to calculate profitability
+    function getAmountsOutFromStartWithCost(
+        address startPool,
+        uint256 amountIn,
+        bool useNegOrbit
+    )
+        external
+        view
+        returns (
+            bool assetToUsdc,
+            address[] memory orbit,
+            uint256[] memory perHop,
+            uint256 totalOut,
+            uint256 totalInputCost,
+            uint256 totalFees
+        )
+    {
+        (orbit, assetToUsdc, , ) = _resolveOrbitAndTokens(startPool, useNegOrbit);
+        (perHop, totalOut) = this.getAmountsOut(amountIn, orbit, assetToUsdc);
+        
+        // Calculate total cost: amountIn per hop + fees per hop
+        // swap() takes p.amountIn from payer for EACH hop, plus fees
+        uint256 numHops = uint256(orbit.length);
+        uint256 feePerHop = (amountIn * MCV_FEE_BPS) / BPS_DENOMINATOR;
+        uint256 principalPerHop = amountIn;
+        
+        totalFees = feePerHop * numHops;
+        totalInputCost = (principalPerHop * numHops) + totalFees;
     }
 
     /* ───────────────────────────────────────────

@@ -1,12 +1,12 @@
 {
   "network": "base",
   "chainId": 8453,
-  "deployedAt": "2025-11-23T00:09:03.992Z",
+  "deployedAt": "2025-11-25T03:15:45.810Z",
   "contracts": {
-    "LPPAccessManager": "0xf89Cac243d9C99e59ceddC9F6a0479c718C28ea2",
-    "LPPTreasury": "0x2B12D3CB3769538896E94707a3Bb1d335CE5B20b",
-    "LPPFactory": "0x6e5f60615f45d4A1716764A20dbD3EdE014F23ed",
-    "LPPRouter": "0x44EF6fcbfb077752a50b9f1B3F666936484ef4a7"
+    "LPPAccessManager": "0x9a2e2ce2Cdf7da5161EB894360eed606291AA3d2",
+    "LPPTreasury": "0x8eF52FD642890f8191021f8a9DCa4f60606F0Bba",
+    "LPPFactory": "0xD999f5929a75F305fd496d0b2Df8e6F30dE6606b",
+    "LPPRouter": "0xFf3049E2275F911b9d9A8F8433F3B59d7b9eA1d1"
   },
   "tokens": {
     "ASSET": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
@@ -18,42 +18,42 @@
   },
   "pools": {
     "pool0": {
-      "address": "0xb5889070070C9A666bd411E4D882e3E545f74aE0",
+      "address": "0xCD76315Ebbc78c84e7b797F584FD74FC231d11ac",
       "offset": -500,
       "orbit": "NEG"
     },
     "pool1": {
-      "address": "0xa6c62A4edf110703f69505Ea8fAD940aDc6EAF9D",
+      "address": "0x5cA7Ed9235b050e2A0Aa1b98009d0a050ba02f0b",
       "offset": -500,
       "orbit": "NEG"
     },
     "pool2": {
-      "address": "0x439634467E0322759b1a7369a552204ea42A3463",
+      "address": "0x7dF15B4C456C1dDB9386AFD891e95658DBEF42c0",
       "offset": 500,
       "orbit": "POS"
     },
     "pool3": {
-      "address": "0xB1a5D1943612BbEE35ee7720f3a4bba74Fdc68b7",
+      "address": "0x49F3e41B7877549fe22d7b7815E02218b55059A8",
       "offset": 500,
       "orbit": "POS"
     }
   },
   "topology": {
     "negOrbit": [
-      "0xb5889070070C9A666bd411E4D882e3E545f74aE0",
-      "0xa6c62A4edf110703f69505Ea8fAD940aDc6EAF9D"
+      "0xCD76315Ebbc78c84e7b797F584FD74FC231d11ac",
+      "0x5cA7Ed9235b050e2A0Aa1b98009d0a050ba02f0b"
     ],
     "posOrbit": [
-      "0x439634467E0322759b1a7369a552204ea42A3463",
-      "0xB1a5D1943612BbEE35ee7720f3a4bba74Fdc68b7"
+      "0x7dF15B4C456C1dDB9386AFD891e95658DBEF42c0",
+      "0x49F3e41B7877549fe22d7b7815E02218b55059A8"
     ],
     "registeredUnder": [
-      "0xb5889070070C9A666bd411E4D882e3E545f74aE0",
-      "0xa6c62A4edf110703f69505Ea8fAD940aDc6EAF9D",
-      "0x439634467E0322759b1a7369a552204ea42A3463",
-      "0xB1a5D1943612BbEE35ee7720f3a4bba74Fdc68b7"
+      "0xCD76315Ebbc78c84e7b797F584FD74FC231d11ac",
+      "0x5cA7Ed9235b050e2A0Aa1b98009d0a050ba02f0b",
+      "0x7dF15B4C456C1dDB9386AFD891e95658DBEF42c0",
+      "0x49F3e41B7877549fe22d7b7815E02218b55059A8"
     ]
   },
-  "section3CompletedAt": "2025-11-23T21:35:21.056Z",
+  "section3CompletedAt": "2025-11-25T03:18:09.934Z",
   "poolManifestPath": "/Users/Jeyak1/Library/Mobile Documents/com~apple~CloudDocs/Documents/Arells/People/HPM/MASS/LPP/LPPCodeBase/Infrastructure/pool-manifest.json"
 }

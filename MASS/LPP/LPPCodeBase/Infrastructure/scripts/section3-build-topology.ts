@@ -184,17 +184,17 @@ async function main() {
   // 1e. Check specific pools from previous run (if any)
   console.log("\n   1e. Checking pools from previous run...");
   const previousRunPools = [
-    "0xb5889070070C9A666bd411E4D882e3E545f74aE0", // Pool0
-    "0xa6c62A4edf110703f69505Ea8fAD940aDc6EAF9D", // Pool1
-    "0x439634467E0322759b1a7369a552204ea42A3463", // Pool2
-    "0xB1a5D1943612BbEE35ee7720f3a4bba74Fdc68b7", // Pool3
+    "0xAF007693E88a9fcC9904b3dB3cfa043A70CB3b8b", // Pool0 from bootstrap tx 0xaf52e973...
+    "0xeA1F4410fA12CAa9b0a192b05825B42c5F752AA7", // Pool1 from bootstrap tx 0xaf52e973...
+    "0x11f1D5363AaB6D90f4578Df237B7a6f905E6373C", // Pool2 from bootstrap tx 0xaf52e973...
+    "0xE827b58175f0Ff97f03b98Bf1e9a2135C72B33D0", // Pool3 from bootstrap tx 0xaf52e973...
   ];
   
   let previousPoolsBootstrapped = 0;
   const validPreviousPools: string[] = [];
   for (const poolAddr of previousRunPools) {
     try {
-      const pool = PoolFactory.attach(poolAddr).connect(provider);
+      const pool = PoolFactory.attach(poolAddr).connect(deployer);
       const isPool = await factory.isPool(poolAddr);
       const isInitialized = await pool.initialized();
       if (isPool && isInitialized) {
@@ -308,13 +308,13 @@ async function main() {
     console.log(`      Pool${i}: ${pools[i]}`);
   }
 
-  // Step 2: Bootstrap pools with offsets (only if not already bootstrapped)
-  console.log("\n2. Bootstrapping pools...");
+  // Step 2: Bootstrap pools with offsets AND set orbits atomically
+  console.log("\n2. Bootstrapping pools and setting orbits (atomic operation)...");
   
   // Check which pools need bootstrapping
   const poolsAlreadyBootstrapped = await Promise.all(
     pools.map(async (poolAddr) => {
-      const pool = PoolFactory.attach(poolAddr).connect(provider);
+      const pool = PoolFactory.attach(poolAddr).connect(deployer);
       return await pool.initialized();
     })
   );
@@ -322,20 +322,50 @@ async function main() {
   const needBootstrap = poolsAlreadyBootstrapped.filter(b => b === false).length;
   
   if (needBootstrap === 0) {
-    console.log("   ✓ All pools are already bootstrapped, skipping bootstrap step");
+    console.log("   ✓ All pools are already bootstrapped");
+    
+    // Check if orbits are set
+    let allOrbitsSet = true;
+    const negOrbit = [pools[0], pools[1]];
+    const posOrbit = [pools[2], pools[3]];
+    
+    for (let i = 0; i < 4; i++) {
+      try {
+        const dualOrbit = await router.getDualOrbit(pools[i]);
+        const existingNeg = dualOrbit[0] as string[];
+        const existingPos = dualOrbit[1] as string[];
+        if (existingNeg.length !== 2 || existingPos.length !== 2 ||
+            existingNeg[0].toLowerCase() !== negOrbit[0].toLowerCase() ||
+            existingNeg[1].toLowerCase() !== negOrbit[1].toLowerCase() ||
+            existingPos[0].toLowerCase() !== posOrbit[0].toLowerCase() ||
+            existingPos[1].toLowerCase() !== posOrbit[1].toLowerCase()) {
+          allOrbitsSet = false;
+          break;
+        }
+      } catch {
+        allOrbitsSet = false;
+        break;
+      }
+    }
+    
+    if (allOrbitsSet) {
+      console.log("   ✓ All orbits are already set, skipping bootstrap step");
+    } else {
+      console.log("   ⚠ Pools are bootstrapped but orbits are not set");
+      console.log("   ⚠ You may need to set orbits manually or re-run bootstrapTopology");
+    }
   } else {
     console.log(`   ${needBootstrap} pools need bootstrapping...`);
     
     // Parse amounts using correct decimals
-    // ASSET: 0.000012 (cbBTC has 8 decimals)
-    // USDC: 1.0 (USDC has 6 decimals)
-    const SEED_AMOUNT_ASSET = ethers.parseUnits("0.000012", assetDecimals);
-    const SEED_AMOUNT_USDC = ethers.parseUnits("1", usdcDecimals);
-    const requiredAsset = SEED_AMOUNT_ASSET * BigInt(needBootstrap);
-    const requiredUsdc = SEED_AMOUNT_USDC * BigInt(needBootstrap);
+    // ASSET: 0.000006 (cbBTC has 8 decimals) - per MCV_Integration_Guide.md Section 1
+    // USDC: 0.5 (USDC has 6 decimals) - per MCV_Integration_Guide.md Section 1
+    const SEED_AMOUNT_ASSET = ethers.parseUnits("0.000006", assetDecimals);
+    const SEED_AMOUNT_USDC = ethers.parseUnits("0.5", usdcDecimals);
+    const requiredAsset = SEED_AMOUNT_ASSET * 4n; // Always need for all 4 pools
+    const requiredUsdc = SEED_AMOUNT_USDC * 4n;
 
     // Ensure treasury contract has enough tokens
-    // Note: bootstrapViaTreasury transfers FROM treasury contract TO pools
     console.log("   Checking balances...");
     const deployerAddr = await deployer.getAddress();
     console.log(`   Treasury contract: ${treasuryAddr}`);
@@ -376,7 +406,7 @@ async function main() {
       }
     }
     
-    // Verify treasury now has enough (re-check after transfers)
+    // Verify treasury now has enough
     const finalTreasuryAssetBal = await asset.balanceOf(treasuryAddr);
     const finalTreasuryUsdcBal = await usdc.balanceOf(treasuryAddr);
     
@@ -391,79 +421,73 @@ async function main() {
     console.log(`   ASSET: ${ethers.formatUnits(finalTreasuryAssetBal, assetDecimals)} (required: ${ethers.formatUnits(requiredAsset, assetDecimals)})`);
     console.log(`   USDC: ${ethers.formatUnits(finalTreasuryUsdcBal, usdcDecimals)} (required: ${ethers.formatUnits(requiredUsdc, usdcDecimals)})`);
 
-    // Bootstrap Pool0, Pool1: NEG orbit (-500 bps)
-    // Use the 4-parameter overload explicitly to avoid ambiguity
-    for (let i = 0; i < 2; i++) {
-      if (poolsAlreadyBootstrapped[i]) {
-        console.log(`   ⏭ Pool${i} already bootstrapped, skipping`);
-        continue;
+    // Use bootstrapTopology to bootstrap all 4 pools AND set orbits atomically
+    console.log("\n   Calling bootstrapTopology (bootstraps 4 pools + sets orbits atomically)...");
+    const poolsArray: [string, string, string, string] = [pools[0], pools[1], pools[2], pools[3]];
+    const amountsAsset: [bigint, bigint, bigint, bigint] = [SEED_AMOUNT_ASSET, SEED_AMOUNT_ASSET, SEED_AMOUNT_ASSET, SEED_AMOUNT_ASSET];
+    const amountsUsdc: [bigint, bigint, bigint, bigint] = [SEED_AMOUNT_USDC, SEED_AMOUNT_USDC, SEED_AMOUNT_USDC, SEED_AMOUNT_USDC];
+    const offsetsBps: [bigint, bigint, bigint, bigint] = [-500n, -500n, 500n, 500n];
+    const negOrbit = [pools[0], pools[1]];
+    const posOrbit = [pools[2], pools[3]];
+    
+    try {
+      const tx = await (treasury as any).bootstrapTopology(
+        poolsArray,
+        amountsAsset,
+        amountsUsdc,
+        offsetsBps,
+        routerAddr,
+        negOrbit,
+        posOrbit
+      );
+      
+      console.log(`   ✓ Transaction sent (tx: ${tx.hash})`);
+      console.log(`   View on BaseScan: https://basescan.org/tx/${tx.hash}`);
+      
+      const receipt = await tx.wait();
+      
+      if (!receipt || receipt.status !== 1) {
+        throw new Error(`Bootstrap topology transaction failed. Status: ${receipt?.status}`);
       }
-      try {
-        const tx = await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
-          pools[i],
-          SEED_AMOUNT_ASSET,
-          SEED_AMOUNT_USDC,
-          -500
-        );
-        const receipt = await tx.wait();
-        
-        // Verify transaction succeeded
-        if (!receipt || receipt.status !== 1) {
-          throw new Error(`Bootstrap transaction for Pool${i} failed. Status: ${receipt?.status}`);
-        }
-        
-        // Verify pool is actually initialized
-        const pool = PoolFactory.attach(pools[i]);
+      
+      // Verify all pools are bootstrapped
+      for (let i = 0; i < 4; i++) {
+        const pool = PoolFactory.attach(pools[i]).connect(deployer);
         const isInitialized = await pool.initialized();
         if (!isInitialized) {
-          throw new Error(`Pool${i} bootstrap transaction succeeded but pool is not initialized`);
+          throw new Error(`Pool${i} bootstrap succeeded but pool is not initialized`);
         }
-        
-        console.log(`   ✓ Pool${i} bootstrapped with -500 bps offset`);
-      } catch (error: any) {
-        console.error(`   ❌ Failed to bootstrap Pool${i}:`, error.message);
-        if (error.reason) {
-          console.error(`   Revert reason:`, error.reason);
+        const offset = await pool.targetOffsetBps();
+        const expectedOffset = i < 2 ? -500n : 500n;
+        if (Number(offset) !== Number(expectedOffset)) {
+          throw new Error(`Pool${i} has wrong offset: ${offset}, expected ${expectedOffset}`);
         }
-        throw error;
       }
-    }
-
-    // Bootstrap Pool2, Pool3: POS orbit (+500 bps)
-    for (let i = 2; i < 4; i++) {
-      if (poolsAlreadyBootstrapped[i]) {
-        console.log(`   ⏭ Pool${i} already bootstrapped, skipping`);
-        continue;
+      
+      // Verify orbits are set
+      for (let i = 0; i < 4; i++) {
+        const dualOrbit = await router.getDualOrbit(pools[i]);
+        const existingNeg = dualOrbit[0] as string[];
+        const existingPos = dualOrbit[1] as string[];
+        if (existingNeg.length !== 2 || existingPos.length !== 2 ||
+            existingNeg[0].toLowerCase() !== negOrbit[0].toLowerCase() ||
+            existingNeg[1].toLowerCase() !== negOrbit[1].toLowerCase() ||
+            existingPos[0].toLowerCase() !== posOrbit[0].toLowerCase() ||
+            existingPos[1].toLowerCase() !== posOrbit[1].toLowerCase()) {
+          throw new Error(`Pool${i} orbit not set correctly`);
+        }
       }
-      try {
-        const tx = await (treasury as any)["bootstrapViaTreasury(address,uint256,uint256,int256)"](
-          pools[i],
-          SEED_AMOUNT_ASSET,
-          SEED_AMOUNT_USDC,
-          500
-        );
-        const receipt = await tx.wait();
-        
-        // Verify transaction succeeded
-        if (!receipt || receipt.status !== 1) {
-          throw new Error(`Bootstrap transaction for Pool${i} failed. Status: ${receipt?.status}`);
-        }
-        
-        // Verify pool is actually initialized
-        const pool = PoolFactory.attach(pools[i]);
-        const isInitialized = await pool.initialized();
-        if (!isInitialized) {
-          throw new Error(`Pool${i} bootstrap transaction succeeded but pool is not initialized`);
-        }
-        
-        console.log(`   ✓ Pool${i} bootstrapped with +500 bps offset`);
-      } catch (error: any) {
-        console.error(`   ❌ Failed to bootstrap Pool${i}:`, error.message);
-        if (error.reason) {
-          console.error(`   Revert reason:`, error.reason);
-        }
-        throw error;
+      
+      console.log(`   ✓ All 4 pools bootstrapped with correct offsets`);
+      console.log(`   ✓ Dual orbits registered for all pools`);
+      console.log(`   ✓ NEG orbit: ${negOrbit.join(", ")}`);
+      console.log(`   ✓ POS orbit: ${posOrbit.join(", ")}`);
+    } catch (error: any) {
+      console.error(`   ❌ Failed to bootstrap topology:`, error.message);
+      if (error.reason) {
+        console.error(`   Revert reason:`, error.reason);
       }
+      throw error;
     }
   }
 
@@ -494,7 +518,7 @@ async function main() {
   
   // Get detailed information for each pool
   for (let i = 0; i < 4; i++) {
-    const pool = PoolFactory.attach(pools[i]).connect(provider);
+    const pool = PoolFactory.attach(pools[i]).connect(deployer);
     const isInitialized = await pool.initialized();
     const reserveAsset = await pool.reserveAsset();
     const reserveUsdc = await pool.reserveUsdc();
@@ -560,416 +584,91 @@ async function main() {
     console.log(`   ✓ Router set on Pool${i}`);
   }
 
-  // Step 5: Register dual orbits
-  console.log("\n5. Registering dual orbits...");
-  let orbitRegistrationFailed = false;
+  // Step 5: Set daily cap and unpause router
+  // (Orbits are now set atomically during bootstrap in Step 2)
+  console.log("\n5. Setting daily event cap and unpausing router...");
   
-  // Verify deployer is treasury owner (already checked in step 1c)
-  const deployerAddress = await deployer.getAddress();
-  if (treasuryOwner.toLowerCase() !== deployerAddress.toLowerCase()) {
-    throw new Error(`Deployer ${deployerAddress} is not the treasury owner. Owner is: ${treasuryOwner}`);
-  }
-  console.log(`   ✓ Deployer is treasury owner`);
-  
-  // Verify router's treasury matches our treasury (required for onlyTreasury check)
-  const routerTreasury = await router.treasury();
-  if (routerTreasury.toLowerCase() !== treasuryAddr.toLowerCase()) {
-    throw new Error(`Router's treasury (${routerTreasury}) does not match our treasury (${treasuryAddr}). Cannot set orbits.`);
-  }
-  console.log(`   ✓ Router's treasury matches our treasury`);
-  
-  // Pause the router BEFORE attempting orbit registration to prevent swaps until orbits are set
-  console.log(`   Pausing router to prevent swaps until orbits are configured...`);
-  const wasPaused = await router.paused();
-  if (!wasPaused) {
-    const pauseTx = await treasury.pauseRouterViaTreasury(routerAddr);
-    await pauseTx.wait();
-    console.log(`   ✓ Router paused`);
-  } else {
-    console.log(`   ⏭ Router already paused`);
-  }
-  
-  // NEG orbit: Pool0, Pool1
+  // Verify orbits were set (they should be if bootstrapTopology succeeded)
   const negOrbit = [pools[0], pools[1]];
-  // POS orbit: Pool2, Pool3
   const posOrbit = [pools[2], pools[3]];
-  
-  // Verify all pools have matching asset/usdc pairs (required by router)
-  console.log(`   Verifying pool token pairs...`);
-  const pool0 = PoolFactory.attach(pools[0]).connect(provider);
-  const pool0Asset = await pool0.asset();
-  const pool0Usdc = await pool0.usdc();
-  
-  for (let i = 1; i < 4; i++) {
-    const pool = PoolFactory.attach(pools[i]).connect(provider);
-    const poolAsset = await pool.asset();
-    const poolUsdc = await pool.usdc();
-    if (poolAsset.toLowerCase() !== pool0Asset.toLowerCase() || poolUsdc.toLowerCase() !== pool0Usdc.toLowerCase()) {
-      throw new Error(`Pool${i} has mismatched token pair. Pool0: ${pool0Asset}/${pool0Usdc}, Pool${i}: ${poolAsset}/${poolUsdc}`);
-    }
-  }
-  console.log(`   ✓ All pools have matching token pairs (${pool0Asset}/${pool0Usdc})`);
-  
-  // Check pool state before attempting orbit registration
-  console.log(`   Checking pool state...`);
-  const poolsState: Array<{addr: string, initialized: boolean, offset: number, hasFunds: boolean}> = [];
-  for (let i = 0; i < 4; i++) {
-    const pool = PoolFactory.attach(pools[i]).connect(provider);
-    const isInitialized = await pool.initialized();
-    const targetOffsetBps = await pool.targetOffsetBps();
-    const reserveAsset = await pool.reserveAsset();
-    const reserveUsdc = await pool.reserveUsdc();
-    const hasFunds = reserveAsset > 0n || reserveUsdc > 0n;
-    poolsState.push({
-      addr: pools[i],
-      initialized: isInitialized,
-      offset: Number(targetOffsetBps),
-      hasFunds: hasFunds
-    });
-    console.log(`      Pool${i}: initialized=${isInitialized}, offset=${targetOffsetBps} bps, hasFunds=${hasFunds}`);
-  }
-
-  // Register the same orbit config under ALL pool addresses
-  // This allows searchers to use any pool as startPool lookup key
-  // Check if orbits are already registered
-  const routerForCheck = RouterFactory.attach(routerAddr);
-  for (let i = 0; i < 4; i++) {
-    try {
-      // Check if orbit is already registered
-      let alreadyRegistered = false;
-      try {
-        const dualOrbit = await routerForCheck.getDualOrbit(pools[i]);
-        if (dualOrbit[2] === true) { // initialized flag
-          // Verify it matches our expected orbits
-          const existingNeg = dualOrbit[0] as string[];
-          const existingPos = dualOrbit[1] as string[];
-          if (existingNeg.length === 2 && existingPos.length === 2 &&
-              existingNeg[0].toLowerCase() === negOrbit[0].toLowerCase() &&
-              existingNeg[1].toLowerCase() === negOrbit[1].toLowerCase() &&
-              existingPos[0].toLowerCase() === posOrbit[0].toLowerCase() &&
-              existingPos[1].toLowerCase() === posOrbit[1].toLowerCase()) {
-            alreadyRegistered = true;
-          }
-        }
-      } catch {
-        // Orbit not registered, continue to register
-      }
-      
-      if (alreadyRegistered) {
-        console.log(`   ⏭ Dual orbit already registered under Pool${i}, skipping`);
-        continue;
-      }
-      
-      // Verify pool details before attempting registration
-      console.log(`      Verifying Pool${i} and orbit pools...`);
-      const poolCheck = PoolFactory.attach(pools[i]).connect(provider);
-      const poolAsset = await poolCheck.asset();
-      const poolUsdc = await poolCheck.usdc();
-      const poolInitialized = await poolCheck.initialized();
-      console.log(`         Pool${i}: Asset=${poolAsset}, USDC=${poolUsdc}, Initialized=${poolInitialized}`);
-      
-      // Verify all NEG orbit pools
-      for (let j = 0; j < negOrbit.length; j++) {
-        const negPool = PoolFactory.attach(negOrbit[j]).connect(provider);
-        const negAsset = await negPool.asset();
-        const negUsdc = await negPool.usdc();
-        const negInit = await negPool.initialized();
-        console.log(`         NEG[${j}]: Asset=${negAsset}, USDC=${negUsdc}, Initialized=${negInit}`);
-        if (negAsset.toLowerCase() !== poolAsset.toLowerCase() || negUsdc.toLowerCase() !== poolUsdc.toLowerCase()) {
-          throw new Error(`NEG orbit pool ${j} (${negOrbit[j]}) has mismatched tokens. Expected ${poolAsset}/${poolUsdc}, got ${negAsset}/${negUsdc}`);
-        }
-      }
-      
-      // Verify all POS orbit pools
-      for (let j = 0; j < posOrbit.length; j++) {
-        const posPool = PoolFactory.attach(posOrbit[j]).connect(provider);
-        const posAsset = await posPool.asset();
-        const posUsdc = await posPool.usdc();
-        const posInit = await posPool.initialized();
-        console.log(`         POS[${j}]: Asset=${posAsset}, USDC=${posUsdc}, Initialized=${posInit}`);
-        if (posAsset.toLowerCase() !== poolAsset.toLowerCase() || posUsdc.toLowerCase() !== poolUsdc.toLowerCase()) {
-          throw new Error(`POS orbit pool ${j} (${posOrbit[j]}) has mismatched tokens. Expected ${poolAsset}/${poolUsdc}, got ${posAsset}/${posUsdc}`);
-        }
-      }
-      
-      // Verify router contract code exists and matches our expectations
-      const routerCode = await provider.getCode(routerAddr);
-      if (routerCode === "0x") {
-        throw new Error(`Router contract has no code at ${routerAddr}. Contract may not be deployed.`);
-      }
-      console.log(`      ✓ Router contract has code (${routerCode.length} bytes)`);
-      
-      // Double-check router's treasury matches
-      const routerTreasuryCheck = await router.treasury();
-      if (routerTreasuryCheck.toLowerCase() !== treasuryAddr.toLowerCase()) {
-        throw new Error(`Router treasury mismatch! Router expects ${routerTreasuryCheck}, but we're using ${treasuryAddr}`);
-      }
-      console.log(`      ✓ Router treasury verified: ${routerTreasuryCheck}`);
-      
-      // Try to get revert reason using callStatic first (for debugging)
-      console.log(`      Attempting to simulate transaction to get revert reason...`);
-      let revertReason = "unknown";
-      try {
-        await treasury.setDualOrbitViaTreasury.staticCall(
-          routerAddr,
-          pools[i],
-          negOrbit,
-          posOrbit,
-          true
-        );
-        console.log(`      ✓ Simulation succeeded - transaction should work`);
-      } catch (simError: any) {
-        // Try to extract revert reason
-        if (simError.reason) {
-          revertReason = simError.reason;
-        } else if (simError.data) {
-          // Try to decode the error data
-          try {
-            const routerIface = RouterFactory.interface;
-            const decoded = routerIface.parseError(simError.data);
-            if (decoded) {
-              revertReason = `${decoded.name}: ${JSON.stringify(decoded.args)}`;
-            } else {
-              // Try to decode as a require string (Error(string))
-              const dataStr = simError.data.toString();
-              if (dataStr.startsWith("0x08c379a0")) {
-                // Error(string) selector - 0x08c379a0 is keccak256("Error(string)")[:4]
-                try {
-                  const abiCoder = new ethers.AbiCoder();
-                  const decoded = abiCoder.decode(["string"], "0x" + dataStr.slice(10));
-                  revertReason = decoded[0];
-                } catch {
-                  revertReason = `Error data: ${dataStr.slice(0, 100)}...`;
-                }
-              } else {
-                revertReason = `Error data: ${dataStr.slice(0, 100)}...`;
-              }
-            }
-          } catch {
-            revertReason = simError.message || "execution reverted";
-          }
-        } else {
-          revertReason = simError.message || "execution reverted";
-        }
-        console.error(`      ⚠ Simulation failed: ${revertReason}`);
-        console.error(`      ⚠ This indicates the transaction will revert. Continuing anyway to see actual error...`);
-      }
-      
-      // Send the transaction directly
-      console.log(`      Sending transaction...`);
-      try {
-        const tx = await treasury.setDualOrbitViaTreasury(
-          routerAddr,
-          pools[i],  // startPool: any pool can be used as lookup key
-          negOrbit,  // NEG orbit: 2 pools (pool0, pool1)
-          posOrbit,  // POS orbit: 2 pools (pool2, pool3)
-          true       // deprecated: kept for backwards compatibility
-        );
-        
-        // Check if transaction was actually broadcast
-        if (!tx.hash) {
-          throw new Error("Transaction hash is missing - transaction was not broadcast");
-        }
-        
-        console.log(`      ✓ Transaction sent (tx: ${tx.hash})`);
-        console.log(`      View on BaseScan: https://basescan.org/tx/${tx.hash}`);
-        
-        // Wait a moment to see if it appears on-chain
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Check if transaction exists on-chain
-        try {
-          const txReceipt = await provider.getTransactionReceipt(tx.hash);
-          if (txReceipt) {
-            console.log(`      ✓ Transaction found on-chain (status: ${txReceipt.status})`);
-            if (txReceipt.status === 1) {
-              console.log(`   ✓ Dual orbit registered under Pool${i} as startPool`);
-            } else {
-              throw new Error(`Transaction failed with status ${txReceipt.status}`);
-            }
-          } else {
-            console.log(`      ⚠ Transaction not yet found on-chain, waiting for confirmation...`);
-            const receipt = await tx.wait();
-            if (receipt && receipt.status === 1) {
-              console.log(`   ✓ Dual orbit registered under Pool${i} as startPool`);
-            } else {
-              throw new Error(`Transaction failed with status ${receipt?.status}`);
-            }
-          }
-        } catch (checkError: any) {
-          if (checkError.message.includes("not yet found")) {
-            // Transaction is pending, wait for it
-            console.log(`      Waiting for transaction confirmation...`);
-            const receipt = await tx.wait();
-            if (receipt && receipt.status === 1) {
-              console.log(`   ✓ Dual orbit registered under Pool${i} as startPool`);
-            } else {
-              throw new Error(`Transaction failed with status ${receipt?.status}`);
-            }
-          } else {
-            throw checkError;
-          }
-        }
-      } catch (txError: any) {
-        console.error(`   ❌ Failed to send/broadcast transaction for Pool${i}:`);
-        console.error(`      Error: ${txError.message}`);
-        console.error(`      Simulated revert reason: ${revertReason}`);
-        
-        // Try to get detailed revert reason from actual transaction
-        if (txError.reason) {
-          console.error(`      Transaction revert reason: ${txError.reason}`);
-        }
-        
-        // Try to decode error data
-        if (txError.data) {
-          console.error(`      Error data: ${txError.data}`);
-          try {
-            const routerIface = RouterFactory.interface;
-            const decoded = routerIface.parseError(txError.data);
-            if (decoded) {
-              console.error(`      Decoded router error: ${decoded.name}(${JSON.stringify(decoded.args)})`);
-            }
-          } catch {
-            try {
-              const treasuryIface = treasury.interface;
-              const decoded = treasuryIface.parseError(txError.data);
-              if (decoded) {
-                console.error(`      Decoded treasury error: ${decoded.name}(${JSON.stringify(decoded.args)})`);
-              }
-            } catch {
-              // Not a standard error
-            }
-          }
-        }
-        
-        if (txError.transaction?.hash) {
-          console.error(`      Transaction hash: ${txError.transaction.hash}`);
-          console.error(`      ⚠ Transaction may be pending or rejected by RPC node`);
-          console.error(`      ⚠ Check BaseScan: https://basescan.org/tx/${txError.transaction.hash}`);
-        }
-        
-        // Check for specific error patterns
-        if (txError.message.includes("not treasury")) {
-          console.error(`      ⚠ 'not treasury' error - router's onlyTreasury check is failing`);
-          console.error(`      ⚠ Router treasury: ${routerTreasuryCheck}, Our treasury: ${treasuryAddr}`);
-        }
-        if (txError.message.includes("dual:") || txError.reason?.includes("dual:")) {
-          console.error(`      ⚠ This is a validation error from setDualOrbit`);
-          console.error(`      ⚠ Check: zero addresses, empty orbits, length mismatch, or token pair mismatch`);
-        }
-        
-        throw txError; // Re-throw to mark this pool as failed
-      }
-    } catch (error: any) {
-      console.error(`   ❌ Failed to register orbit for Pool${i}: ${error.message}`);
-      // Don't throw - continue to try other pools, but mark this as failed
-      orbitRegistrationFailed = true;
-      console.error(`   ⚠ Continuing with other pools...`);
-    }
-  }
-  
-  // Final check: Verify orbits were set successfully
-  console.log(`\n   Verifying orbit registration...`);
   let allOrbitsSet = true;
+  
   for (let i = 0; i < 4; i++) {
     try {
       const dualOrbit = await router.getDualOrbit(pools[i]);
-      if (dualOrbit[2] === true) {
-        console.log(`      ✓ Pool${i}: Orbit registered`);
-      } else {
-        console.log(`      ⚠ Pool${i}: Orbit not registered`);
+      const existingNeg = dualOrbit[0] as string[];
+      const existingPos = dualOrbit[1] as string[];
+      if (existingNeg.length !== 2 || existingPos.length !== 2 ||
+          existingNeg[0].toLowerCase() !== negOrbit[0].toLowerCase() ||
+          existingNeg[1].toLowerCase() !== negOrbit[1].toLowerCase() ||
+          existingPos[0].toLowerCase() !== posOrbit[0].toLowerCase() ||
+          existingPos[1].toLowerCase() !== posOrbit[1].toLowerCase()) {
         allOrbitsSet = false;
+        break;
       }
     } catch {
-      console.log(`      ⚠ Pool${i}: Orbit not registered (error checking)`);
       allOrbitsSet = false;
+      break;
     }
   }
   
-  // Note: Router will be unpaused after Step 6 (daily cap) if all orbits were set successfully
   if (!allOrbitsSet) {
-    console.log(`\n   ⚠ WARNING: Not all orbits were registered successfully.`);
-    console.log(`   ⚠ Router will remain PAUSED to prevent swaps until orbits are configured.`);
-    console.log(`   ⚠ Pools with funds but unregistered orbits have locked funds.`);
-    console.log(`   ⚠ Run 'npx hardhat run scripts/recover-pool-funds.ts --network base' to check pool state.`);
-    console.log(`   ⚠ Once orbits are registered, manually unpause the router with:`);
-    console.log(`      treasury.unpauseRouterViaTreasury(${routerAddr})`);
+    console.log(`   ⚠ WARNING: Orbits are not set correctly.`);
+    console.log(`   ⚠ Router will remain PAUSED until orbits are configured.`);
+    throw new Error("Orbits were not set during bootstrap. This should not happen if bootstrapTopology succeeded.");
   }
-
-  // Step 6: Set daily cap (ONLY if orbits were registered successfully)
-  if (orbitRegistrationFailed) {
-    console.log("\n6. Setting daily event cap...");
-    console.log(`   ⚠ SKIPPING - Orbits were not registered successfully.`);
-    console.log(`   ⚠ Daily cap will be set after orbits are fixed.`);
+  
+  console.log(`   ✓ All orbits are set correctly`);
+  
+  // Set daily cap
+  const dailyCap = 500; // From guide
+  const currentCap = await router.dailyEventCap();
+  if (currentCap === dailyCap) {
+    console.log(`   ⏭ Daily event cap already set to ${dailyCap}, skipping`);
   } else {
-    console.log("\n6. Setting daily event cap (REQUIRED)...");
-    const dailyCap = 500; // From guide
-    const currentCap = await router.dailyEventCap();
-    if (currentCap === dailyCap) {
-      console.log(`   ⏭ Daily event cap already set to ${dailyCap}, skipping`);
-    } else {
-      try {
-        console.log(`   Sending transaction to set daily cap to ${dailyCap}...`);
-        const capTx = await treasury.setDailyEventCapViaTreasury(routerAddr, dailyCap);
-        
-        if (!capTx.hash) {
-          throw new Error("Transaction hash is missing - transaction was not broadcast");
-        }
-        
-        console.log(`   ✓ Transaction sent (tx: ${capTx.hash})`);
-        console.log(`   View on BaseScan: https://basescan.org/tx/${capTx.hash}`);
-        
-        // Check if transaction exists on-chain
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        const txReceipt = await provider.getTransactionReceipt(capTx.hash);
-        if (txReceipt) {
-          console.log(`   ✓ Transaction found on-chain (status: ${txReceipt.status})`);
-          if (txReceipt.status === 1) {
-            console.log(`   ✓ Daily event cap set to: ${dailyCap}`);
-          } else {
-            throw new Error(`Transaction failed with status ${txReceipt.status}`);
-          }
-        } else {
-          console.log(`   Waiting for confirmation...`);
-          const receipt = await capTx.wait();
-          if (receipt && receipt.status === 1) {
-            console.log(`   ✓ Daily event cap set to: ${dailyCap}`);
-          } else {
-            throw new Error(`Transaction failed with status ${receipt?.status}`);
-          }
-        }
-      } catch (capError: any) {
-        console.error(`   ❌ Failed to set daily event cap: ${capError.message}`);
-        console.error(`   ⚠ Router will remain PAUSED until daily cap is set.`);
-        throw new Error(`Failed to set daily event cap. Router must remain paused.`);
+    try {
+      console.log(`   Setting daily event cap to ${dailyCap}...`);
+      const capTx = await treasury.setDailyEventCapViaTreasury(routerAddr, dailyCap);
+      
+      if (!capTx.hash) {
+        throw new Error("Transaction hash is missing - transaction was not broadcast");
       }
+      
+      console.log(`   ✓ Transaction sent (tx: ${capTx.hash})`);
+      console.log(`   View on BaseScan: https://basescan.org/tx/${capTx.hash}`);
+      
+      const receipt = await capTx.wait();
+      if (receipt && receipt.status === 1) {
+        console.log(`   ✓ Daily event cap set to: ${dailyCap}`);
+      } else {
+        throw new Error(`Transaction failed with status ${receipt?.status}`);
+      }
+    } catch (capError: any) {
+      console.error(`   ❌ Failed to set daily event cap: ${capError.message}`);
+      console.error(`   ⚠ Router will remain PAUSED until daily cap is set.`);
+      throw new Error(`Failed to set daily event cap. Router must remain paused.`);
     }
   }
   
-  // Unpause router ONLY if all orbits were set successfully AND daily cap is set
-  if (allOrbitsSet) {
-    console.log(`\n   ✓ All orbits registered successfully`);
-    console.log(`   ✓ Daily event cap is set`);
-    if (!wasPaused) {
-      console.log(`   Unpausing router...`);
-      try {
-        const unpauseTx = await treasury.unpauseRouterViaTreasury(routerAddr);
-        await unpauseTx.wait();
-        console.log(`   ✓ Router unpaused - swaps are now enabled`);
-      } catch (unpauseError: any) {
-        console.error(`   ❌ Failed to unpause router: ${unpauseError.message}`);
-        console.error(`   ⚠ Router will remain PAUSED. Manually unpause with:`);
-        console.error(`      treasury.unpauseRouterViaTreasury(${routerAddr})`);
-      }
-    } else {
-      console.log(`   ⏭ Router was already paused before, keeping it paused`);
+  // Unpause router (orbits and daily cap are set)
+  const wasPaused = await router.paused();
+  if (wasPaused) {
+    console.log(`   Unpausing router...`);
+    try {
+      const unpauseTx = await treasury.unpauseRouterViaTreasury(routerAddr);
+      await unpauseTx.wait();
+      console.log(`   ✓ Router unpaused - swaps are now enabled`);
+    } catch (unpauseError: any) {
+      console.error(`   ❌ Failed to unpause router: ${unpauseError.message}`);
+      console.error(`   ⚠ Router will remain PAUSED. Manually unpause with:`);
+      console.error(`      treasury.unpauseRouterViaTreasury(${routerAddr})`);
     }
   } else {
-    console.log(`\n   ⚠ Router will remain PAUSED because not all orbits were registered.`);
+    console.log(`   ⏭ Router already unpaused`);
   }
 
-  // Step 7: Update deployment manifest with pool addresses (simplified)
-  console.log("\n7. Updating deployment manifest...");
+  // Step 6: Update deployment manifest with pool addresses
+  console.log("\n6. Updating deployment manifest...");
   manifest.pools = {
     pool0: { address: pools[0], offset: -500, orbit: "NEG" },
     pool1: { address: pools[1], offset: -500, orbit: "NEG" },

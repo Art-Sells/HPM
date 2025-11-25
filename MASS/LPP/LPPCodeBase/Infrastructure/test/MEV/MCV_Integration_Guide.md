@@ -27,7 +27,7 @@ This guide is for **real deployments** (e.g. Base mainnet).  We are wiring four 
   - NEG orbit: 2 pools at −500 bps offset
   - POS orbit: 2 pools at +500 bps offset
 
-- **Seed TVL**: `*.000012*` ASSET (cbBTC) + `*1*` USDC per pool
+- **Seed TVL**: `*.000006*` ASSET (cbBTC) + `*.5*` USDC per pool
 
 After deployment, publish these values + final contract addresses so searchers and relays have a single source of truth.
 

@@ -21,6 +21,10 @@ const config = {
       url: process.env.BASE_RPC_URL || "https://base-mainnet.infura.io/v3/4885ed01637e4a6f91c2c7fcd1714f68",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
     },
+    "base-sepolia": {
+      url: process.env.BASE_SEPOLIA_RPC_URL || "https://base-sepolia.infura.io/v3/4885ed01637e4a6f91c2c7fcd1714f68",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
   },
   typechain: {
     outDir: "typechain-types",
