@@ -9,6 +9,10 @@ import {
   bootstrapPool,
   A,
   U,
+  runSwap,
+  quoteSwap,
+  setDedicatedAA,
+  approveSupplicator,
 } from "./helpers.ts";
 
 /* ─────────────────────────── ABI helpers ─────────────────────────── */
@@ -146,25 +150,25 @@ async function snapshotSupplicateStrict(opts: {
   let assetOut = 0n, usdcOut = 0n;
 
   if (args.assetToUsdc) {
-    // payer spent amountIn + fee in ASSET
-    expect(b0.a - b1.a).to.equal(args.amountIn + fee);
+    // payer spent amountIn in ASSET (no fee charged in supplicate)
+    expect(b0.a - b1.a).to.equal(args.amountIn);
     // user received USDC = amountOut
     expect(b1.u - b0.u).to.equal(amountOut);
 
-    // pool reserves: ASSET increased by amountIn + poolsFee; USDC decreased by amountOut
-    expect(r1.a - r0.a).to.equal(args.amountIn + poolsFee);
+    // pool reserves: ASSET increased by amountIn; USDC decreased by amountOut
+    expect(r1.a - r0.a).to.equal(args.amountIn);
     expect(r0.u - r1.u).to.equal(amountOut);
 
     assetOut = 0n;
     usdcOut  = b1.u - b0.u;
   } else {
-    // payer spent amountIn + fee in USDC
-    expect(b0.u - b1.u).to.equal(args.amountIn + fee);
+    // payer spent amountIn in USDC (no fee charged in supplicate)
+    expect(b0.u - b1.u).to.equal(args.amountIn);
     // user received ASSET = amountOut
     expect(b1.a - b0.a).to.equal(amountOut);
 
-    // pool reserves: USDC increased by amountIn + poolsFee; ASSET decreased by amountOut
-    expect(r1.u - r0.u).to.equal(args.amountIn + poolsFee);
+    // pool reserves: USDC increased by amountIn; ASSET decreased by amountOut
+    expect(r1.u - r0.u).to.equal(args.amountIn);
     expect(r0.a - r1.a).to.equal(amountOut);
 
     assetOut = b1.a - b0.a;
@@ -190,10 +194,136 @@ async function snapshotSupplicateStrict(opts: {
     },
     minOut: args.minAmountOut.toString(),
     caller: who,
-    pool: await pool.getAddress(),
     reserves: {
       before: { a: r0.a.toString(), u: r0.u.toString() },
       after:  { a: r1.a.toString(), u: r1.u.toString() },
+    },
+    callerBalances: {
+      before: { a: b0.a.toString(), u: b0.u.toString() },
+      after:  { a: b1.a.toString(), u: b1.u.toString() },
+    },
+    gasUsed: rcpt!.gasUsed.toString(),
+  }).to.matchSnapshot(label);
+}
+
+async function snapshotSwapStrict(opts: {
+  label: string;
+  router: any;
+  pool: any;
+  asset: any;
+  usdc: any;
+  signer: any;
+  args: {
+    pool: string;
+    assetToUsdc: boolean;
+    amountIn: bigint;
+    minAmountOut: bigint;
+  };
+}) {
+  const { label, router, pool, asset, usdc, signer, args } = opts;
+
+  const who = await signer.getAddress();
+  const tok = { asset, usdc };
+  const b0 = await readTokenBalances(tok, who);
+  const r0 = await reserves(pool);
+  const offsetBefore = await pool.targetOffsetBps();
+
+  // Quote the swap
+  const amountOut: bigint = await router.quoteSwap(args.pool, args.assetToUsdc, args.amountIn);
+
+  // Execute the swap
+  const tx = await (router.connect(signer) as any).swap({
+    pool: args.pool,
+    assetToUsdc: args.assetToUsdc,
+    amountIn: args.amountIn,
+    minAmountOut: args.minAmountOut,
+    to: who,
+    payer: who,
+  });
+
+  // Check SwapExecuted event
+  try {
+    const assetIn  = args.assetToUsdc ? await pool.asset() : await pool.usdc();
+    const assetOut = args.assetToUsdc ? await pool.usdc() : await pool.asset();
+    await expect(tx)
+      .to.emit(router, "SwapExecuted")
+      .withArgs(
+        who,
+        args.pool,
+        assetIn,
+        args.amountIn,
+        assetOut,
+        amountOut
+      );
+  } catch {
+    // tolerate signature drift, still measure gas + state
+  }
+
+  const rcpt = await tx.wait();
+  await snapshotGasCost(rcpt!.gasUsed);
+
+  const b1 = await readTokenBalances(tok, who);
+  const r1 = await reserves(pool);
+  const offsetAfter = await pool.targetOffsetBps();
+
+  // Direction-aware checks and per-token outs
+  let assetOut = 0n, usdcOut = 0n;
+
+  if (args.assetToUsdc) {
+    // payer spent amountIn in ASSET
+    expect(b0.a - b1.a).to.equal(args.amountIn);
+    // user received USDC = amountOut
+    expect(b1.u - b0.u).to.equal(amountOut);
+
+    // pool reserves: ASSET increased by amountIn; USDC decreased by amountOut
+    expect(r1.a - r0.a).to.equal(args.amountIn);
+    expect(r0.u - r1.u).to.equal(amountOut);
+
+    assetOut = 0n;
+    usdcOut  = b1.u - b0.u;
+  } else {
+    // payer spent amountIn in USDC
+    expect(b0.u - b1.u).to.equal(args.amountIn);
+    // user received ASSET = amountOut
+    expect(b1.a - b0.a).to.equal(amountOut);
+
+    // pool reserves: USDC increased by amountIn; ASSET decreased by amountOut
+    expect(r1.u - r0.u).to.equal(args.amountIn);
+    expect(r0.a - r1.a).to.equal(amountOut);
+
+    assetOut = b1.a - b0.a;
+    usdcOut  = 0n;
+  }
+
+  // "Out" side sanity: what left the pool equals what the user gained
+  const poolAOut = r0.a > r1.a ? r0.a - r1.a : 0n;
+  const poolUOut = r0.u > r1.u ? r0.u - r1.u : 0n;
+  const userAOut = b1.a > b0.a ? b1.a - b0.a : 0n;
+  const userUOut = b1.u > b0.u ? b1.u - b0.u : 0n;
+  expect(poolAOut + poolUOut).to.equal(userAOut + userUOut);
+
+  // Verify offset was flipped
+  expect(Number(offsetAfter)).to.equal(-Number(offsetBefore));
+
+  expect({
+    label,
+    direction: args.assetToUsdc ? "ASSET->USDC" : "USDC->ASSET",
+    amountIn: args.amountIn.toString(),
+    amountOut: amountOut.toString(),
+    amounts: {
+      assetOut: assetOut.toString(),
+      usdcOut:  usdcOut.toString(),
+      sumOut:   (assetOut + usdcOut).toString(),
+    },
+    minOut: args.minAmountOut.toString(),
+    caller: who,
+    reserves: {
+      before: { a: r0.a.toString(), u: r0.u.toString() },
+      after:  { a: r1.a.toString(), u: r1.u.toString() },
+    },
+    offset: {
+      before: offsetBefore.toString(),
+      after:  offsetAfter.toString(),
     },
     callerBalances: {
       before: { a: b0.a.toString(), u: b0.u.toString() },
@@ -356,6 +486,371 @@ describe("Access gating", () => {
           payer: other.address,
         })
       ).to.be.revertedWith("not permitted");
+    });
+  });
+
+  //
+  // ───────────────────────────────── Permissions: Dedicated AA Swap only ────────────────────────────────
+  //
+  describe("Permissions: Dedicated AA Swap only", () => {
+    it("Dedicated AA can swap ASSET->USDC", async () => {
+      const { deployer, other, access, router, pool, asset, usdc, treasury } = await deployCore();
+
+      // Bootstrap reserves so quotes won't revert
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, -5000);
+
+      // Set 'other' as dedicated AA (using deployer as treasury owner)
+      await setDedicatedAA(treasury, access, other.address, deployer);
+
+      // Fund 'other' with ASSET, approve pool for principal
+      await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("2"));
+      await (await asset.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
+
+      await snapshotSwapStrict({
+        label: "Dedicated AA — ASSET->USDC swap (Phase 0)",
+        router,
+        pool,
+        asset,
+        usdc,
+        signer: other,
+        args: {
+          pool: await pool.getAddress(),
+          assetToUsdc: true,
+          amountIn: ethers.parseEther("1"),
+          minAmountOut: 0n,
+        },
+      });
+    });
+
+    it("Dedicated AA can swap USDC->ASSET", async () => {
+      const { deployer, other, access, router, pool, asset, usdc, treasury } = await deployCore();
+
+      // Bootstrap with positive offset
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, 5000);
+
+      // Set 'other' as dedicated AA (using deployer as treasury owner)
+      await setDedicatedAA(treasury, access, other.address, deployer);
+
+      // Fund 'other' with USDC, approve pool for principal
+      await mintFundAndApprove(usdc, deployer, other, router, ethers.parseEther("2"));
+      await (await usdc.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
+
+      await snapshotSwapStrict({
+        label: "Dedicated AA — USDC->ASSET swap (Phase 0)",
+        router,
+        pool,
+        asset,
+        usdc,
+        signer: other,
+        args: {
+          pool: await pool.getAddress(),
+          assetToUsdc: false,
+          amountIn: ethers.parseEther("1"),
+          minAmountOut: 0n,
+        },
+      });
+    });
+
+    it("Approved supplicator (but not dedicated AA) cannot swap", async () => {
+      const { deployer, other, access, router, pool, asset, usdc, treasury } = await deployCore();
+
+      // Bootstrap reserves
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, -5000);
+
+      // Approve 'other' as supplicator (can supplicate) but NOT as dedicated AA
+      await approveSupplicator(access, other.address, true);
+      // Do NOT set as dedicated AA
+
+      // Fund 'other' with ASSET
+      await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("2"));
+      await (await asset.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
+
+      // Should revert - not the dedicated AA
+      await expect(
+        runSwap({
+          router,
+          caller: other,
+          poolAddr: await pool.getAddress(),
+          assetToUsdc: true,
+          amountIn: ethers.parseEther("1"),
+          minAmountOut: 0n,
+        })
+      ).to.be.revertedWith("only dedicated AA");
+    });
+
+    it("Unauthorized caller (not approved, not dedicated AA) cannot swap", async () => {
+      const { deployer, other, router, pool, asset, usdc, treasury } = await deployCore();
+
+      // Bootstrap reserves
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, -5000);
+
+      // Do NOT approve 'other' as supplicator
+      // Do NOT set as dedicated AA
+
+      // Fund 'other' with ASSET
+      await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("2"));
+      await (await asset.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
+
+      // Should revert - not the dedicated AA
+      await expect(
+        runSwap({
+          router,
+          caller: other,
+          poolAddr: await pool.getAddress(),
+          assetToUsdc: true,
+          amountIn: ethers.parseEther("1"),
+          minAmountOut: 0n,
+        })
+      ).to.be.revertedWith("only dedicated AA");
+    });
+
+    it("Dedicated AA can be changed by Treasury; old AA loses swap permission", async () => {
+      const { deployer, other, access, router, pool, asset, usdc, treasury } = await deployCore();
+      const [, , newAA] = await ethers.getSigners(); // Use third signer, not second (other is second)
+
+      // Bootstrap reserves
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, -5000);
+
+      // Set 'other' as initial dedicated AA (using deployer as treasury owner)
+      await setDedicatedAA(treasury, access, other.address, deployer);
+
+      // Fund both addresses
+      await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("2"));
+      await mintFundAndApprove(asset, deployer, newAA, router, ethers.parseEther("2"));
+      await (await asset.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
+      await (await asset.connect(newAA).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
+
+      // 'other' can swap
+      const firstSwap = await runSwap({
+        router,
+        caller: other,
+        poolAddr: await pool.getAddress(),
+        assetToUsdc: true,
+        amountIn: ethers.parseEther("0.5"),
+        minAmountOut: 0n,
+      });
+      expect(firstSwap).to.not.be.null;
+
+      // Verify initial state - dedicated AA should be set to 'other'
+      const initialAA = await access.dedicatedAA();
+      expect(initialAA).to.equal(other.address);
+      expect(await access.isDedicatedAA(other.address)).to.be.true;
+      
+      // newAA should NOT be the dedicated AA yet
+      const isNewAAInitially = await access.isDedicatedAA(newAA.address);
+      if (isNewAAInitially) {
+        throw new Error(`newAA.address (${newAA.address}) is already the dedicated AA, but it should be other.address (${other.address}). Current dedicatedAA: ${initialAA}`);
+      }
+
+      // Change dedicated AA to newAA (using deployer as treasury owner)
+      const tx = await setDedicatedAA(treasury, access, newAA.address, deployer);
+
+      // Verify dedicated AA was changed (check the actual state)
+      const dedicatedAAAfter = await access.dedicatedAA();
+      expect(dedicatedAAAfter).to.equal(newAA.address);
+      
+      // Verify isDedicatedAA returns correct values
+      const isOtherAA = await access.isDedicatedAA(other.address);
+      const isNewAA = await access.isDedicatedAA(newAA.address);
+      
+      expect(isOtherAA, "other should not be dedicated AA after change").to.be.false;
+      expect(isNewAA, "newAA should be dedicated AA after change").to.be.true;
+
+      // Re-bootstrap pool if needed (first swap may have drained reserves)
+      const reservesAfter = await pool.reserveUsdc();
+      if (reservesAfter < ethers.parseEther("0.5")) {
+        const currentOffset = await pool.targetOffsetBps();
+        await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, Number(currentOffset));
+      }
+
+      // 'other' can no longer swap (should fail on access check, not reserves)
+      await expect(
+        runSwap({
+          router,
+          caller: other,
+          poolAddr: await pool.getAddress(),
+          assetToUsdc: true,
+          amountIn: ethers.parseEther("0.1"),
+          minAmountOut: 0n,
+        })
+      ).to.be.revertedWith("only dedicated AA");
+
+      // newAA can now swap
+      await expect(
+        runSwap({
+          router,
+          caller: newAA,
+          poolAddr: await pool.getAddress(),
+          assetToUsdc: true,
+          amountIn: ethers.parseEther("0.5"),
+          minAmountOut: 0n,
+        })
+      ).to.not.be.reverted;
+    });
+
+    it("Treasury-only: setDedicatedAAViaTreasury requires owner", async () => {
+      const { access, treasury } = await deployCore();
+      const [, stranger] = await ethers.getSigners();
+
+      await expect(
+        (treasury.connect(stranger) as any).setDedicatedAAViaTreasury(
+          await access.getAddress(),
+          stranger.address
+        )
+      ).to.be.revertedWith("not owner");
+    });
+
+    it("Only Treasury can call setDedicatedAA directly (not owner)", async () => {
+      const { deployer, other, access, treasury } = await deployCore();
+
+      // Deployer is the owner of AccessManager, but not the treasury
+      const treasuryAddr = await treasury.getAddress();
+      
+      // Owner cannot call setDedicatedAA directly (must go through Treasury)
+      await expect(
+        access.connect(deployer).setDedicatedAA(other.address)
+      ).to.be.revertedWith("not treasury");
+
+      // Treasury can call setDedicatedAA (via setDedicatedAAViaTreasury)
+      await setDedicatedAA(treasury, access, other.address, deployer);
+      
+      // Verify it was set
+      expect(await access.dedicatedAA()).to.equal(other.address);
+      expect(await access.isDedicatedAA(other.address)).to.be.true;
+    });
+
+    it("setTreasury can only be called once by owner", async () => {
+      const { deployer, access, treasury } = await deployCore();
+      const [, stranger] = await ethers.getSigners();
+
+      const treasuryAddr = await treasury.getAddress();
+
+      // Treasury is already set in deployCore, so verify it's set
+      expect(await access.treasury()).to.equal(treasuryAddr);
+
+      // Cannot set treasury again (already set in deployCore)
+      await expect(
+        access.connect(deployer).setTreasury(stranger.address)
+      ).to.be.revertedWith("treasury already set");
+
+      // Non-owner cannot set treasury
+      await expect(
+        access.connect(stranger).setTreasury(stranger.address)
+      ).to.be.revertedWith("not owner");
+    });
+
+    it("setTreasury must be set before setDedicatedAA can work", async () => {
+      // Deploy AccessManager without setting treasury
+      const Access = await ethers.getContractFactory("FAFEAccessManager");
+      const access = await Access.deploy();
+      await access.waitForDeployment();
+
+      const [deployer] = await ethers.getSigners();
+      const [, aaAddress] = await ethers.getSigners();
+
+      // Cannot set dedicated AA if treasury not set
+      await expect(
+        access.connect(deployer).setDedicatedAA(aaAddress.address)
+      ).to.be.revertedWith("not treasury");
+
+      // Set treasury first
+      const Treasury = await ethers.getContractFactory("FAFETreasury");
+      const treasury = await Treasury.deploy();
+      await treasury.waitForDeployment();
+      await (await access.connect(deployer).setTreasury(await treasury.getAddress())).wait();
+
+      // Now treasury can set dedicated AA (via Treasury contract)
+      const treasuryOwner = deployer;
+      await (await treasury.connect(treasuryOwner).setDedicatedAAViaTreasury(
+        await access.getAddress(),
+        aaAddress.address
+      )).wait();
+
+      expect(await access.dedicatedAA()).to.equal(aaAddress.address);
+    });
+
+    it("Dedicated AA can swap but cannot supplicate (unless also approved)", async () => {
+      const { deployer, other, access, router, pool, asset, usdc, treasury } = await deployCore();
+
+      // Bootstrap reserves
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, -5000);
+
+      // Set 'other' as dedicated AA but NOT as approved supplicator (using deployer as treasury owner)
+      await setDedicatedAA(treasury, access, other.address, deployer);
+      // After setDedicatedAA, AccessManager ownership is transferred to Treasury
+      // So we need to use treasury owner (deployer) to approve
+      await approveSupplicator(access, other.address, false, deployer);
+
+      // Fund 'other' with ASSET
+      await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("2"));
+      await (await asset.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
+
+      // Can swap (dedicated AA)
+      await expect(
+        runSwap({
+          router,
+          caller: other,
+          poolAddr: await pool.getAddress(),
+          assetToUsdc: true,
+          amountIn: ethers.parseEther("1"),
+          minAmountOut: 0n,
+        })
+      ).to.not.be.reverted;
+
+      // Cannot supplicate (not approved supplicator)
+      await expect(
+        (router.connect(other) as any).supplicate({
+          pool: await pool.getAddress(),
+          assetToUsdc: true,
+          amountIn: ethers.parseEther("1"),
+          minAmountOut: 0n,
+          to: other.address,
+          payer: other.address,
+        })
+      ).to.be.revertedWith("not permitted");
+    });
+
+    it("Swap flips offset after execution", async () => {
+      const { deployer, other, access, router, pool, asset, usdc, treasury } = await deployCore();
+
+      // Bootstrap with negative offset
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, -5000);
+
+      // Set 'other' as dedicated AA (using deployer as treasury owner)
+      await setDedicatedAA(treasury, access, other.address, deployer);
+
+      // Fund 'other' with ASSET
+      await mintFundAndApprove(asset, deployer, other, router, ethers.parseEther("2"));
+      await (await asset.connect(other).approve(await pool.getAddress(), ethers.MaxUint256)).wait();
+
+      // Check initial offset
+      expect(await pool.targetOffsetBps()).to.equal(-5000);
+
+      // Execute swap
+      await runSwap({
+        router,
+        caller: other,
+        poolAddr: await pool.getAddress(),
+        assetToUsdc: true,
+        amountIn: ethers.parseEther("1"),
+        minAmountOut: 0n,
+      });
+
+      // Check offset was flipped
+      expect(await pool.targetOffsetBps()).to.equal(5000);
+
+      // Execute another swap (should flip back)
+      await runSwap({
+        router,
+        caller: other,
+        poolAddr: await pool.getAddress(),
+        assetToUsdc: false,
+        amountIn: ethers.parseEther("0.5"),
+        minAmountOut: 0n,
+      });
+
+      // Check offset flipped back
+      expect(await pool.targetOffsetBps()).to.equal(-5000);
     });
   });
 

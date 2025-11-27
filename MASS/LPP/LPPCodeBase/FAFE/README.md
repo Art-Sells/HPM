@@ -2,19 +2,18 @@
 
 # FAFE: Fully Autonomous Financial Ecosystem — Blueprint
 
-> Delivers a self-funding, permissioned liquidity plane where fixed premiums/discounts, AI arbitrage loops, and a six-pool lattice guarantee deterministic profitability and compounding TVL.
+> Delivers a self-funding, permissioned liquidity plane where fixed premiums/discounts, AA arbitrage loops, and a six-pool lattice guarantee deterministic profitability and compounding TVL.
 
 ---
 
 ## 1. Scope
 
 - **Deterministic premiums/discounts.** Every swap enforces a ±5,000 bps offset, yielding exactly 1.5× (premium) or 0.5× (discount) of the base CFMM quote until the relevant reserve is depleted.
-- **Six-pool lattice.** Three negative-offset pools (−5,000 bps) and three positive-offset pools (+5,000 bps) provide a fixed ladder of subsidized trades that our AI can harvest and refill.
-- **AI-driven loop.** A privileged agent borrows USDC/cbBTC, purchases discounted cbBTC/USDC on FAFE, dumps it at external market, recycles profits into treasury-controlled pools, and rebalances offsets automatically.
+- **Six-pool lattice.** Three negative-offset pools (−5,000 bps) and three positive-offset pools (+5,000 bps) provide a fixed ladder of subsidized trades that our AA can harvest and refill.
+- **AA-driven loop.** A privileged agent borrows USDC/cbBTC, purchases discounted cbBTC/USDC on FAFE, dumps it at external market, recycles profits into treasury-controlled pools, and rebalances offsets automatically. 
 - **Single-source of truth.** Deployment manifests, pool manifests, snapshots, scripts, and guides all live in this repo; there is no hidden state.
 - **Permissioned surface.** `supplicate` is gated by `FAFEAccessManager`. Only whitelisted operators (e.g., `MASS_TESTER_ADDRESS`) can tap the subsidized pools.
 
-Everything in this project now speaks FAFE terminology—filenames, contract types, env vars, and documentation.
 
 ---
 
@@ -26,10 +25,12 @@ Everything in this project now speaks FAFE terminology—filenames, contract typ
 | **FAFETreasury** | `contracts/FAFETreasury.sol` | Owns factory/access/router, performs `bootstrapViaTreasury`, fee custody, and governance actions. |
 | **FAFEFactory** | `contracts/FAFEFactory.sol` | Mints `FAFEPool` instances (ASSET/USDC), enforces treasury-only creation, tracks metadata. |
 | **FAFEPool** | `contracts/FAFEPool.sol` | Holds reserves, applies ±5,000 bps multipliers via `_quoteAmount`, clamps payouts to inventory, exposes `supplicate`/`quote`. |
-| **FAFERouter** | `contracts/FAFERouter.sol` | Entry point for `supplicate`, handles access control, aggregates events, and wires per-hop accounting. Multi-hop MCV logic has been removed. |
+| **FAFERouter** | `contracts/FAFERouter.sol` | Entry point for `supplicate`, handles access control, aggregates events, and there is no per-hop accounting. Multi-hop MCV logic has been removed. `swap` now is also permissioned like supplicate and there is no per-hop accounting. We also need to create a `deposit` function that after the Autonomous Agent (AA) deposits what it borrowed after selling on the outside it deposits the profits into the pool it swapped from. |
 | **FAFESupplicationQuoter** | `contracts/FAFESupplicationQuoter.sol` | Off-chain helper mirroring router math for bots/tests. |
 | **IFAFE*** | `contracts/interfaces/` | Canonical interfaces for external integrations (access manager, factory, pool, router, treasury, quoter). |
 | **Libraries** | `contracts/libraries/FullMath.sol`, `FixedPointMath.sol` | Deterministic mul/div helpers used by `_quoteAmount`. |
+- **Create Dedicated AA Address/Key**
+    This should be capable of being changed (only with through the Treasury Op) this is the (only) address that is permissioned to operate swap. This address can change at anytime if TreasuryOp sets it
 
 **Key rename rule:** every prior `LPP*` symbol/file/ABI is now `FAFE*`. Update your imports and TypeChain references accordingly.
 
@@ -56,29 +57,42 @@ multiplier = (10_000 ± offsetBps) / 10_000
 amountOut = min(baseOut * multiplier, reserveOpp)
 ```
 
-An ASCII sketch of the base FAFE operation (or opposite for "drain USDC")
+An ASCII sketch of the base FAFE operation (offsets should flip for each pool after `swap`)
 
 ```
- USDC ----(−5k)----> [P1] === [P2] === [P3] ----(drain cbBTC)
+ USDC ----(−5k)----> [P1] || [P2] || [P3] (drain cbBTC)
    ^                                             |
    |                                             v
-  Ai loops <-----(+5k, sell cbBTC)----- [P4]=[P5]=[P6]
+  AA loops <-----(+5k, sell cbBTC)----- [P4] ||[P5] || [P6]
+```
+```
+ cbBTC ----(+5k)----> [P1] || [P2] || [P3] (drain USDC)
+   ^                                             |
+   |                                             v
+  AA loops <-----(-5k, sell USDC)----- [P4] || [P5] || [P6]
 ```
 
 Each `FAFEPool` applies its offset after each swap. Offsets remain fixed per pool.
 
 ---
 
-## 4. AI Replenishment Loop & Treasury Ops
+## 4. AA Replenishment Loop & Treasury Ops
 
-1. **Swap from negative-bps pools.** Borrow up to 1% of each negative-bps pool's USDC via authorized `swap` calls. Because of −5,000 bps offsets, the AI receives ~1.5× the base CFMM output in cbBTC until the pool runs dry.
-2. **Swap from positive-bps pools.** Borrow up to 1% of each positive-bps pool's cbBTC via authorized `swap` calls. Because of +5,000 bps offsets, the AI receives ~1.5× the base CFMM output in USDC until the pool runs dry.
+1. **Swap from negative-bps pools.** Borrow up to 1% of each negative-bps pool's USDC via authorized `swap` calls. Because of −5,000 bps offsets, the AA receives ~1.5× the base CFMM output in cbBTC until the pool runs dry.
+2. **Swap from positive-bps pools.** Borrow up to 1% of each positive-bps pool's cbBTC via authorized `swap` calls. Because of +5,000 bps offsets, the AA receives ~1.5× the base CFMM output in USDC until the pool runs dry.
 3. **Sell externally.** Dump cbBTC/USDC on spot venues pegged to median oracle prices to realize immediate profit.
 4. **Return principal + profit.** Refill pools through `FAFETreasury` donations, maintaining reserves for both negative-bps and positive-bps pools.
 5. **Rebalance.** If reserves become imbalanced, call treasury hooks (or dedicated rebalancer scripts) to auto-purchase assets and reinitialize pools at the correct offsets.
 6. **Repeat.** Because premiums are deterministic and available in both directions (cbBTC and USDC), cycling this loop continuously compounds treasury TVL while keeping external participants blinded to the subsidy.
+7. **Daily FAFE Operations.** The AA must execute a daily cycle through all six pools (one operation per pool). The system tracks:
+   - **Pool operation tracking:** Log each swap operation with pool address, direction, amounts, and timestamp
+   - **External sale tracking:** Log when AA sells borrowed assets externally (off-chain, via API)
+   - **Borrow repayment:** Log when AA deposits the borrowed principal back to the pool it swapped from
+   - **Profit deposit:** Log when AA deposits profits back to the same pool
+   - **Daily completion:** Track when all 6 pool operations are complete and stop further operations until next day
+   - **API integration:** All operations logged via API endpoint for monitoring and audit trail 
 
-Treasury automation scripts (`scripts/run-fafe-flow.ts`, forthcoming AI controllers) encapsulate these steps and emit JSON snapshots under `test/Deployment/__snapshots__` for auditing.
+Treasury automation scripts (`scripts/run-fafe-flow.ts`, forthcoming AA controllers) encapsulate these steps and emit JSON snapshots under `test/Deployment/__snapshots__` for auditing.
 
 ---
 
@@ -86,7 +100,6 @@ Treasury automation scripts (`scripts/run-fafe-flow.ts`, forthcoming AI controll
 
 1. **Install deps & generate types**
    ```bash
-   pnpm install   # or npm install
    npx hardhat compile
    ```
 2. **Run contract/test suites** (post-rename):
@@ -125,13 +138,31 @@ Treasury automation scripts (`scripts/run-fafe-flow.ts`, forthcoming AI controll
 ## 7. Monitoring & Next Steps
 
 - **Runtime telemetry:**
-  - `OffsetFlipped`, `Swap`, and treasury donations for Grafana ingestion.
+  - `SwapExecuted`, `DepositExecuted`, and treasury donations for Grafana ingestion.
   - `scripts/read-onchain-prices.ts` remains the lightweight sanity check for reserve/price drift.
-- **AI + treasury dashboards (2-3 days):** integrate logs from `run-fafe-flow` and future AI controllers into Arells’ monitoring stack (Notion/Kibana) to track TVL, premium capture, and refill cadence, test with 10 FAFE operations per dqy (1 each pool)? and calculate new FAFE operations.
+- **Daily FAFE Operations API (to be built):**
+  - **Event listeners:** Monitor on-chain `SwapExecuted` and `DepositExecuted` events from `FAFERouter`
+  - **API endpoints:**
+    - `POST /api/operations/swap` - Log swap operation (pool, direction, amounts, tx hash)
+    - `POST /api/operations/external-sale` - Log external sale (asset, amount, venue, profit)
+    - `POST /api/operations/repay` - Log borrow repayment deposit
+    - `POST /api/operations/profit` - Log profit deposit back to pool
+    - `GET /api/operations/daily-status` - Get current day's operation status (pools completed, remaining)
+    - `GET /api/operations/history` - Query historical operations
+  - **Daily cycle tracking:**
+    - Track which of the 6 pools have been operated on today
+    - Stop operations once all 6 pools are complete
+    - Reset at midnight UTC for next day
+  - **Integration:** Log to Arells monitoring stack (Notion/Kibana) and `Build-Notes.md`
+- **AA + treasury dashboards (2-3 days):** integrate logs from `run-fafe-flow` and future AA controllers into Arells' monitoring stack (Notion/Kibana) to track TVL, premium capture, and refill cadence, test with 6 FAFE operations per day (1 per pool) and calculate new FAFE operations.
 - **Security & scale:**
-  - Expand spec coverage (reentrancy, pause paths, daily-cap removal).
+  - Expand spec coverage (reentrancy, pause paths).
   - Prepare for 6→N pool scaling by parameterizing `FAFEFactory` and `FAFETreasury` with offset templates.
-  - Document upgrade procedures and incident response and prepare for main re-deployment (create new TreasuryOperator/Address/Key save it outside .env)
+  - Document upgrade FAFE and incident response and add lots of security parameters (test all edge cases (since its permissioned, no one can transfer, swap, supplicate or deposit unless the treasury allows them, etc, etc)) 
+- **Prepare for main re-deployment** 
+   - Create new TreasuryOperator/Address/Key save it outside .env
+   - Set new daily FAFE operations.
+   - Bootstrap new pools
 
 ## 8. Re-write HPM/MASS/LPP Readmes
 

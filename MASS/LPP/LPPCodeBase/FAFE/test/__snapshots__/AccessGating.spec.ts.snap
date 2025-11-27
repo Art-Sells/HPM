@@ -1,0 +1,214 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Access gating Permissions: Approved Supplicators only Approved Supplicator can supplicate ASSET->USDC (ABI-verified) 1`] = `
+Object {
+  "pool": "0xeC4cFde48EAdca2bC63E94BB437BbeAcE1371bF3",
+  "reserves": Object {
+    "asset": "100000000000000000000",
+    "usdc": "100000000000000000000",
+  },
+}
+`;
+
+exports[`Access gating Permissions: Approved Supplicators only Approved Supplicator can supplicate ASSET->USDC (ABI-verified) 2`] = `123508`;
+
+exports[`Access gating Permissions: Approved Supplicators only Approved Supplicator can supplicate ASSET->USDC (ABI-verified) 3`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "1000000000000000000",
+  "amounts": Object {
+    "assetOut": "0",
+    "sumOut": "1000000000000000000",
+    "usdcOut": "1000000000000000000",
+  },
+  "caller": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "1000000000000000000",
+      "u": "1000000000000000000",
+    },
+    "before": Object {
+      "a": "2000000000000000000",
+      "u": "0",
+    },
+  },
+  "direction": "ASSET->USDC",
+  "gasUsed": "123508",
+  "label": "Approved — ASSET->USDC outcome (Phase 0)",
+  "minOut": "0",
+  "reserves": Object {
+    "after": Object {
+      "a": "101000000000000000000",
+      "u": "99000000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+}
+`;
+
+exports[`Access gating Permissions: Approved Supplicators only Approved Supplicator can supplicate USDC->ASSET (ABI-verified) 1`] = `123530`;
+
+exports[`Access gating Permissions: Approved Supplicators only Approved Supplicator can supplicate USDC->ASSET (ABI-verified) 2`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "1000000000000000000",
+  "amounts": Object {
+    "assetOut": "1000000000000000000",
+    "sumOut": "1000000000000000000",
+    "usdcOut": "0",
+  },
+  "caller": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "1000000000000000000",
+      "u": "1000000000000000000",
+    },
+    "before": Object {
+      "a": "0",
+      "u": "2000000000000000000",
+    },
+  },
+  "direction": "USDC->ASSET",
+  "gasUsed": "123530",
+  "label": "Approved — USDC->ASSET outcome (Phase 0)",
+  "minOut": "0",
+  "reserves": Object {
+    "after": Object {
+      "a": "99000000000000000000",
+      "u": "101000000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+}
+`;
+
+exports[`Access gating Permissions: Approved Supplicators only Approved toggling affects Router permission 1`] = `123508`;
+
+exports[`Access gating Permissions: Approved Supplicators only Approved toggling affects Router permission 2`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "1000000000000000000",
+  "amounts": Object {
+    "assetOut": "0",
+    "sumOut": "1000000000000000000",
+    "usdcOut": "1000000000000000000",
+  },
+  "caller": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "1000000000000000000",
+      "u": "1000000000000000000",
+    },
+    "before": Object {
+      "a": "2000000000000000000",
+      "u": "0",
+    },
+  },
+  "direction": "ASSET->USDC",
+  "gasUsed": "123508",
+  "label": "Toggle — approved(other) allowed (Phase 0)",
+  "minOut": "0",
+  "reserves": Object {
+    "after": Object {
+      "a": "101000000000000000000",
+      "u": "99000000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+}
+`;
+
+exports[`Access gating Permissions: Dedicated AA Swap only Dedicated AA can swap ASSET->USDC 1`] = `136425`;
+
+exports[`Access gating Permissions: Dedicated AA Swap only Dedicated AA can swap ASSET->USDC 2`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "500000000000000000",
+  "amounts": Object {
+    "assetOut": "0",
+    "sumOut": "500000000000000000",
+    "usdcOut": "500000000000000000",
+  },
+  "caller": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "1000000000000000000",
+      "u": "500000000000000000",
+    },
+    "before": Object {
+      "a": "2000000000000000000",
+      "u": "0",
+    },
+  },
+  "direction": "ASSET->USDC",
+  "gasUsed": "136425",
+  "label": "Dedicated AA — ASSET->USDC swap (Phase 0)",
+  "minOut": "0",
+  "offset": Object {
+    "after": "5000",
+    "before": "-5000",
+  },
+  "reserves": Object {
+    "after": Object {
+      "a": "101000000000000000000",
+      "u": "99500000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+}
+`;
+
+exports[`Access gating Permissions: Dedicated AA Swap only Dedicated AA can swap USDC->ASSET 1`] = `136480`;
+
+exports[`Access gating Permissions: Dedicated AA Swap only Dedicated AA can swap USDC->ASSET 2`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "amountOut": "500000000000000000",
+  "amounts": Object {
+    "assetOut": "500000000000000000",
+    "sumOut": "500000000000000000",
+    "usdcOut": "0",
+  },
+  "caller": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "500000000000000000",
+      "u": "1000000000000000000",
+    },
+    "before": Object {
+      "a": "0",
+      "u": "2000000000000000000",
+    },
+  },
+  "direction": "USDC->ASSET",
+  "gasUsed": "136480",
+  "label": "Dedicated AA — USDC->ASSET swap (Phase 0)",
+  "minOut": "0",
+  "offset": Object {
+    "after": "-5000",
+    "before": "5000",
+  },
+  "reserves": Object {
+    "after": Object {
+      "a": "99500000000000000000",
+      "u": "101000000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+}
+`;

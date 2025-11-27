@@ -61,6 +61,13 @@ async function main() {
   const treasuryAddr = await treasury.getAddress();
   console.log(`[${ts()}]    ✓ FAFETreasury deployed at: ${treasuryAddr}`);
 
+  // Step 2a: Set treasury on AccessManager (required for setDedicatedAA)
+  console.log(`[${ts()}] 2a. Setting treasury on AccessManager...`);
+  const tx2a = await accessManager.setTreasury(treasuryAddr);
+  console.log(`[${ts()}]    ↳ tx hash: ${tx2a.hash}`);
+  await tx2a.wait();
+  console.log(`[${ts()}]    ✓ Treasury set on AccessManager`);
+
   // Step 3: Deploy FAFEFactory (requires treasury address)
   console.log(`[${ts()}] 3. Deploying FAFEFactory...`);
   const FactoryFactory = await ethers.getContractFactory("FAFEFactory", deployer);
