@@ -2,14 +2,14 @@
 
 # FAFE: Fully Autonomous Financial Ecosystem — Blueprint
 
-> **Mission:** deliver a self-funding, permissioned liquidity plane where fixed premiums/discounts, AI arbitrage loops, and a six-pool lattice guarantee deterministic profitability and compounding TVL.
+> Delivers a self-funding, permissioned liquidity plane where fixed premiums/discounts, AI arbitrage loops, and a six-pool lattice guarantee deterministic profitability and compounding TVL.
 
 ---
 
-## 1. Vision & Scope
+## 1. Scope
 
 - **Deterministic premiums/discounts.** Every swap enforces a ±5,000 bps offset, yielding exactly 1.5× (premium) or 0.5× (discount) of the base CFMM quote until the relevant reserve is depleted.
-- **Six-pool lattice.** Three negative-orbit pools (−5,000 bps) and three positive-orbit pools (+5,000 bps) provide a fixed ladder of subsidized trades that our AI can harvest and refill.
+- **Six-pool lattice.** Three negative-offset pools (−5,000 bps) and three positive-offset pools (+5,000 bps) provide a fixed ladder of subsidized trades that our AI can harvest and refill.
 - **AI-driven loop.** A privileged agent borrows USDC/cbBTC, purchases discounted cbBTC/USDC on FAFE, dumps it at external market, recycles profits into treasury-controlled pools, and rebalances offsets automatically.
 - **Single-source of truth.** Deployment manifests, pool manifests, snapshots, scripts, and guides all live in this repo; there is no hidden state.
 - **Permissioned surface.** `supplicate` is gated by `FAFEAccessManager`. Only whitelisted operators (e.g., `MASS_TESTER_ADDRESS`) can tap the subsidized pools.
@@ -37,16 +37,16 @@ Everything in this project now speaks FAFE terminology—filenames, contract typ
 
 ## 3. Six-Pool Topology & Premium Mechanics
 
-FAFE keeps two mirrored orbits: three negative-offset pools (57.5% of fair price when selling cbBTC) and three positive-offset pools (150% payout when selling cbBTC back to USDC).
+FAFE maintains six pools with fixed offsets: three negative-offset pools (−5,000 bps) and three positive-offset pools (+5,000 bps). Each swap applies the offset after execution from a single pool.
 
-| Pool ID | Orbit | Offset (bps) | Trade Direction | Multiplier | Notes |
-| --- | --- | --- | --- | --- | --- |
-| `P₁` | NEG | −5,000 | USDC → ASSET | 1.5× baseOut | Drains cbBTC quickly; inventory capped at seeded amount. |
-| `P₂` | NEG | −5,000 | USDC → ASSET | 1.5× | Mirror of `P₁` for load spreading. |
-| `P₃` | NEG | −5,000 | USDC → ASSET | 1.5× | Third slot for redundancy/parallel borrowing. |
-| `P₄` | POS | +5,000 | ASSET → USDC | 1.5× baseOut | Encourages cbBTC recycling back into USDC when needed. |
-| `P₅` | POS | +5,000 | ASSET → USDC | 1.5× | Mirror of `P₄`. |
-| `P₆` | POS | +5,000 | ASSET → USDC | 1.5× | Third slot. |
+| Pool ID | Offset (bps) | Trade Direction | Multiplier | Notes |
+| --- | --- | --- | --- | --- |
+| `P₁` | −5,000 | USDC → ASSET | 1.5× baseOut | Drains cbBTC quickly; inventory capped at seeded amount. |
+| `P₂` | −5,000 | USDC → ASSET | 1.5× | Mirror of `P₁` for load spreading. |
+| `P₃` | −5,000 | USDC → ASSET | 1.5× | Third slot for redundancy/parallel borrowing. |
+| `P₄` | +5,000 | ASSET → USDC | 1.5× baseOut | Provides USDC premiums when selling cbBTC. |
+| `P₅` | +5,000 | ASSET → USDC | 1.5× | Mirror of `P₄`. |
+| `P₆` | +5,000 | ASSET → USDC | 1.5× | Third slot. |
 
 **Base math:**
 
@@ -56,7 +56,7 @@ multiplier = (10_000 ± offsetBps) / 10_000
 amountOut = min(baseOut * multiplier, reserveOpp)
 ```
 
-An ASCII sketch of the lattice:
+An ASCII sketch of the lattice (or opposite for "drain USDC")
 
 ```
  USDC ----(−5k)----> [P1] === [P2] === [P3] ----(drain cbBTC)
@@ -65,18 +65,18 @@ An ASCII sketch of the lattice:
   Ai loops <-----(+5k, sell cbBTC)----- [P4]=[P5]=[P6]
 ```
 
-Each `FAFEPool` emits `OffsetFlipped` when the router toggles orbits after multi-hop operations (future use). For single-pool `supplicate`, offsets remain fixed.
+Each `FAFEPool` applies its offset after each swap. Offsets remain fixed per pool.
 
 ---
 
 ## 4. AI Replenishment Loop & Treasury Ops
 
-1. **Borrow** up to 1 % of each negative-orbit pool’s USDC via authorized `supplicate` calls.
-2. **Buy cbBTC on FAFE.** Because of −5,000 bps offsets, the AI receives ~1.5× the base CFMM output until the pool runs dry.
-3. **Sell externally.** Dump cbBTC on a spot venue pegged to the median oracle price to realize immediate profit.
-4. **Return principal + profit.** Refill the positive-orbit pools (ASSET side) and top up USDC reserves through `FAFETreasury` donations.
-5. **Rebalance.** If USDC accumulates faster than cbBTC, call treasury hooks (or dedicated rebalancer scripts) to auto-purchase cbBTC and reinitialize pools at the correct offsets.
-6. **Repeat.** Because premiums are deterministic, cycling this loop continuously compounds treasury TVL while keeping external participants blinded to the subsidy.
+1. **Swap from negative-bps pools.** Borrow up to 1% of each negative-bps pool's USDC via authorized `swap` calls. Because of −5,000 bps offsets, the AI receives ~1.5× the base CFMM output in cbBTC until the pool runs dry.
+2. **Swap from positive-bps pools.** Borrow up to 1% of each positive-bps pool's cbBTC via authorized `swap` calls. Because of +5,000 bps offsets, the AI receives ~1.5× the base CFMM output in USDC until the pool runs dry.
+3. **Sell externally.** Dump cbBTC/USDC on spot venues pegged to median oracle prices to realize immediate profit.
+4. **Return principal + profit.** Refill pools through `FAFETreasury` donations, maintaining reserves for both negative-bps and positive-bps pools.
+5. **Rebalance.** If reserves become imbalanced, call treasury hooks (or dedicated rebalancer scripts) to auto-purchase assets and reinitialize pools at the correct offsets.
+6. **Repeat.** Because premiums are deterministic and available in both directions (cbBTC and USDC), cycling this loop continuously compounds treasury TVL while keeping external participants blinded to the subsidy.
 
 Treasury automation scripts (`scripts/run-fafe-flow.ts`, forthcoming AI controllers) encapsulate these steps and emit JSON snapshots under `test/Deployment/__snapshots__` for auditing.
 
@@ -116,7 +116,7 @@ Treasury automation scripts (`scripts/run-fafe-flow.ts`, forthcoming AI controll
    This builds a new −5,000 bps pool, approves `MASS_TESTER`, runs a 0.5 USDC `supplicate`, and writes `fafe-*-supplicate` snapshots under `test/Deployment/__snapshots__/`.
 5. **Manifests & snapshots**
    - `deployment-manifest.json`: latest FAFE contract addresses.
-   - `test/Deployment/pool-manifest.json`: known pools with offsets/orbits.
+   - `test/Deployment/pool-manifest.json`: known pools with offsets.
    - `test/Deployment/__snapshots__`: canonical pre/post states for CI assertions.
 
 ---
@@ -124,13 +124,13 @@ Treasury automation scripts (`scripts/run-fafe-flow.ts`, forthcoming AI controll
 ## 7. Monitoring & Next Steps
 
 - **Runtime telemetry:**
-  - `scripts/monitor-events.ts` (to be reintroduced) will poll `HopExecuted`, `OffsetFlipped`, `Supplicate`, and treasury donations for Grafana ingestion.
+  - `OffsetFlipped`, `Swap`, and treasury donations for Grafana ingestion.
   - `scripts/read-onchain-prices.ts` remains the lightweight sanity check for reserve/price drift.
 - **AI + treasury dashboards:** integrate logs from `run-fafe-flow` and future AI controllers into Arells’ monitoring stack (Notion/Kibana) to track TVL, premium capture, and refill cadence.
 - **Security & scale:**
   - Expand spec coverage (reentrancy, pause paths, daily-cap removal).
-  - Prepare for 6→N pool scaling by parameterizing `FAFEFactory` and `FAFETreasury` with orbit templates.
-  - Document upgrade procedures and incident response.
+  - Prepare for 6→N pool scaling by parameterizing `FAFEFactory` and `FAFETreasury` with offset templates.
+  - Document upgrade procedures and incident response and prepare for main re-deployment (create new TreasuryOperator/Address/Key save it outside .env)
 
 ## 8. Re-write HPM/MASS/LPP Readmes
 
