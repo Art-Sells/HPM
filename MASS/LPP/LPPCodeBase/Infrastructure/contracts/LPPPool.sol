@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import { IERC20 } from "./external/IERC20.sol";
 import { ILPPPool } from "./interfaces/ILPPPool.sol";
 import { ILPPTreasury } from "./interfaces/ILPPTreasury.sol";
+import { FullMath } from "./libraries/FullMath.sol";
 
 contract LPPPool is ILPPPool {
     // ─────────────────────────────────────────────────────────────────────────────
@@ -203,14 +204,8 @@ contract LPPPool is ILPPPool {
         override
         returns (uint256 amountOut, int256 priceDriftBps)
     {
-        require(reserveUsdc > 0 && reserveAsset > 0, "empty reserves");
-        if (assetToUsdc) {
-            amountOut = (amountIn * reserveUsdc) / (reserveAsset + amountIn);
-            priceDriftBps = int256((amountIn * 10_000) / (reserveAsset + 1));
-        } else {
-            amountOut = (amountIn * reserveAsset) / (reserveUsdc + amountIn);
-            priceDriftBps = int256((amountIn * 10_000) / (reserveUsdc + 1));
-        }
+        amountOut = _quoteAmount(assetToUsdc, amountIn);
+        priceDriftBps = 0;
     }
 
     function supplicate(
@@ -225,7 +220,7 @@ contract LPPPool is ILPPPool {
         nonZero(amountIn)
         returns (uint256 amountOut)
     {
-        (amountOut, ) = this.quoteSupplication(assetToUsdc, amountIn);
+        amountOut = _quoteAmount(assetToUsdc, amountIn);
         require(amountOut >= minAmountOut, "slippage");
 
         address a = asset;
@@ -402,6 +397,31 @@ contract LPPPool is ILPPPool {
                 z = nz;
             }
             if (z * z > x) z -= 1;
+        }
+    }
+    function _quoteAmount(bool assetToUsdc, uint256 amountIn) internal view returns (uint256 amountOut) {
+        if (amountIn == 0) {
+            return 0;
+        }
+        require(reserveUsdc > 0 && reserveAsset > 0, "empty reserves");
+
+        int256 offset = targetOffsetBps;
+        int256 base = assetToUsdc ? int256(10000 + offset) : int256(10000 - offset);
+        require(base > 0, "offset zero");
+        uint256 multiplier = uint256(base);
+
+        if (assetToUsdc) {
+            uint256 baseOut = FullMath.mulDiv(amountIn, reserveUsdc, reserveAsset);
+            amountOut = FullMath.mulDiv(baseOut, multiplier, 10000);
+            if (amountOut > reserveUsdc) {
+                amountOut = reserveUsdc;
+            }
+        } else {
+            uint256 baseOut = FullMath.mulDiv(amountIn, reserveAsset, reserveUsdc);
+            amountOut = FullMath.mulDiv(baseOut, multiplier, 10000);
+            if (amountOut > reserveAsset) {
+                amountOut = reserveAsset;
+            }
         }
     }
 }

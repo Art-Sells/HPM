@@ -1,0 +1,44 @@
+[2025-11-27T01:50:36.972Z] Starting deployment script...
+[2025-11-27T01:50:36.972Z] Deploying from: 0xD9A6714BbA0985b279DFcaff0A512Ba25F5A03d1
+(node:68232) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/Jeyak1/Library/Mobile%20Documents/com%7Eapple%7ECloudDocs/Documents/Arells/People/HPM/MASS/LPP/LPPCodeBase/Infrastructure/scripts/deploy.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/Jeyak1/Library/Mobile Documents/com~apple~CloudDocs/Documents/Arells/People/HPM/MASS/LPP/LPPCodeBase/Infrastructure/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[2025-11-27T01:50:37.401Z] Network: base (chainId=8453)
+
+=== Section 2: Deploy & Wire Contracts === (2025-11-27T01:50:37.402Z)
+
+[2025-11-27T01:50:37.402Z] 1. Deploying LPPAccessManager...
+[2025-11-27T01:50:43.567Z]    ✓ LPPAccessManager deployed at: 0x84890da18F1FA8Ec7F063B5e530E873bc84Ed07B
+[2025-11-27T01:50:43.567Z] 2. Deploying LPPTreasury...
+[2025-11-27T01:50:49.584Z]    ✓ LPPTreasury deployed at: 0xDb36276F3f8C07d31364784B8d012129aC300853
+[2025-11-27T01:50:49.584Z] 3. Deploying LPPFactory...
+[2025-11-27T01:50:55.877Z]    ✓ LPPFactory deployed at: 0xe2eAA7BA9095e983D273ED0734FA0AbEB7E5612c
+[2025-11-27T01:50:55.877Z] 4. Deploying LPPRouter...
+[2025-11-27T01:51:02.097Z]    ✓ LPPRouter deployed at: 0x6118FFE292EE599FE2b987FCE9668ea9EB5d7ea4
+
+[2025-11-27T01:51:02.097Z] 5. Whitelisting treasuryOps...
+[2025-11-27T01:51:03.443Z]    ↳ tx hash: 0x98c926491fc2e1d3414101f83009e619f8c45c4815a63a4faad718d565936b0d (waiting for confirmation)
+[2025-11-27T01:51:07.949Z]    ✓ treasuryOps whitelisted: 0xd9a6714bba0985b279dfcaff0a512ba25f5a03d1
+[2025-11-27T01:51:07.949Z] 6. Transferring contract ownerships...
+[2025-11-27T01:51:09.149Z]    ↳ AccessManager ownership tx: 0xf1f2eddf733c5cbc127ea8b827390e7c6749229384b1b2dadd2264518b79948a
+[2025-11-27T01:51:13.653Z]    ✓ AccessManager ownership transferred to: 0xd9a6714bba0985b279dfcaff0a512ba25f5a03d1
+[2025-11-27T01:51:14.888Z]    ↳ Treasury ownership tx: 0xe9bb3e2e3d720e45b1cccd3bc7692e51258ace4878d8c963b13b7c7719b72231
+[2025-11-27T01:51:19.396Z]    ✓ Treasury ownership transferred to: 0xd9a6714bba0985b279dfcaff0a512ba25f5a03d1
+[2025-11-27T01:51:19.495Z]    ✓ Verification - isApproved: true
+
+=== DEPLOYMENT MANIFEST (2025-11-27T01:51:19.495Z) ===
+LPPAccessManager: 0x84890da18F1FA8Ec7F063B5e530E873bc84Ed07B
+LPPTreasury: 0xDb36276F3f8C07d31364784B8d012129aC300853
+LPPFactory: 0xe2eAA7BA9095e983D273ED0734FA0AbEB7E5612c
+LPPRouter: 0x6118FFE292EE599FE2b987FCE9668ea9EB5d7ea4
+ASSET (cbBTC): 0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf
+USDC: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+Treasury Owner: 0xd9a6714bba0985b279dfcaff0a512ba25f5a03d1
+Treasury Ops: 0xd9a6714bba0985b279dfcaff0a512ba25f5a03d1
+===========================
+
+[2025-11-27T01:51:19.675Z] ✓ Deployment manifest saved to: /Users/Jeyak1/Library/Mobile Documents/com~apple~CloudDocs/Documents/Arells/People/HPM/MASS/LPP/LPPCodeBase/Infrastructure/deployment-manifest.json
+
+=== Section 2 Complete (2025-11-27T01:51:19.675Z) ===
+Next: Proceed to Section 3 (Build the Six-Pool Topology)
