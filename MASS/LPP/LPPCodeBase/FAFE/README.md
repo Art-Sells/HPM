@@ -164,7 +164,7 @@ Treasury automation scripts (`scripts/run-fafe-flow.ts`, forthcoming AA controll
    - Set new daily FAFE operations.
    - Bootstrap new pools
 
-## 8. Re-write HPM/MASS/LPP Readmes
+## 8. Re-write HPM(codebase)/MASS(codebase)/LPP(codebase)/FAFE Readmes
 
 - Rewrite all returns in bull/bear markets (including graphs) to fit FAFE dynamics.
 

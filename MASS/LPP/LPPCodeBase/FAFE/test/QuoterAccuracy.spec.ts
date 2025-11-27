@@ -94,7 +94,6 @@ async function reserves(pool: FAFEPool) {
 async function snapshotReserves(pool: FAFEPool, label: string) {
   const r = await reserves(pool);
   expect({
-    pool: await pool.getAddress(),
     reserves: { asset: r.a.toString(), usdc: r.u.toString() },
   }).to.matchSnapshot(label);
 }

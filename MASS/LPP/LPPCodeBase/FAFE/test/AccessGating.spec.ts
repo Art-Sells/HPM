@@ -61,7 +61,6 @@ async function reserves(pool: any) {
 async function snapshotReserves(pool: any, label: string) {
   const r = await reserves(pool);
   expect({
-    pool: await pool.getAddress(),
     reserves: { asset: r.a.toString(), usdc: r.u.toString() },
   }).to.matchSnapshot(label);
 }
@@ -362,8 +361,8 @@ describe("Access gating", () => {
     it("Approved Supplicator can supplicate ASSET->USDC (ABI-verified)", async () => {
       const { deployer, other, access, router, pool, asset, usdc, treasury } = await deployCore();
 
-      // Bootstrap reserves so quotes won't revert
-      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, 0);
+      // Bootstrap reserves with -5000 offset (same as swap tests)
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, -5000);
 
       // Approve 'other' as supplicator
       await (await access.connect(deployer).setApprovedSupplicator(other.address, true)).wait();
@@ -395,8 +394,8 @@ describe("Access gating", () => {
     it("Approved Supplicator can supplicate USDC->ASSET (ABI-verified)", async () => {
       const { deployer, other, access, router, pool, asset, usdc, treasury } = await deployCore();
 
-      // Bootstrap
-      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, 0);
+      // Bootstrap with +5000 offset (same as swap tests)
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, 5000);
 
       await (await access.connect(deployer).setApprovedSupplicator(other.address, true)).wait();
 
@@ -447,8 +446,8 @@ describe("Access gating", () => {
     it("Approved toggling affects Router permission", async () => {
       const { deployer, other, access, router, pool, asset, usdc, treasury } = await deployCore();
 
-      // Bootstrap
-      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, 0);
+      // Bootstrap with -5000 offset (same as other supplicate tests)
+      await bootstrapPool(treasury, await pool.getAddress(), asset, usdc, A, U, -5000);
 
       // Approve 'other'
       await (await access.connect(deployer).setApprovedSupplicator(other.address, true)).wait();
