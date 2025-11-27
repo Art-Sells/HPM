@@ -33,8 +33,6 @@ Everything in this project now speaks FAFE terminology—filenames, contract typ
 
 **Key rename rule:** every prior `LPP*` symbol/file/ABI is now `FAFE*`. Update your imports and TypeChain references accordingly.
 
-- Test Swap/Supplications to see how "in down markets" if Supplications(CBBTCtoUSDC/USDCtoCBBTC) will provide same premiums to-and-from like swaps and log onto API-LPP/MASS Buildnotes.md in Arells 
-
 ---
 
 ## 3. Six-Pool Topology & Premium Mechanics
@@ -97,6 +95,7 @@ Treasury automation scripts (`scripts/run-fafe-flow.ts`, forthcoming AI controll
    npx hardhat test test/AccessGating.Supplicate.spec.ts
    npx hardhat test test/Deployment/*.spec.ts  # future FAFE suites
    ```
+   - Test Swap/Supplications to see how "in down markets" if Supplications(CBBTCtoUSDC/USDCtoCBBTC) will provide same premiums to-and-from like swaps and log onto API-LPP/MASS Buildnotes.md in Arells 
 
 3. **Deploy to Base mainnet** with verbose logging:
    ```bash
