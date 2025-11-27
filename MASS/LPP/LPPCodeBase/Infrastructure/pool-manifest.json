@@ -113,6 +113,25 @@
       "priceX96": "330117343809434739973099793066",
       "price": "416.67",
       "router": "0xFf3049E2275F911b9d9A8F8433F3B59d7b9eA1d1"
+    },
+    "fafePool-1764208478343": {
+      "address": "0xd458579B1Ad31Cc44A27dcCb4883B7D27D9a241d",
+      "orbit": "FAFE",
+      "offset": -5000,
+      "initialized": true,
+      "reserves": {
+        "ASSET": {
+          "raw": "1200",
+          "formatted": "0.000012"
+        },
+        "USDC": {
+          "raw": "500000",
+          "formatted": "0.5"
+        }
+      },
+      "priceX96": "16505867190471736998654989653333",
+      "price": "20833.33",
+      "router": "0x6118FFE292EE599FE2b987FCE9668ea9EB5d7ea4"
     }
   },
   "tokens": {

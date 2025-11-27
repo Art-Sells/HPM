@@ -1,0 +1,27 @@
+{
+  "timestamp": "2025-11-27T01:54:56.219Z",
+  "pool": {
+    "address": "0xd458579B1Ad31Cc44A27dcCb4883B7D27D9a241d",
+    "targetOffsetBps": -5000,
+    "reserves": {
+      "ASSET": {
+        "raw": "0",
+        "formatted": 0
+      },
+      "USDC": {
+        "raw": "1000000",
+        "formatted": 1
+      }
+    },
+    "priceX96": "16505867190471736998654989653333",
+    "price": "20833.33"
+  },
+  "massTester": {
+    "address": "0xE6a1218F4E2F514a3fC215758D450AaC632B0DE3",
+    "balances": {
+      "usdc": 1.036199,
+      "asset": 0.00002759
+    }
+  },
+  "tx": "0x329b4bdff61b7e0149f9acb7e1ffa12a81d9886c2c3c0b6733f7f8a90b51e7bb"
+}
