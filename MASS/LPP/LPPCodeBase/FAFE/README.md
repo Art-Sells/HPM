@@ -56,7 +56,7 @@ multiplier = (10_000 ± offsetBps) / 10_000
 amountOut = min(baseOut * multiplier, reserveOpp)
 ```
 
-An ASCII sketch of the lattice (or opposite for "drain USDC")
+An ASCII sketch of the base FAFE operation (or opposite for "drain USDC")
 
 ```
  USDC ----(−5k)----> [P1] === [P2] === [P3] ----(drain cbBTC)
@@ -126,7 +126,7 @@ Treasury automation scripts (`scripts/run-fafe-flow.ts`, forthcoming AI controll
 - **Runtime telemetry:**
   - `OffsetFlipped`, `Swap`, and treasury donations for Grafana ingestion.
   - `scripts/read-onchain-prices.ts` remains the lightweight sanity check for reserve/price drift.
-- **AI + treasury dashboards:** integrate logs from `run-fafe-flow` and future AI controllers into Arells’ monitoring stack (Notion/Kibana) to track TVL, premium capture, and refill cadence.
+- **AI + treasury dashboards (2-3 days):** integrate logs from `run-fafe-flow` and future AI controllers into Arells’ monitoring stack (Notion/Kibana) to track TVL, premium capture, and refill cadence, test with 10 FAFE operations per dqy (1 each pool)? and calculate new FAFE operations.
 - **Security & scale:**
   - Expand spec coverage (reentrancy, pause paths, daily-cap removal).
   - Prepare for 6→N pool scaling by parameterizing `FAFEFactory` and `FAFETreasury` with offset templates.
