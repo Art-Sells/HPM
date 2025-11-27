@@ -165,7 +165,7 @@ describe("Pool math integrity", () => {
   });
 
   describe("Directional accounting", () => {
-    it("ASSET->USDC: includes per-hop fee split; conservation with treasury+router", async () => {
+    it("ASSET->USDC: conservation holds without fees", async () => {
       const env: any = await deployCore();
       const { deployer, pool, router, treasury, access } = env;
       const { asset, usdc } = await getTokens(env);
@@ -212,8 +212,6 @@ describe("Pool math integrity", () => {
         payer: who,
       };
 
-      const fees = await feeSplit(router as LPPRouter, args.amountIn);
-
       const quoted: bigint = await (router.connect(deployer) as any).supplicate.staticCall(args);
       await (router.connect(deployer) as any).supplicate(args);
 
@@ -223,17 +221,17 @@ describe("Pool math integrity", () => {
       const tA1 = await bal(asset, treasuryAddr);
       const roA1 = await bal(asset, routerAddr);
 
-      // user spent ASSET: amountIn + totalFee
-      expect(bA0 - bA1).to.equal(args.amountIn + fees.total);
+      // user spent ASSET: amountIn
+      expect(bA0 - bA1).to.equal(args.amountIn);
       // user received USDC: quoted
       expect(bU1 - bU0).to.equal(quoted);
 
-      // pool gained ASSET = amountIn + poolsFee; lost USDC = quoted
-      expect(r1.a - r0.a).to.equal(args.amountIn + fees.pools);
+      // pool gained ASSET = amountIn; lost USDC = quoted
+      expect(r1.a - r0.a).to.equal(args.amountIn);
       expect(r0.u - r1.u).to.equal(quoted);
 
-      // treasury received the treasuryFee in ASSET
-      expect(tA1 - tA0).to.equal(fees.treasury);
+      // treasury unchanged
+      expect(tA1 - tA0).to.equal(0n);
 
       // router shouldn't retain ASSET after fee split (donated+forwarded)
       expect(roA1).to.equal(roA0);
@@ -249,7 +247,7 @@ describe("Pool math integrity", () => {
       expect(sumU1).to.equal(sumU0);
     });
 
-    it("USDC->ASSET: includes per-hop fee split; conservation with treasury+router", async () => {
+    it("USDC->ASSET: conservation holds without fees", async () => {
       const env: any = await deployCore();
       const { deployer, pool, router, treasury, access } = env;
       const { asset, usdc } = await getTokens(env);
@@ -296,8 +294,6 @@ describe("Pool math integrity", () => {
         payer: who,
       };
 
-      const fees = await feeSplit(router as LPPRouter, args.amountIn);
-
       const quoted: bigint = await (router.connect(deployer) as any).supplicate.staticCall(args);
       await (router.connect(deployer) as any).supplicate(args);
 
@@ -307,17 +303,17 @@ describe("Pool math integrity", () => {
       const tU1 = await bal(usdc, treasuryAddr);
       const roU1 = await bal(usdc, routerAddr);
 
-      // user spent USDC: amountIn + totalFee
-      expect(bU0 - bU1).to.equal(args.amountIn + fees.total);
+      // user spent USDC: amountIn
+      expect(bU0 - bU1).to.equal(args.amountIn);
       // user received ASSET: quoted
       expect(bA1 - bA0).to.equal(quoted);
 
-      // pool gained USDC = amountIn + poolsFee; lost ASSET = quoted
-      expect(r1.u - r0.u).to.equal(args.amountIn + fees.pools);
+      // pool gained USDC = amountIn; lost ASSET = quoted
+      expect(r1.u - r0.u).to.equal(args.amountIn);
       expect(r0.a - r1.a).to.equal(quoted);
 
-      // treasury received the treasuryFee in USDC
-      expect(tU1 - tU0).to.equal(fees.treasury);
+      // treasury unchanged
+      expect(tU1 - tU0).to.equal(0n);
 
       // router shouldn't retain USDC after fee split
       expect(roU1).to.equal(roU0);
@@ -577,6 +573,142 @@ describe("Pool math integrity", () => {
       expect(netLoss).to.be.gte(0n);
       const fiftyBps = (spent * 50n) / 10_000n;
       expect(netLoss).to.be.lte(fiftyBps);
+    });
+  });
+
+  describe("Offset multiplier behavior", () => {
+    async function setupPool(offset: number) {
+      const env: any = await deployCore();
+      const { deployer, pool, router, treasury, access } = env;
+      const tokens = await getTokens(env);
+      await (await (access as LPPAccessManager).setApprovedSupplicator(deployer.address, true)).wait();
+      await bootstrapSeed(
+        treasury as LPPTreasury,
+        pool as LPPPool,
+        tokens.asset,
+        tokens.usdc,
+        deployer,
+        ethers.parseEther("1"),
+        ethers.parseEther("1"),
+        BigInt(offset)
+      );
+      return { deployer, pool, router, ...tokens };
+    }
+
+    it("USDC->ASSET with -5000 bps returns 50% premium", async () => {
+      const { deployer, pool, router, usdc } = await setupPool(-5000);
+      const amountIn = ethers.parseEther("0.01");
+      await fundAndApproveForSupplicate({ token: usdc, minter: deployer, payer: deployer, pool, amount: amountIn });
+      const quoted: bigint = await (router.connect(deployer) as any).supplicate.staticCall({
+        pool: await pool.getAddress(),
+        assetToUsdc: false,
+        amountIn,
+        minAmountOut: 0n,
+        to: deployer.address,
+        payer: deployer.address,
+      });
+      const { a: reserveAsset, u: reserveUsdc } = await reserves(pool as LPPPool);
+      const baseOut = (amountIn * reserveAsset) / reserveUsdc;
+      const expected = (baseOut * 15000n) / 10000n;
+      expect(quoted).to.equal(expected);
+      expect({
+        label: "offset -5000 usdc->asset",
+        offsetBps: -5000,
+        direction: "USDC->ASSET",
+        amountIn: amountIn.toString(),
+        reserveAsset: reserveAsset.toString(),
+        reserveUsdc: reserveUsdc.toString(),
+        baseOut: baseOut.toString(),
+        expected: expected.toString(),
+        quoted: quoted.toString(),
+      }).to.matchSnapshot("offset -5000 usdc->asset");
+    });
+
+    it("ASSET->USDC with -5000 bps returns 50% discount", async () => {
+      const { deployer, pool, router, asset } = await setupPool(-5000);
+      const amountIn = ethers.parseEther("0.01");
+      await fundAndApproveForSupplicate({ token: asset, minter: deployer, payer: deployer, pool, router, amount: amountIn });
+      const quoted: bigint = await (router.connect(deployer) as any).supplicate.staticCall({
+        pool: await pool.getAddress(),
+        assetToUsdc: true,
+        amountIn,
+        minAmountOut: 0n,
+        to: deployer.address,
+        payer: deployer.address,
+      });
+      const { a: reserveAsset, u: reserveUsdc } = await reserves(pool as LPPPool);
+      const baseOut = (amountIn * reserveUsdc) / reserveAsset;
+      const expected = (baseOut * 5000n) / 10000n;
+      expect(quoted).to.equal(expected);
+      expect({
+        label: "offset -5000 asset->usdc",
+        offsetBps: -5000,
+        direction: "ASSET->USDC",
+        amountIn: amountIn.toString(),
+        reserveAsset: reserveAsset.toString(),
+        reserveUsdc: reserveUsdc.toString(),
+        baseOut: baseOut.toString(),
+        expected: expected.toString(),
+        quoted: quoted.toString(),
+      }).to.matchSnapshot("offset -5000 asset->usdc");
+    });
+
+    it("USDC->ASSET with +5000 bps returns 50% discount", async () => {
+      const { deployer, pool, router, usdc } = await setupPool(5000);
+      const amountIn = ethers.parseEther("0.01");
+      await fundAndApproveForSupplicate({ token: usdc, minter: deployer, payer: deployer, pool, amount: amountIn });
+      const quoted: bigint = await (router.connect(deployer) as any).supplicate.staticCall({
+        pool: await pool.getAddress(),
+        assetToUsdc: false,
+        amountIn,
+        minAmountOut: 0n,
+        to: deployer.address,
+        payer: deployer.address,
+      });
+      const { a: reserveAsset, u: reserveUsdc } = await reserves(pool as LPPPool);
+      const baseOut = (amountIn * reserveAsset) / reserveUsdc;
+      const expected = (baseOut * 5000n) / 10000n;
+      expect(quoted).to.equal(expected);
+      expect({
+        label: "offset +5000 usdc->asset",
+        offsetBps: 5000,
+        direction: "USDC->ASSET",
+        amountIn: amountIn.toString(),
+        reserveAsset: reserveAsset.toString(),
+        reserveUsdc: reserveUsdc.toString(),
+        baseOut: baseOut.toString(),
+        expected: expected.toString(),
+        quoted: quoted.toString(),
+      }).to.matchSnapshot("offset +5000 usdc->asset");
+    });
+
+    it("ASSET->USDC with +5000 bps returns 50% premium", async () => {
+      const { deployer, pool, router, asset } = await setupPool(5000);
+      const amountIn = ethers.parseEther("0.01");
+      await fundAndApproveForSupplicate({ token: asset, minter: deployer, payer: deployer, pool, router, amount: amountIn });
+      const quoted: bigint = await (router.connect(deployer) as any).supplicate.staticCall({
+        pool: await pool.getAddress(),
+        assetToUsdc: true,
+        amountIn,
+        minAmountOut: 0n,
+        to: deployer.address,
+        payer: deployer.address,
+      });
+      const { a: reserveAsset, u: reserveUsdc } = await reserves(pool as LPPPool);
+      const baseOut = (amountIn * reserveUsdc) / reserveAsset;
+      const expected = (baseOut * 15000n) / 10000n;
+      expect(quoted).to.equal(expected);
+      expect({
+        label: "offset +5000 asset->usdc",
+        offsetBps: 5000,
+        direction: "ASSET->USDC",
+        amountIn: amountIn.toString(),
+        reserveAsset: reserveAsset.toString(),
+        reserveUsdc: reserveUsdc.toString(),
+        baseOut: baseOut.toString(),
+        expected: expected.toString(),
+        quoted: quoted.toString(),
+      }).to.matchSnapshot("offset +5000 asset->usdc");
     });
   });
 });

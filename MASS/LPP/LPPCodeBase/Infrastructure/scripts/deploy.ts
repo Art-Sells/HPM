@@ -16,6 +16,8 @@ import * as fs from "fs";
 import * as path from "path";
 dotenv.config();
 
+const ts = () => new Date().toISOString();
+
 async function main() {
   const provider = ethers.provider;
 
@@ -29,9 +31,11 @@ async function main() {
   // Create signer from private key
   const deployer = new ethers.Wallet(deployerPk, provider);
 
-  console.log("Deploying from:", await deployer.getAddress());
-  console.log("Network:", (await provider.getNetwork()).name);
-  console.log("Chain ID:", (await provider.getNetwork()).chainId);
+  console.log(`[${ts()}] Starting deployment script...`);
+  const signerAddr = await deployer.getAddress();
+  console.log(`[${ts()}] Deploying from: ${signerAddr}`);
+  const network = await provider.getNetwork();
+  console.log(`[${ts()}] Network: ${network.name} (chainId=${network.chainId})`);
 
   // Addresses from Section 1 of the guide
   const TREASURY_OWNER = "0xd9a6714bba0985b279dfcaff0a512ba25f5a03d1";
@@ -39,62 +43,65 @@ async function main() {
   const ASSET_ADDRESS = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf"; // cbBTC
   const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // USDC
 
-  console.log("\n=== Section 2: Deploy & Wire Contracts ===\n");
+  console.log(`\n=== Section 2: Deploy & Wire Contracts === (${ts()})\n`);
 
   // Step 1: Deploy LPPAccessManager
-  console.log("1. Deploying LPPAccessManager...");
+  console.log(`[${ts()}] 1. Deploying LPPAccessManager...`);
   const AccessManagerFactory = await ethers.getContractFactory("LPPAccessManager", deployer);
   const accessManager = await AccessManagerFactory.deploy();
   await accessManager.waitForDeployment();
   const accessManagerAddr = await accessManager.getAddress();
-  console.log("   ✓ LPPAccessManager deployed at:", accessManagerAddr);
+  console.log(`[${ts()}]    ✓ LPPAccessManager deployed at: ${accessManagerAddr}`);
 
   // Step 2: Deploy LPPTreasury
-  console.log("2. Deploying LPPTreasury...");
+  console.log(`[${ts()}] 2. Deploying LPPTreasury...`);
   const TreasuryFactory = await ethers.getContractFactory("LPPTreasury", deployer);
   const treasury = await TreasuryFactory.deploy();
   await treasury.waitForDeployment();
   const treasuryAddr = await treasury.getAddress();
-  console.log("   ✓ LPPTreasury deployed at:", treasuryAddr);
+  console.log(`[${ts()}]    ✓ LPPTreasury deployed at: ${treasuryAddr}`);
 
   // Step 3: Deploy LPPFactory (requires treasury address)
-  console.log("3. Deploying LPPFactory...");
+  console.log(`[${ts()}] 3. Deploying LPPFactory...`);
   const FactoryFactory = await ethers.getContractFactory("LPPFactory", deployer);
   const factory = await FactoryFactory.deploy(treasuryAddr);
   await factory.waitForDeployment();
   const factoryAddr = await factory.getAddress();
-  console.log("   ✓ LPPFactory deployed at:", factoryAddr);
+  console.log(`[${ts()}]    ✓ LPPFactory deployed at: ${factoryAddr}`);
 
   // Step 4: Deploy LPPRouter (requires accessManager and treasury)
-  console.log("4. Deploying LPPRouter...");
+  console.log(`[${ts()}] 4. Deploying LPPRouter...`);
   const RouterFactory = await ethers.getContractFactory("LPPRouter", deployer);
   const router = await RouterFactory.deploy(accessManagerAddr, treasuryAddr);
   await router.waitForDeployment();
   const routerAddr = await router.getAddress();
-  console.log("   ✓ LPPRouter deployed at:", routerAddr);
+  console.log(`[${ts()}]    ✓ LPPRouter deployed at: ${routerAddr}`);
 
   // Step 5: Whitelist treasuryOps via accessManager (before transferring ownership)
-  console.log("\n5. Whitelisting treasuryOps...");
+  console.log(`\n[${ts()}] 5. Whitelisting treasuryOps...`);
   const tx2 = await accessManager.setApprovedSupplicator(TREASURY_OPS, true);
+  console.log(`[${ts()}]    ↳ tx hash: ${tx2.hash} (waiting for confirmation)`);
   await tx2.wait();
-  console.log("   ✓ treasuryOps whitelisted:", TREASURY_OPS);
+  console.log(`[${ts()}]    ✓ treasuryOps whitelisted: ${TREASURY_OPS}`);
 
   // Step 6: Transfer ownerships to treasuryOwner
-  console.log("6. Transferring contract ownerships...");
+  console.log(`[${ts()}] 6. Transferring contract ownerships...`);
   const tx1a = await accessManager.transferOwnership(TREASURY_OWNER);
+  console.log(`[${ts()}]    ↳ AccessManager ownership tx: ${tx1a.hash}`);
   await tx1a.wait();
-  console.log("   ✓ AccessManager ownership transferred to:", TREASURY_OWNER);
+  console.log(`[${ts()}]    ✓ AccessManager ownership transferred to: ${TREASURY_OWNER}`);
   
   const tx1b = await treasury.transferOwnership(TREASURY_OWNER);
+  console.log(`[${ts()}]    ↳ Treasury ownership tx: ${tx1b.hash}`);
   await tx1b.wait();
-  console.log("   ✓ Treasury ownership transferred to:", TREASURY_OWNER);
+  console.log(`[${ts()}]    ✓ Treasury ownership transferred to: ${TREASURY_OWNER}`);
 
   // Verify the whitelist
   const isApproved = await accessManager.isApprovedSupplicator(TREASURY_OPS);
-  console.log("   ✓ Verification - isApproved:", isApproved);
+  console.log(`[${ts()}]    ✓ Verification - isApproved: ${isApproved}`);
 
   // Step 7: Record all addresses (deployment manifest)
-  console.log("\n=== DEPLOYMENT MANIFEST ===");
+  console.log(`\n=== DEPLOYMENT MANIFEST (${ts()}) ===`);
   console.log("LPPAccessManager:", accessManagerAddr);
   console.log("LPPTreasury:", treasuryAddr);
   console.log("LPPFactory:", factoryAddr);
@@ -129,9 +136,9 @@ async function main() {
   // Use process.cwd() to get the project root directory
   const manifestPath = path.join(process.cwd(), "deployment-manifest.json");
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-  console.log("✓ Deployment manifest saved to:", manifestPath);
+  console.log(`[${ts()}] ✓ Deployment manifest saved to: ${manifestPath}`);
 
-  console.log("\n=== Section 2 Complete ===");
+  console.log(`\n=== Section 2 Complete (${ts()}) ===`);
   console.log("Next: Proceed to Section 3 (Build the Six-Pool Topology)");
 }
 
