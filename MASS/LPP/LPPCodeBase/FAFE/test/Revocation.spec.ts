@@ -594,7 +594,9 @@ describe("Revocation enforcement (AccessManager-gated supplicate)", () => {
       const reservesAfter = await reserves(env);
 
       // Verify: AA deposits increase reserves but do NOT create liquidity tokens
-      expect(reservesAfter.a).to.equal(reservesBefore.a + profitAmount);
+      // 5% goes to treasury, 95% goes to pool
+      const expectedPoolAmount = (profitAmount * 9500n) / 10000n; // 95%
+      expect(reservesAfter.a).to.equal(reservesBefore.a + expectedPoolAmount);
       expect(treasuryLiquidityAfter).to.equal(treasuryLiquidityBefore); // Treasury liquidity unchanged
       expect(aaLiquidityAfter).to.equal(aaLiquidityBefore); // AA still has no liquidity tokens (0)
       expect(aaLiquidityAfter).to.equal(0n);
@@ -633,7 +635,9 @@ describe("Revocation enforcement (AccessManager-gated supplicate)", () => {
       });
 
       const reservesAfterDeposit = await reserves(env);
-      expect(reservesAfterDeposit.a).to.equal(reservesBeforeBootstrap.a + profitAmount);
+      // 5% goes to treasury, 95% goes to pool
+      const expectedPoolAmount = (profitAmount * 9500n) / 10000n; // 95%
+      expect(reservesAfterDeposit.a).to.equal(reservesBeforeBootstrap.a + expectedPoolAmount);
 
       // Treasury owns liquidity tokens (from bootstrap), but treasury is a contract
       // The burn function requires msg.sender to own the tokens, so only treasury contract
@@ -645,7 +649,8 @@ describe("Revocation enforcement (AccessManager-gated supplicate)", () => {
       const treasuryAddr = await treasury.getAddress();
       
       // Verify reserves increased after AA deposit (includes AA's profits)
-      expect(reservesAfterDeposit.a).to.equal(reservesBeforeBootstrap.a + profitAmount);
+      // 5% goes to treasury, 95% goes to pool
+      expect(reservesAfterDeposit.a).to.equal(reservesBeforeBootstrap.a + expectedPoolAmount);
       
       // Verify treasury still has all liquidity tokens (no new tokens minted to AA)
       const treasuryLiquidityAfter = await pool.liquidityOf(treasuryAddr);

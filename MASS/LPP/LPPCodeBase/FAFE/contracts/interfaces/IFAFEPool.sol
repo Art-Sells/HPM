@@ -10,6 +10,7 @@ interface IFAFEPool {
     event Supplicate(address indexed caller, bool assetToUsdc, uint256 amountIn, uint256 amountOut);
     event Donation(bool isUsdc, uint256 amount);
     event OffsetFlipped(int16 newOffset);
+    event RebalanceWithdrawal(bool isUsdc, uint256 amount, address to);
 
     // Token getters
     function asset() external view returns (address);
@@ -79,4 +80,7 @@ interface IFAFEPool {
     
     // Flip offset sign (called by router after swap)
     function flipOffset() external;
+    
+    // Withdraw tokens for rebalancing (router-only)
+    function withdrawForRebalance(bool isUsdc, uint256 amount, address to) external;
 }

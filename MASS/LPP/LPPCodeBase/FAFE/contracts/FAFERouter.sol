@@ -15,6 +15,7 @@ contract FAFERouter is IFAFERouter {
     uint16 public constant override MCV_FEE_BPS      = 120; // 1.2% per hop
     uint16 public constant override TREASURY_CUT_BPS = 20;  // .2% of hop input
     uint16 public constant POOLS_CUT_BPS             = 100; // 1% of hop input
+    uint16 public constant DEPOSIT_TREASURY_CUT_BPS  = 500; // 5% of deposit to treasury
 
     // Daily cap removed per README requirements
 
@@ -70,7 +71,17 @@ contract FAFERouter is IFAFERouter {
         address indexed caller,
         address indexed pool,
         bool indexed isUsdc,
-        uint256 amount
+        uint256 amount,
+        uint256 treasuryCut,
+        uint256 poolAmount
+    );
+
+    event RebalanceExecuted(
+        address indexed caller,
+        address indexed sourcePool,
+        address indexed destPool,
+        bool isUsdc,
+        uint256 amountMoved
     );
 
     /* -------- Auth -------- */
@@ -194,15 +205,73 @@ contract FAFERouter is IFAFERouter {
         require(p.pool != address(0), "zero pool");
 
         // Pull tokens from AA (msg.sender) to router first
-        // Then pool can pull from router
         address token = p.isUsdc ? IFAFEPool(p.pool).usdc() : IFAFEPool(p.pool).asset();
         require(IERC20(token).transferFrom(msg.sender, address(this), p.amount), "pull deposit fail");
         
-        // Now approve pool to pull from router
-        require(IERC20(token).approve(p.pool, p.amount), "approve pool fail");
+        // Calculate 10% treasury cut
+        uint256 treasuryCut = (p.amount * DEPOSIT_TREASURY_CUT_BPS) / BPS_DENOMINATOR;
+        uint256 poolAmount = p.amount - treasuryCut;
+        
+        // Send 5% to treasury
+        if (treasuryCut > 0) {
+            require(IERC20(token).transfer(treasury, treasuryCut), "treasury transfer fail");
+        }
+        
+        // Approve pool to pull remaining 90% from router
+        require(IERC20(token).approve(p.pool, poolAmount), "approve pool fail");
 
-        IFAFEPool(p.pool).donateToReserves(p.isUsdc, p.amount);
+        IFAFEPool(p.pool).donateToReserves(p.isUsdc, poolAmount);
 
-        emit DepositExecuted(msg.sender, p.pool, p.isUsdc, p.amount);
+        emit DepositExecuted(msg.sender, p.pool, p.isUsdc, p.amount, treasuryCut, poolAmount);
+    }
+
+    /* ───────────────────────────────────────────
+       Rebalance pools (AA-only)
+       ─────────────────────────────────────────── */
+
+    function rebalance(RebalanceParams calldata p) external override whenNotPaused {
+        require(access.isDedicatedAA(msg.sender), "not permitted");
+        require(p.sourcePool != address(0) && p.destPool != address(0), "zero pool");
+        require(p.sourcePool != p.destPool, "same pool");
+
+        // Get reserves from both pools
+        uint256 sourceReserve = p.isUsdc 
+            ? IFAFEPool(p.sourcePool).reserveUsdc()
+            : IFAFEPool(p.sourcePool).reserveAsset();
+        
+        uint256 destReserve = p.isUsdc
+            ? IFAFEPool(p.destPool).reserveUsdc()
+            : IFAFEPool(p.destPool).reserveAsset();
+
+        // Check if source has at least 5% more than destination
+        // If destReserve is 0, we can't calculate percentage, so skip
+        require(destReserve > 0, "dest reserve zero");
+        
+        // Calculate: sourceReserve / destReserve should be >= 1.05 (5% more)
+        // Using: sourceReserve * 10000 >= destReserve * 10500
+        uint256 sourceScaled = sourceReserve * 10000;
+        uint256 destScaled = destReserve * 10500;
+        
+        require(sourceScaled >= destScaled, "imbalance too small");
+
+        // Calculate 2.5% of source reserve to move
+        uint256 amountToMove = (sourceReserve * 250) / 10000; // 2.5% = 250 bps
+        require(amountToMove > 0, "zero amount");
+
+        // Withdraw from source pool (to router)
+        IFAFEPool(p.sourcePool).withdrawForRebalance(p.isUsdc, amountToMove, address(this));
+
+        // Get token address
+        address token = p.isUsdc 
+            ? IFAFEPool(p.destPool).usdc() 
+            : IFAFEPool(p.destPool).asset();
+
+        // Approve destination pool to pull from router
+        require(IERC20(token).approve(p.destPool, amountToMove), "approve dest pool fail");
+
+        // Deposit into destination pool (no treasury cut for rebalancing)
+        IFAFEPool(p.destPool).donateToReserves(p.isUsdc, amountToMove);
+
+        emit RebalanceExecuted(msg.sender, p.sourcePool, p.destPool, p.isUsdc, amountToMove);
     }
 }

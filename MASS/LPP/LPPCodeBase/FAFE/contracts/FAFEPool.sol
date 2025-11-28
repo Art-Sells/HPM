@@ -146,6 +146,32 @@ contract FAFEPool is IFAFEPool {
         emit OffsetFlipped(newOffset);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Rebalancing (router-only)
+    // ─────────────────────────────────────────────────────────────────────────────
+    function withdrawForRebalance(bool isUsdc, uint256 amount, address to)
+        external
+        override
+        nonZero(amount)
+    {
+        require(msg.sender == router, "only router");
+        require(to != address(0), "zero to");
+        require(initialized, "not initialized");
+
+        if (isUsdc) {
+            require(reserveUsdc >= amount, "insufficient usdc");
+            reserveUsdc -= amount;
+            require(IERC20(usdc).transfer(to, amount), "transfer usdc fail");
+        } else {
+            require(reserveAsset >= amount, "insufficient asset");
+            reserveAsset -= amount;
+            require(IERC20(asset).transfer(to, amount), "transfer asset fail");
+        }
+
+        emit RebalanceWithdrawal(isUsdc, amount, to);
+        _touchAndSync();
+    }
+
     function mintFromHook(address to, uint256 amtA, uint256 amtU)
         external
         override

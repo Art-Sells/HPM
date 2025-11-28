@@ -10,7 +10,7 @@
 
 - **Deterministic premiums/discounts.** Every swap enforces a ±5,000 bps offset, yielding exactly 1.5× (premium) or 0.5× (discount) of the base CFMM quote until the relevant reserve is depleted.
 - **Six-pool lattice.** Three negative-offset pools (−5,000 bps) and three positive-offset pools (+5,000 bps) provide a fixed ladder of subsidized trades that our AA can harvest and refill.
-- **AA-driven loop.** A privileged agent borrows USDC/cbBTC, purchases discounted cbBTC/USDC on FAFE, dumps it at external market, recycles profits into treasury-controlled pools, and rebalances offsets automatically. 
+- **AA-driven loop.** A privileged agent borrows USDC/cbBTC via AAVE flash loans (1% of pool reserves), purchases discounted cbBTC/USDC on FAFE pools (which start at -50% price due to -5000 bps offsets), sells externally at full market price, repays AAVE loan + fees, deposits profits back to pools (5% to treasury, 95% to pool), and rebalances offsets automatically. This compounds TVL over time. 
 - **Single-source of truth.** Deployment manifests, pool manifests, snapshots, scripts, and guides all live in this repo; there is no hidden state.
 - **Permissioned surface.** `supplicate` is gated by `FAFEAccessManager`. Only whitelisted operators (e.g., `MASS_TESTER_ADDRESS`) can tap the subsidized pools.
 
@@ -78,15 +78,21 @@ Each `FAFEPool` applies its offset after each swap. Offsets remain fixed per poo
 
 ## 4. AA Replenishment Loop & Treasury Ops
 
-1. **Swap from negative-bps pools.** Borrow up to 1% of each negative-bps pool's USDC via authorized `swap` calls. Because of −5,000 bps offsets, the AA receives ~1.5× the base CFMM output in cbBTC until the pool runs dry.
-2. **Swap from positive-bps pools.** Borrow up to 1% of each positive-bps pool's cbBTC via authorized `swap` calls. Because of +5,000 bps offsets, the AA receives ~1.5× the base CFMM output in USDC until the pool runs dry.
-3. **Sell externally.** Dump cbBTC/USDC on spot venues pegged to median oracle prices to realize immediate profit.
-4. **Return principal + profit.** Refill pools through `FAFETreasury` donations, maintaining reserves for both negative-bps and positive-bps pools.
-5. **Rebalance.** If reserves become imbalanced, call treasury hooks (or dedicated rebalancer scripts) to auto-purchase assets and reinitialize pools at the correct offsets.
-6. **Repeat.** Because premiums are deterministic and available in both directions (cbBTC and USDC), cycling this loop continuously compounds treasury TVL while keeping external participants blinded to the subsidy.
-7. **Daily FAFE Operations.** The AA must execute a daily cycle through all six pools (one operation per pool). The system tracks:
+1. **Borrow from Flash Loan Provider (AAVE).** AA borrows 1% of each pool's USDC/cbBTC reserves via AAVE flash loans. Flash loans allow borrowing without collateral, with fees (~0.09%) paid upon repayment.
+2. **Swap from negative-bps pools.** Use borrowed USDC to swap on negative-bps pools via authorized `swap` calls. Because of −5,000 bps offsets, the AA receives ~1.5× the base CFMM output in cbBTC (pools start undervalued at -50% price).
+3. **Swap from positive-bps pools.** Use borrowed cbBTC to swap on positive-bps pools via authorized `swap` calls. Because of +5,000 bps offsets, the AA receives ~1.5× the base CFMM output in USDC.
+4. **Buy externally at market price.** Use borrowed funds to buy cbBTC/USDC on external DEXs/aggregators at full market price (no discount).
+5. **Sell externally at market price.** Sell the cbBTC/USDC obtained from FAFE swaps externally at full market price to realize profit (the difference between FAFE's -50% discount and external market price).
+6. **Return borrowed amount + fees to AAVE.** Repay the flash loan principal plus AAVE's fees (~0.09%), keeping the profit.
+7. **Deposit profit to pools.** Deposit remaining profit back to pools through `FAFERouter.deposit()`, which sends 5% to treasury and 95% to the pool. This increases TVL.
+8. **Rebalance.** If reserves become imbalanced across pools, the AA scans all pools via `FAFEFactory.getPools()`, compares reserves using `FAFEPool.reserveAsset()` and `FAFEPool.reserveUsdc()`, and identifies pools where one has ≥5% more reserves than another. The AA then executes `FAFERouter.rebalance()` to move 2.5% of the excess from the imbalanced pool to the pool with less reserves. This ensures all pools maintain equal balances without requiring external asset purchases. See "Pool Scanner & Rebalancing Logic" in section 7 for implementation details.
+9. **Repeat.** Because premiums are deterministic and available in both directions (cbBTC and USDC), cycling this loop continuously compounds treasury TVL while keeping external participants blinded to the subsidy.
+
+## 5 Build Dummy AA
+
+1. **Daily FAFE Operations.** Build a "DUMMY AA API that borrows from "TreasuryOps" meaning it takes USDC/CBBTC from TreasuryOps (TreasuryOps calls deposit)" The AA must execute a daily cycle through all six pools (one operation per pool). The system tracks:
    - **Pool operation tracking:** Log each swap operation with pool address, direction, amounts, and timestamp
-   - **External sale tracking:** Log when AA sells borrowed assets externally (off-chain, via API)
+   - **External sale tracking:** Log when AA sells borrowed assets externally (deposits amount back to TreasuryOps (which will be Flash Loan distributor))
    - **Borrow repayment:** Log when AA deposits the borrowed principal back to the pool it swapped from
    - **Profit deposit:** Log when AA deposits profits back to the same pool
    - **Daily completion:** Track when all 6 pool operations are complete and stop further operations until next day
@@ -132,20 +138,52 @@ Treasury automation scripts (`scripts/run-fafe-flow.ts`, forthcoming AA controll
    - `deployment-manifest.json`: latest FAFE contract addresses.
    - `test/Deployment/pool-manifest.json`: known pools with offsets.
    - `test/Deployment/__snapshots__`: canonical pre/post states for CI assertions.
-
+6. **Test Dummy AA On-chain**
+   - activate Test Dummy so see how it'll interact, log events into snapshot?
 ---
 
 ## 7. Monitoring & Next Steps
 
 - **Runtime telemetry:**
-  - `SwapExecuted`, `DepositExecuted`, and treasury donations for Grafana ingestion.
+  - `SwapExecuted`, `DepositExecuted`, `RebalanceExecuted`, and treasury donations for Grafana ingestion.
   - `scripts/read-onchain-prices.ts` remains the lightweight sanity check for reserve/price drift.
-- **Daily FAFE Operations API (to be built):**
-  - **Event listeners:** Monitor on-chain `SwapExecuted` and `DepositExecuted` events from `FAFERouter`
+- **Daily FAFE Operations API (to be built inside AA directory [re-write README.md in AA Directory]):**
+  - **TreasuryOp should Seed ETH/BASE to AA and approved Supplicators**
+    - $0.05 cents for approved supplicators. if it gets less than $.01, seed up to $.05
+    - $5 for AA (if it gets less than $1, seed up to $4)
+  - **Borrowing & Flash Loan Integration (AAVE/Other Lenders):**
+    - **AAVE API Integration:** Connect to AAVE V3 (or other flash loan providers) on Base network
+    - **Borrowing Mechanism:**
+      1. AA queries pool reserves via `FAFEPool.reserveUsdc()` and `FAFEPool.reserveAsset()`
+      2. AA calculates 1% of pool's USDC/cbBTC reserves to borrow
+      3. AA calls AAVE flash loan API to borrow the calculated amount
+      4. AA receives borrowed tokens in a single transaction
+    - **Flash Loan Flow:**
+      - `POST /api/borrow/initiate` - Initiate flash loan from AAVE (amount, token, pool address)
+      - `POST /api/borrow/execute` - Execute flash loan transaction (includes external buy/sell)
+      - `POST /api/borrow/repay` - Repay borrowed amount + AAVE fees
+      - `GET /api/borrow/status` - Check current borrow status and available liquidity
+    - **AAVE Integration Details:**
+      - Use AAVE V3 Pool contract on Base: `0x...` (to be configured)
+      - Flash loan callback: `executeOperation()` must handle:
+        - Receive borrowed tokens
+        - Buy cbBTC/USDC externally at market price
+        - Sell cbBTC/USDC externally at full market price → realize profit
+        - Return borrowed amount + fees to AAVE
+        - Deposit profit to FAFE pools via `FAFERouter.deposit()`
+      - Fee calculation: AAVE charges ~0.09% flash loan fee (varies by market)
+    - **External Market Integration:**
+      - Connect to DEX aggregators (1inch, 0x, etc.) for best execution prices
+      - `POST /api/markets/quote` - Get external market quotes for buy/sell
+      - `POST /api/markets/execute` - Execute external market trades
+      - Track profit margins: external price vs FAFE pool price (with -50% discount)
+  - **Event listeners:** Monitor on-chain `SwapExecuted`, `DepositExecuted`, and `RebalanceExecuted` events from `FAFERouter`
   - **API endpoints:**
     - `POST /api/operations/swap` - Log swap operation (pool, direction, amounts, tx hash)
-    - `POST /api/operations/external-sale` - Log external sale (asset, amount, venue, profit)
-    - `POST /api/operations/repay` - Log borrow repayment deposit
+    - `POST /api/operations/borrow` - Log flash loan initiation (lender, amount, token, fees)
+    - `POST /api/operations/external-buy` - Log external market purchase (venue, amount, price)
+    - `POST /api/operations/external-sale` - Log external market sale (venue, amount, price, profit)
+    - `POST /api/operations/repay` - Log borrow repayment (amount, fees paid)
     - `POST /api/operations/profit` - Log profit deposit back to pool
     - `GET /api/operations/daily-status` - Get current day's operation status (pools completed, remaining)
     - `GET /api/operations/history` - Query historical operations
@@ -154,14 +192,35 @@ Treasury automation scripts (`scripts/run-fafe-flow.ts`, forthcoming AA controll
     - Stop operations once all 6 pools are complete
     - Reset at midnight UTC for next day
   - **Integration:** Log to Arells monitoring stack (Notion/Kibana) and `Build-Notes.md`
+   - **Pool Scanner & Rebalancing Logic (to be built):**
+      - **Pool Discovery:** AA queries `FAFEFactory.getPools()` to get all pool addresses
+      - **Reserve Scanning:** For each pool, AA calls `FAFEPool.reserveAsset()` and `FAFEPool.reserveUsdc()` to get current reserves
+      - **Imbalance Detection Algorithm:**
+         1. Group pools by token pair (ASSET/USDC)
+         2. For each token type (ASSET or USDC), calculate the average reserve across all pools
+         3. Identify pools where one pool has ≥5% more reserves than another pool
+         4. Calculate rebalance amount: 2.5% of the imbalanced pool's excess reserve
+         5. Execute rebalance via `FAFERouter.rebalance()` (AA-only permissioned)
+      - **Script structure:** `scripts/scan-and-rebalance.ts`
+         - Queries factory for all pools
+         - Scans reserves for each pool
+         - Identifies rebalancing opportunities
+         - Executes rebalances when threshold is met
+         - Logs all operations to API
+      - **API endpoints:**
+         - `GET /api/pools/scan` - Scan all pools and return reserve status
+         - `GET /api/pools/rebalance-opportunities` - Get list of pools that need rebalancing
+         - `POST /api/pools/rebalance` - Execute rebalance operation (logs to operations API)
 - **AA + treasury dashboards (2-3 days):** integrate logs from `run-fafe-flow` and future AA controllers into Arells' monitoring stack (Notion/Kibana) to track TVL, premium capture, and refill cadence, test with 6 FAFE operations per day (1 per pool) and calculate new FAFE operations.
+
+## 7. Tightening Security and Main Re-deployment
 - **Security & scale:**
   - Expand spec coverage (reentrancy, pause paths).
   - Prepare for 6→N pool scaling by parameterizing `FAFEFactory` and `FAFETreasury` with offset templates.
-  - Document upgrade FAFE and incident response and add lots of security parameters (test all edge cases (since its permissioned, no one can transfer, swap, supplicate or deposit unless the treasury allows them, ensure treasury cannot burn any deposits set by liquidity etc, etc)) 
+  - Document upgrade FAFE and incident response and add lots of security parameters (test all edge cases (since its permissioned, no one can transfer, swap, supplicate or deposit unless the treasury allows them, ensure treasury cannot burn any deposits set by liquidity etc, rebalancing hack/exploit from AA etc)) 
       - Test all these security tests after deployment.
 - **Prepare for main re-deployment** 
-   - Create new TreasuryOperator/Address/Key save it outside .env
+   - Create new TreasuryOperator|AA/Address/Key save it outside .env
    - Remove "yous"
    - Set new daily FAFE operations.
    - Bootstrap new pools
