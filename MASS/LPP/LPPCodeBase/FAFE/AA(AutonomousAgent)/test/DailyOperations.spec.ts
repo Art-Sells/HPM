@@ -228,6 +228,12 @@ describe("AA Daily FAFE Operations", () => {
         : ethers.parseEther("0.000012"); // 0.000012 ASSET for positive pools
 
       // 1. BORROW: TreasuryOps deposits tokens to AA (simulating flash loan)
+      // First, ensure TreasuryOps has enough tokens (mint if needed)
+      const treasuryOpsBalance = await getBalance(borrowToken, treasuryOpsAddr);
+      if (treasuryOpsBalance < borrowAmount) {
+        await (await borrowToken.connect(deployer).mint(treasuryOpsAddr, borrowAmount - treasuryOpsBalance + ethers.parseEther("1000"))).wait();
+      }
+      
       const aaBalanceBeforeBorrow = await getBalance(borrowToken, aa.address);
       await (await borrowToken.connect(treasuryOps).transfer(aa.address, borrowAmount)).wait();
       const aaBalanceAfterBorrow = await getBalance(borrowToken, aa.address);
@@ -358,7 +364,7 @@ describe("AA Daily FAFE Operations", () => {
   });
 
   it("tracks pool operation details correctly", async () => {
-    const { aa, router, pools, asset, usdc, treasuryOps } = env;
+    const { deployer, aa, router, pools, asset, usdc, treasuryOps } = env;
     const routerAddr = await router.getAddress();
     const poolAddr = pools[0];
     const { pool } = await getTokensFromPoolAddr(poolAddr);
@@ -368,6 +374,13 @@ describe("AA Daily FAFE Operations", () => {
     const borrowToken = offsetBps < 0 ? usdc : asset;
     const borrowAmount = offsetBps < 0 ? ethers.parseEther("1") : ethers.parseEther("0.000012");
     const assetToUsdc = offsetBps >= 0;
+
+    // Ensure TreasuryOps has enough tokens
+    const treasuryOpsAddr = treasuryOps.address;
+    const treasuryOpsBalance = await getBalance(borrowToken, treasuryOpsAddr);
+    if (treasuryOpsBalance < borrowAmount) {
+      await (await borrowToken.connect(deployer).mint(treasuryOpsAddr, borrowAmount - treasuryOpsBalance + ethers.parseEther("1000"))).wait();
+    }
 
     // Borrow
     await (await borrowToken.connect(treasuryOps).transfer(aa.address, borrowAmount)).wait();
