@@ -8,7 +8,7 @@
 
 ## 1. Scope
 
-- **Deterministic premiums/discounts.** Every swap enforces a ±5,000 bps offset, yielding exactly 1.5× (premium) or 0.5× (discount) of the base CFMM quote until the relevant reserve is depleted.
+- **Deterministic premiums/discounts.** Every swap enforces a ±5,000 bps offset, yielding exactly 1.5× (premium) or 0.5× (discount) of the base CFMM quote with output clamped to available reserves. The AA continuously refills pools through the arbitrage loop, ensuring premiums remain available.
 - **Six-pool lattice.** Three negative-offset pools (−5,000 bps) and three positive-offset pools (+5,000 bps) provide a fixed ladder of subsidized trades that our AA can harvest and refill.
 - **AA-driven loop.** A privileged agent borrows USDC/cbBTC via AAVE flash loans (1% of pool reserves), purchases discounted cbBTC/USDC on FAFE pools (which start at -50% price due to -5000 bps offsets), sells externally at full market price, repays AAVE loan + fees, deposits profits back to pools (5% to treasury, 95% to pool), and rebalances offsets automatically. This compounds TVL over time. 
 - **Single-source of truth.** Deployment manifests, pool manifests, snapshots, scripts, and guides all live in this repo; there is no hidden state.
