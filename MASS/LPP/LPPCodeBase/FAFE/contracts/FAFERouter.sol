@@ -189,9 +189,17 @@ contract FAFERouter is IFAFERouter {
        ─────────────────────────────────────────── */
 
     function deposit(DepositParams calldata p) external override whenNotPaused {
-        require(access.isApprovedSupplicator(msg.sender), "not permitted");
+        require(access.isDedicatedAA(msg.sender), "not permitted");
         require(p.amount > 0, "zero amount");
         require(p.pool != address(0), "zero pool");
+
+        // Pull tokens from AA (msg.sender) to router first
+        // Then pool can pull from router
+        address token = p.isUsdc ? IFAFEPool(p.pool).usdc() : IFAFEPool(p.pool).asset();
+        require(IERC20(token).transferFrom(msg.sender, address(this), p.amount), "pull deposit fail");
+        
+        // Now approve pool to pull from router
+        require(IERC20(token).approve(p.pool, p.amount), "approve pool fail");
 
         IFAFEPool(p.pool).donateToReserves(p.isUsdc, p.amount);
 

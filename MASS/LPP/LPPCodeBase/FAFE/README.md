@@ -158,9 +158,11 @@ Treasury automation scripts (`scripts/run-fafe-flow.ts`, forthcoming AA controll
 - **Security & scale:**
   - Expand spec coverage (reentrancy, pause paths).
   - Prepare for 6→N pool scaling by parameterizing `FAFEFactory` and `FAFETreasury` with offset templates.
-  - Document upgrade FAFE and incident response and add lots of security parameters (test all edge cases (since its permissioned, no one can transfer, swap, supplicate or deposit unless the treasury allows them, etc, etc)) 
+  - Document upgrade FAFE and incident response and add lots of security parameters (test all edge cases (since its permissioned, no one can transfer, swap, supplicate or deposit unless the treasury allows them, ensure treasury cannot burn any deposits set by liquidity etc, etc)) 
+      - Test all these security tests after deployment.
 - **Prepare for main re-deployment** 
    - Create new TreasuryOperator/Address/Key save it outside .env
+   - Remove "yous"
    - Set new daily FAFE operations.
    - Bootstrap new pools
 
