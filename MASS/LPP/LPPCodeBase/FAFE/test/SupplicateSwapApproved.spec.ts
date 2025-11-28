@@ -379,4 +379,350 @@ describe("Supplicate (Approved-only flow)", () => {
       }).to.matchSnapshot("bypass-guard — reserves unchanged");
     });
   });
+
+  describe("AA FAFE Operations (Swaps and Deposits)", () => {
+    it("AA swap: verifies before/after treasury and pool state", async () => {
+      const env: CoreEnv | any = await deployCore();
+      const { deployer, pool, router, asset, usdc, treasury, access } = env;
+      const signers = await ethers.getSigners();
+      const aa = signers[2];
+
+      // Set AA
+      await (await treasury.setDedicatedAAViaTreasury(await access.getAddress(), aa.address)).wait();
+
+      // Bootstrap pool
+      await seedPoolIfNeeded(env);
+
+      const poolAddr = await pool.getAddress();
+      const treasuryAddr = await treasury.getAddress();
+
+      // Before state
+      const reservesBefore = await reserves(pool);
+      const treasuryAssetBefore = await asset.balanceOf(treasuryAddr);
+      const treasuryUsdcBefore = await usdc.balanceOf(treasuryAddr);
+
+      // AA performs swap: ASSET -> USDC
+      const swapAmount = ethers.parseEther("10");
+      await asset.mint(aa.address, swapAmount);
+      await asset.connect(aa).approve(router.getAddress(), swapAmount);
+      await asset.connect(aa).approve(poolAddr, swapAmount);
+
+      // Get expected output via static call
+      let expectedOutput: bigint = 0n;
+      try {
+        expectedOutput = await router.connect(aa).swap.staticCall({
+          pool: poolAddr,
+          assetToUsdc: true,
+          amountIn: swapAmount,
+          minAmountOut: 0n,
+          to: aa.address,
+          payer: aa.address,
+        });
+      } catch {
+        // Fallback: calculate from quote
+        expectedOutput = await router.quoteSwap(poolAddr, true, swapAmount);
+      }
+
+      await router.connect(aa).swap({
+        pool: poolAddr,
+        assetToUsdc: true,
+        amountIn: swapAmount,
+        minAmountOut: 0n,
+        to: aa.address,
+        payer: aa.address,
+      });
+
+      // After state
+      const reservesAfter = await reserves(pool);
+      const treasuryAssetAfter = await asset.balanceOf(treasuryAddr);
+      const treasuryUsdcAfter = await usdc.balanceOf(treasuryAddr);
+
+      // Verify pool reserves changed (ASSET increased, USDC decreased)
+      expect(reservesAfter.a).to.equal(reservesBefore.a + swapAmount);
+      expect(reservesAfter.u).to.be.lt(reservesBefore.u);
+
+      // Verify treasury balances unchanged (swaps don't affect treasury directly)
+      expect(treasuryAssetAfter).to.equal(treasuryAssetBefore);
+      expect(treasuryUsdcAfter).to.equal(treasuryUsdcBefore);
+
+      // Verify swap output (calculate from reserves)
+      const usdcOut = reservesBefore.u - reservesAfter.u;
+      expect(usdcOut).to.be.gt(0n);
+
+      expect({
+        operation: "AA Swap (ASSET->USDC)",
+        swapAmount: swapAmount.toString(),
+        swapOutput: usdcOut.toString(),
+        expectedOutput: expectedOutput.toString(),
+        poolReserves: {
+          before: { a: reservesBefore.a.toString(), u: reservesBefore.u.toString() },
+          after: { a: reservesAfter.a.toString(), u: reservesAfter.u.toString() },
+        },
+        treasuryBalances: {
+          before: { asset: treasuryAssetBefore.toString(), usdc: treasuryUsdcBefore.toString() },
+          after: { asset: treasuryAssetAfter.toString(), usdc: treasuryUsdcAfter.toString() },
+        },
+      }).to.matchSnapshot("AA swap — treasury and pool state");
+    });
+
+    it("AA deposit: verifies 5% treasury cut and pool state", async () => {
+      const env: CoreEnv | any = await deployCore();
+      const { deployer, pool, router, asset, usdc, treasury, access } = env;
+      const signers = await ethers.getSigners();
+      const aa = signers[2];
+
+      // Set AA
+      await (await treasury.setDedicatedAAViaTreasury(await access.getAddress(), aa.address)).wait();
+
+      // Bootstrap pool
+      await seedPoolIfNeeded(env);
+
+      const poolAddr = await pool.getAddress();
+      const treasuryAddr = await treasury.getAddress();
+      const routerAddr = await router.getAddress();
+
+      // Before state
+      const reservesBefore = await reserves(pool);
+      const treasuryAssetBefore = await asset.balanceOf(treasuryAddr);
+      const treasuryUsdcBefore = await usdc.balanceOf(treasuryAddr);
+
+      // AA deposits profits (ASSET)
+      const depositAmount = ethers.parseEther("100");
+      await asset.mint(aa.address, depositAmount);
+      await asset.connect(aa).approve(routerAddr, depositAmount);
+
+      const expectedTreasuryCut = (depositAmount * 500n) / 10000n; // 5%
+      const expectedPoolAmount = depositAmount - expectedTreasuryCut; // 95%
+
+      const tx = await router.connect(aa).deposit({
+        pool: poolAddr,
+        isUsdc: false,
+        amount: depositAmount,
+      });
+      const receipt = await tx.wait();
+
+      // After state
+      const reservesAfter = await reserves(pool);
+      const treasuryAssetAfter = await asset.balanceOf(treasuryAddr);
+      const treasuryUsdcAfter = await usdc.balanceOf(treasuryAddr);
+
+      // Verify treasury received 5%
+      expect(treasuryAssetAfter - treasuryAssetBefore).to.equal(expectedTreasuryCut);
+      expect(treasuryUsdcAfter).to.equal(treasuryUsdcBefore);
+
+      // Verify pool reserves increased by 95%
+      expect(reservesAfter.a - reservesBefore.a).to.equal(expectedPoolAmount);
+      expect(reservesAfter.u).to.equal(reservesBefore.u);
+
+      // Verify event
+      const depositEvent = receipt?.logs.find((log: any) => {
+        try {
+          const parsed = router.interface.parseLog(log);
+          return parsed?.name === "DepositExecuted";
+        } catch {
+          return false;
+        }
+      });
+      expect(depositEvent).to.not.be.undefined;
+
+      expect({
+        operation: "AA Deposit (ASSET)",
+        depositAmount: depositAmount.toString(),
+        treasuryCut: expectedTreasuryCut.toString(),
+        poolAmount: expectedPoolAmount.toString(),
+        poolReserves: {
+          before: { a: reservesBefore.a.toString(), u: reservesBefore.u.toString() },
+          after: { a: reservesAfter.a.toString(), u: reservesAfter.u.toString() },
+        },
+        treasuryBalances: {
+          before: { asset: treasuryAssetBefore.toString(), usdc: treasuryUsdcBefore.toString() },
+          after: { asset: treasuryAssetAfter.toString(), usdc: treasuryUsdcAfter.toString() },
+        },
+        treasuryCutReceived: (treasuryAssetAfter - treasuryAssetBefore).toString(),
+        poolReserveIncrease: (reservesAfter.a - reservesBefore.a).toString(),
+      }).to.matchSnapshot("AA deposit — 5% treasury cut");
+    });
+
+    it("AA deposit (USDC): verifies 5% treasury cut and pool state", async () => {
+      const env: CoreEnv | any = await deployCore();
+      const { deployer, pool, router, asset, usdc, treasury, access } = env;
+      const signers = await ethers.getSigners();
+      const aa = signers[2];
+
+      // Set AA
+      await (await treasury.setDedicatedAAViaTreasury(await access.getAddress(), aa.address)).wait();
+
+      // Bootstrap pool
+      await seedPoolIfNeeded(env);
+
+      const poolAddr = await pool.getAddress();
+      const treasuryAddr = await treasury.getAddress();
+      const routerAddr = await router.getAddress();
+
+      // Before state
+      const reservesBefore = await reserves(pool);
+      const treasuryAssetBefore = await asset.balanceOf(treasuryAddr);
+      const treasuryUsdcBefore = await usdc.balanceOf(treasuryAddr);
+
+      // AA deposits profits (USDC)
+      const depositAmount = ethers.parseEther("100");
+      await usdc.mint(aa.address, depositAmount);
+      await usdc.connect(aa).approve(routerAddr, depositAmount);
+
+      const expectedTreasuryCut = (depositAmount * 500n) / 10000n; // 5%
+      const expectedPoolAmount = depositAmount - expectedTreasuryCut; // 95%
+
+      await router.connect(aa).deposit({
+        pool: poolAddr,
+        isUsdc: true,
+        amount: depositAmount,
+      });
+
+      // After state
+      const reservesAfter = await reserves(pool);
+      const treasuryAssetAfter = await asset.balanceOf(treasuryAddr);
+      const treasuryUsdcAfter = await usdc.balanceOf(treasuryAddr);
+
+      // Verify treasury received 5%
+      expect(treasuryUsdcAfter - treasuryUsdcBefore).to.equal(expectedTreasuryCut);
+      expect(treasuryAssetAfter).to.equal(treasuryAssetBefore);
+
+      // Verify pool reserves increased by 95%
+      expect(reservesAfter.u - reservesBefore.u).to.equal(expectedPoolAmount);
+      expect(reservesAfter.a).to.equal(reservesBefore.a);
+
+      expect({
+        operation: "AA Deposit (USDC)",
+        depositAmount: depositAmount.toString(),
+        treasuryCut: expectedTreasuryCut.toString(),
+        poolAmount: expectedPoolAmount.toString(),
+        poolReserves: {
+          before: { a: reservesBefore.a.toString(), u: reservesBefore.u.toString() },
+          after: { a: reservesAfter.a.toString(), u: reservesAfter.u.toString() },
+        },
+        treasuryBalances: {
+          before: { asset: treasuryAssetBefore.toString(), usdc: treasuryUsdcBefore.toString() },
+          after: { asset: treasuryAssetAfter.toString(), usdc: treasuryUsdcAfter.toString() },
+        },
+      }).to.matchSnapshot("AA deposit USDC — 5% treasury cut");
+    });
+
+    it("AA full cycle: swap then deposit profits with treasury tracking", async () => {
+      const env: CoreEnv | any = await deployCore();
+      const { deployer, pool, router, asset, usdc, treasury, access } = env;
+      const signers = await ethers.getSigners();
+      const aa = signers[2];
+
+      // Set AA
+      await (await treasury.setDedicatedAAViaTreasury(await access.getAddress(), aa.address)).wait();
+
+      // Bootstrap pool
+      await seedPoolIfNeeded(env);
+
+      const poolAddr = await pool.getAddress();
+      const treasuryAddr = await treasury.getAddress();
+      const routerAddr = await router.getAddress();
+
+      // Initial state
+      const initialReserves = await reserves(pool);
+      const initialTreasuryAsset = await asset.balanceOf(treasuryAddr);
+      const initialTreasuryUsdc = await usdc.balanceOf(treasuryAddr);
+
+      // Step 1: AA performs swap (ASSET -> USDC)
+      const swapAmount = ethers.parseEther("10");
+      await asset.mint(aa.address, swapAmount);
+      await asset.connect(aa).approve(routerAddr, swapAmount);
+      await asset.connect(aa).approve(poolAddr, swapAmount);
+
+      // Get expected output via static call
+      let expectedSwapOutput: bigint = 0n;
+      try {
+        const staticResult = await router.connect(aa).swap.staticCall({
+          pool: poolAddr,
+          assetToUsdc: true,
+          amountIn: swapAmount,
+          minAmountOut: 0n,
+          to: aa.address,
+          payer: aa.address,
+        });
+        expectedSwapOutput = BigInt(staticResult.toString());
+      } catch {
+        // Fallback: calculate from quote
+        const quoteResult = await router.quoteSwap(poolAddr, true, swapAmount);
+        expectedSwapOutput = BigInt(quoteResult.toString());
+      }
+
+      await router.connect(aa).swap({
+        pool: poolAddr,
+        assetToUsdc: true,
+        amountIn: swapAmount,
+        minAmountOut: 0n,
+        to: aa.address,
+        payer: aa.address,
+      });
+
+      const afterSwapReserves = await reserves(pool);
+      const afterSwapTreasuryAsset = await asset.balanceOf(treasuryAddr);
+      const afterSwapTreasuryUsdc = await usdc.balanceOf(treasuryAddr);
+
+      // Step 2: AA deposits profits back (simulating profit from external arbitrage)
+      // Assume AA made profit and wants to deposit USDC back
+      const profitAmount = ethers.parseEther("50");
+      await usdc.mint(aa.address, profitAmount);
+      await usdc.connect(aa).approve(routerAddr, profitAmount);
+
+      const expectedTreasuryCut = (profitAmount * 500n) / 10000n; // 5%
+      const expectedPoolAmount = profitAmount - expectedTreasuryCut; // 95%
+
+      await router.connect(aa).deposit({
+        pool: poolAddr,
+        isUsdc: true,
+        amount: profitAmount,
+      });
+
+      // Final state
+      const finalReserves = await reserves(pool);
+      const finalTreasuryAsset = await asset.balanceOf(treasuryAddr);
+      const finalTreasuryUsdc = await usdc.balanceOf(treasuryAddr);
+
+      // Verify swap effects
+      expect(afterSwapReserves.a).to.equal(initialReserves.a + swapAmount);
+      expect(afterSwapReserves.u).to.be.lt(initialReserves.u);
+      expect(afterSwapTreasuryAsset).to.equal(initialTreasuryAsset);
+      expect(afterSwapTreasuryUsdc).to.equal(initialTreasuryUsdc);
+
+      // Calculate swap output
+      const swapOutput = initialReserves.u - afterSwapReserves.u;
+
+      // Verify deposit effects
+      expect(finalTreasuryUsdc - afterSwapTreasuryUsdc).to.equal(expectedTreasuryCut);
+      expect(finalReserves.u - afterSwapReserves.u).to.equal(expectedPoolAmount);
+      expect(finalTreasuryAsset).to.equal(afterSwapTreasuryAsset);
+
+      expect({
+        operation: "AA Full Cycle (Swap + Deposit)",
+        swap: {
+          amountIn: swapAmount.toString(),
+          amountOut: swapOutput.toString(),
+          expectedOutput: expectedSwapOutput.toString(),
+        },
+        deposit: {
+          amount: profitAmount.toString(),
+          treasuryCut: expectedTreasuryCut.toString(),
+          poolAmount: expectedPoolAmount.toString(),
+        },
+        poolReserves: {
+          initial: { a: initialReserves.a.toString(), u: initialReserves.u.toString() },
+          afterSwap: { a: afterSwapReserves.a.toString(), u: afterSwapReserves.u.toString() },
+          final: { a: finalReserves.a.toString(), u: finalReserves.u.toString() },
+        },
+        treasuryBalances: {
+          initial: { asset: initialTreasuryAsset.toString(), usdc: initialTreasuryUsdc.toString() },
+          afterSwap: { asset: afterSwapTreasuryAsset.toString(), usdc: afterSwapTreasuryUsdc.toString() },
+          final: { asset: finalTreasuryAsset.toString(), usdc: finalTreasuryUsdc.toString() },
+        },
+        treasuryTotalReceived: (finalTreasuryUsdc - initialTreasuryUsdc).toString(),
+      }).to.matchSnapshot("AA full cycle — swap then deposit");
+    });
+  });
 });

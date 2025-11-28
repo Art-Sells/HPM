@@ -15,10 +15,8 @@ import {
   runSwap, 
   approveSupplicator,
   bootstrapPool,
-  wireLegacyOrbit,
-  ensureNPools,
   approveMax,
-  approveMaxMany,
+  setDedicatedAA,
   A,
   U
 } from "./helpers.ts";
@@ -315,36 +313,31 @@ describe("FAFETreasury — Router Pause", () => {
 
   it("blocks swap when paused", async () => {
     const env = await deployCore();
-    const { deployer, treasury, router, factory, asset, usdc, other } = env;
+    const { deployer, treasury, router, pool, asset, usdc, access } = env;
 
-    // Setup orbit with 3 pools
-    const pools = await ensureNPools(factory, treasury, await asset.getAddress(), await usdc.getAddress(), 3);
-    const orbit: [string, string, string] = [pools[0], pools[1], pools[2]];
+    // Bootstrap pool
+    const poolAddr = await pool.getAddress();
+    await bootstrapPool(treasury, poolAddr, asset, usdc, A, U, -5000);
 
-    // Bootstrap pools
-    for (const poolAddr of orbit) {
-      await bootstrapPool(treasury, poolAddr, asset, usdc, A, U, -500);
-    }
-
-    // Wire orbit
-    await wireLegacyOrbit(treasury, router, orbit[0], orbit);
+    // Set up AA
+    const [deployerSigner, , aa] = await ethers.getSigners();
+    await setDedicatedAA(treasury, access, aa.address, deployerSigner);
 
     // Fund and approve
     const amountIn = ethers.parseEther("1");
-    await (await usdc.connect(deployer).mint(other.address, amountIn * 10n)).wait();
-    const routerAddr = await router.getAddress();
-    await approveMax(usdc, other, routerAddr);
-    await approveMaxMany(usdc, other, orbit);
+    await (await asset.connect(deployer).mint(aa.address, amountIn * 10n)).wait();
+    await approveMax(asset, aa, poolAddr);
 
     // Pause the router
-    await (await treasury.connect(deployer).pauseRouterViaTreasury(routerAddr)).wait();
+    await (await treasury.connect(deployer).pauseRouterViaTreasury(await router.getAddress())).wait();
 
     // Swap should revert
     await expect(
       runSwap({
         router,
-        caller: other,
-        startPool: orbit[0],
+        caller: aa,
+        poolAddr,
+        assetToUsdc: true,
         amountIn,
       })
     ).to.be.revertedWithCustomError(router, "RouterPaused");
@@ -352,37 +345,32 @@ describe("FAFETreasury — Router Pause", () => {
 
   it("allows swap when unpaused", async () => {
     const env = await deployCore();
-    const { deployer, treasury, router, factory, asset, usdc, other } = env;
+    const { deployer, treasury, router, pool, asset, usdc, access } = env;
 
-    // Setup orbit with 3 pools
-    const pools = await ensureNPools(factory, treasury, await asset.getAddress(), await usdc.getAddress(), 3);
-    const orbit: [string, string, string] = [pools[0], pools[1], pools[2]];
+    // Bootstrap pool
+    const poolAddr = await pool.getAddress();
+    await bootstrapPool(treasury, poolAddr, asset, usdc, A, U, -5000);
 
-    // Bootstrap pools
-    for (const poolAddr of orbit) {
-      await bootstrapPool(treasury, poolAddr, asset, usdc, A, U, -500);
-    }
-
-    // Wire orbit
-    await wireLegacyOrbit(treasury, router, orbit[0], orbit);
+    // Set up AA
+    const [deployerSigner, , aa] = await ethers.getSigners();
+    await setDedicatedAA(treasury, access, aa.address, deployerSigner);
 
     // Fund and approve
     const amountIn = ethers.parseEther("1");
-    await (await usdc.connect(deployer).mint(other.address, amountIn * 20n)).wait();
-    const routerAddr = await router.getAddress();
-    await approveMax(usdc, other, routerAddr);
-    await approveMaxMany(usdc, other, orbit);
+    await (await asset.connect(deployer).mint(aa.address, amountIn * 20n)).wait();
+    await approveMax(asset, aa, poolAddr);
 
     // Pause and unpause
-    await (await treasury.connect(deployer).pauseRouterViaTreasury(routerAddr)).wait();
-    await (await treasury.connect(deployer).unpauseRouterViaTreasury(routerAddr)).wait();
+    await (await treasury.connect(deployer).pauseRouterViaTreasury(await router.getAddress())).wait();
+    await (await treasury.connect(deployer).unpauseRouterViaTreasury(await router.getAddress())).wait();
 
     // Swap should succeed
     await expect(
       runSwap({
         router,
-        caller: other,
-        startPool: orbit[0],
+        caller: aa,
+        poolAddr,
+        assetToUsdc: true,
         amountIn,
       })
     ).to.not.be.reverted;
@@ -390,28 +378,19 @@ describe("FAFETreasury — Router Pause", () => {
 
   it("view functions still work when paused", async () => {
     const env = await deployCore();
-    const { deployer, treasury, router, factory, asset, usdc } = env;
+    const { deployer, treasury, router, pool, asset, usdc } = env;
 
-    // Setup orbit
-    const pools = await ensureNPools(factory, treasury, await asset.getAddress(), await usdc.getAddress(), 3);
-    const orbit: [string, string, string] = [pools[0], pools[1], pools[2]];
-
-    for (const poolAddr of orbit) {
-      await bootstrapPool(treasury, poolAddr, asset, usdc, A, U, -500);
-    }
-
-    await wireLegacyOrbit(treasury, router, orbit[0], orbit);
+    // Bootstrap pool
+    const poolAddr = await pool.getAddress();
+    await bootstrapPool(treasury, poolAddr, asset, usdc, A, U, -5000);
 
     // Pause
     await (await treasury.connect(deployer).pauseRouterViaTreasury(await router.getAddress())).wait();
 
     // View functions should still work
     const amountIn = ethers.parseEther("1");
-    const quote = await router.getAmountsOut(amountIn, orbit, true);
+    const quote = await router.quoteSwap(poolAddr, true, amountIn);
     expect(quote).to.not.be.undefined;
-
-    const orbitConfig = await router.getOrbit(orbit[0]);
-    expect(orbitConfig.length).to.equal(3);
 
     const paused = await router.paused();
     expect(paused).to.equal(true);
@@ -445,6 +424,165 @@ describe("FAFETreasury — Router Pause", () => {
     await (await treasury.connect(deployer).unpauseRouterViaTreasury(await router.getAddress())).wait();
 
     expect(await router.paused()).to.equal(false);
+  });
+
+  it("blocks deposit when paused", async () => {
+    const env = await deployCore();
+    const { deployer, treasury, router, pool, asset, usdc, access } = env;
+
+    // Bootstrap pool
+    const poolAddr = await pool.getAddress();
+    await bootstrapPool(treasury, poolAddr, asset, usdc, A, U, -5000);
+
+    // Set up AA
+    const [deployerSigner, , aa] = await ethers.getSigners();
+    await setDedicatedAA(treasury, access, aa.address, deployerSigner);
+
+    // Fund AA
+    const depositAmount = ethers.parseEther("10");
+    await (await asset.connect(deployer).mint(aa.address, depositAmount)).wait();
+    await approveMax(asset, aa, await router.getAddress());
+
+    // Pause the router
+    await (await treasury.connect(deployer).pauseRouterViaTreasury(await router.getAddress())).wait();
+
+    // Deposit should revert
+    await expect(
+      router.connect(aa).deposit({
+        pool: poolAddr,
+        isUsdc: false,
+        amount: depositAmount,
+      })
+    ).to.be.revertedWithCustomError(router, "RouterPaused");
+  });
+
+  it("allows deposit when unpaused", async () => {
+    const env = await deployCore();
+    const { deployer, treasury, router, pool, asset, usdc, access } = env;
+
+    // Bootstrap pool
+    const poolAddr = await pool.getAddress();
+    await bootstrapPool(treasury, poolAddr, asset, usdc, A, U, -5000);
+
+    // Set up AA
+    const [deployerSigner, , aa] = await ethers.getSigners();
+    await setDedicatedAA(treasury, access, aa.address, deployerSigner);
+
+    // Fund AA
+    const depositAmount = ethers.parseEther("10");
+    await (await asset.connect(deployer).mint(aa.address, depositAmount * 2n)).wait();
+    await approveMax(asset, aa, await router.getAddress());
+
+    // Pause and unpause
+    await (await treasury.connect(deployer).pauseRouterViaTreasury(await router.getAddress())).wait();
+    await (await treasury.connect(deployer).unpauseRouterViaTreasury(await router.getAddress())).wait();
+
+    // Deposit should succeed
+    await expect(
+      router.connect(aa).deposit({
+        pool: poolAddr,
+        isUsdc: false,
+        amount: depositAmount,
+      })
+    ).to.not.be.reverted;
+  });
+
+  it("blocks rebalance when paused", async () => {
+    const env = await deployCore();
+    const { deployer, treasury, router, pool, asset, usdc, access, factory } = env;
+
+    // Create second pool
+    const pool1Addr = await pool.getAddress();
+    const tx = await treasury.createPoolViaTreasury(
+      await factory.getAddress(),
+      await asset.getAddress(),
+      await usdc.getAddress()
+    );
+    await tx.wait();
+    const pools = await factory.getPools();
+    const pool2Addr = pools[pools.length - 1];
+    const pool2 = (await ethers.getContractAt("FAFEPool", pool2Addr)) as FAFEPool;
+    await (await pool2.setRouter(await router.getAddress())).wait();
+
+    // Bootstrap both pools
+    await bootstrapPool(treasury, pool1Addr, asset, usdc, A, U, -5000);
+    await bootstrapPool(treasury, pool2Addr, asset, usdc, A, U, -5000);
+
+    // Set up AA
+    const [deployerSigner, , aa] = await ethers.getSigners();
+    await setDedicatedAA(treasury, access, aa.address, deployerSigner);
+
+    // Get pool1 contract instance
+    const pool1 = (await ethers.getContractAt("FAFEPool", pool1Addr)) as FAFEPool;
+
+    // Create imbalance: pool1 has more USDC
+    await (await usdc.connect(deployer).mint(pool1Addr, ethers.parseEther("10"))).wait();
+    await (await pool1.donateToReserves(true, ethers.parseEther("10"))).wait();
+
+    // Pause the router
+    await (await treasury.connect(deployer).pauseRouterViaTreasury(await router.getAddress())).wait();
+
+    // Rebalance should revert
+    await expect(
+      router.connect(aa).rebalance({
+        sourcePool: pool1Addr,
+        destPool: pool2Addr,
+        isUsdc: true,
+      })
+    ).to.be.revertedWithCustomError(router, "RouterPaused");
+  });
+
+  it("allows rebalance when unpaused", async () => {
+    const env = await deployCore();
+    const { deployer, treasury, router, pool, asset, usdc, access, factory } = env;
+
+    // Create second pool
+    const pool1Addr = await pool.getAddress();
+    const tx = await treasury.createPoolViaTreasury(
+      await factory.getAddress(),
+      await asset.getAddress(),
+      await usdc.getAddress()
+    );
+    await tx.wait();
+    const pools = await factory.getPools();
+    const pool2Addr = pools[pools.length - 1];
+    const pool2 = (await ethers.getContractAt("FAFEPool", pool2Addr)) as FAFEPool;
+    await (await pool2.setRouter(await router.getAddress())).wait();
+
+    // Bootstrap both pools
+    await bootstrapPool(treasury, pool1Addr, asset, usdc, A, U, -5000);
+    await bootstrapPool(treasury, pool2Addr, asset, usdc, A, U, -5000);
+
+    // Set up AA
+    const [deployerSigner, , aa] = await ethers.getSigners();
+    await setDedicatedAA(treasury, access, aa.address, deployerSigner);
+
+    // Get pool1 contract instance
+    const pool1 = (await ethers.getContractAt("FAFEPool", pool1Addr)) as FAFEPool;
+
+    // Create imbalance: pool1 has more USDC
+    await (await usdc.connect(deployer).mint(pool1Addr, ethers.parseEther("10"))).wait();
+    await (await pool1.donateToReserves(true, ethers.parseEther("10"))).wait();
+
+    // Pause and unpause
+    await (await treasury.connect(deployer).pauseRouterViaTreasury(await router.getAddress())).wait();
+    await (await treasury.connect(deployer).unpauseRouterViaTreasury(await router.getAddress())).wait();
+
+    // Rebalance should succeed (if threshold is met)
+    const pool1Reserve = await pool1.reserveUsdc();
+    const pool2Reserve = await pool2.reserveUsdc();
+    const sourceScaled = pool1Reserve * 10000n;
+    const destScaled = pool2Reserve * 10500n;
+    
+    if (sourceScaled >= destScaled) {
+      await expect(
+        router.connect(aa).rebalance({
+          sourcePool: pool1Addr,
+          destPool: pool2Addr,
+          isUsdc: true,
+        })
+      ).to.not.be.reverted;
+    }
   });
 });
 

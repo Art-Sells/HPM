@@ -46,6 +46,9 @@ export async function deployCore(): Promise<DeployCoreResult> {
   await treasury.waitForDeployment();
   const treasuryAddr = await treasury.getAddress();
 
+  // 2a) Set treasury on AccessManager (required for setDedicatedAA)
+  await (await access.setTreasury(treasuryAddr)).wait();
+
   // 3) Router (access, treasury)
   const Router = await ethers.getContractFactory("FAFERouter");
   const router = (await Router.deploy(
@@ -91,7 +94,10 @@ export async function deployCore(): Promise<DeployCoreResult> {
   const poolAddr = pools[0];
   const pool = (await ethers.getContractAt("FAFEPool", poolAddr)) as FAFEPool;
 
-  // 8) Fund Treasury with tokens for bootstrap tests
+  // 8) Set router on pool (required for flipOffset)
+  await (await pool.setRouter(await router.getAddress())).wait();
+
+  // 9) Fund Treasury with tokens for bootstrap tests
   await (await asset.mint(treasuryAddr, ethers.parseEther("1000"))).wait();
   await (await usdc.mint(treasuryAddr,  ethers.parseEther("1000"))).wait();
 
@@ -232,35 +238,37 @@ export async function bootstrapSix(
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Orbit wiring (treasury-only on Router implementation)
+ * Dedicated AA setup
  * ──────────────────────────────────────────────────────────────────────────── */
 
-export async function wireLegacyOrbit(
+export async function setDedicatedAA(
   treasury: FAFETreasury,
-  router: FAFERouter,
-  startPool: string,
-  orbit: [string, string, string]
+  access: FAFEAccessManager,
+  aaAddress: string,
+  caller?: any // Optional: if provided, use this signer (for treasury owner)
 ) {
-  await (await treasury.setOrbitViaTreasury(await router.getAddress(), startPool, orbit)).wait();
-}
-
-export async function wireDualOrbit(
-  treasury: FAFETreasury,
-  router: FAFERouter,
-  startPool: string,
-  neg: [string, string, string],
-  pos: [string, string, string],
-  startWithNeg = true
-) {
-  await (
-    await treasury.setDualOrbitViaTreasury(
-      await router.getAddress(),
-      startPool,
-      neg,
-      pos,
-      startWithNeg
-    )
-  ).wait();
+  // Treasury calls setDedicatedAAViaTreasury, which calls access.setDedicatedAA
+  // setDedicatedAA now requires msg.sender == treasury (set via setTreasury)
+  const treasuryOwner = caller || (await ethers.getSigner(await treasury.owner()));
+  const tx = await treasury.connect(treasuryOwner).setDedicatedAAViaTreasury(await access.getAddress(), aaAddress);
+  const receipt = await tx.wait();
+  
+  // Verify the event was emitted
+  const iface = access.interface;
+  const event = iface.getEvent("DedicatedAASet");
+  const found = receipt?.logs.find((log: any) => {
+    try {
+      return iface.parseLog(log)?.name === "DedicatedAASet";
+    } catch {
+      return false;
+    }
+  });
+  
+  if (!found) {
+    throw new Error("DedicatedAASet event not found in transaction");
+  }
+  
+  return receipt;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -292,8 +300,16 @@ export async function approveMaxMany(token: TestERC20, owner: any, spenders: str
  * Permissioned single-pool path (SUPPLICATE)
  * ──────────────────────────────────────────────────────────────────────────── */
 
-export async function approveSupplicator(access: FAFEAccessManager, who: string, approved = true) {
-  await (await access.setApprovedSupplicator(who, approved)).wait();
+export async function approveSupplicator(
+  access: FAFEAccessManager,
+  who: string,
+  approved = true,
+  caller?: any // Optional: if provided, use this signer (for access manager owner)
+) {
+  // If caller provided, use it; otherwise get the current owner
+  const ownerAddr = await access.owner();
+  const signer = caller || (await ethers.getSigner(ownerAddr));
+  await (await access.connect(signer).setApprovedSupplicator(who, approved)).wait();
 }
 
 /** Runs a single-pool supplicate (permissioned). Approves router (fee) + pool (principal). */
@@ -330,73 +346,78 @@ export async function runSupplicate(params: {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * MEV path (3-hop MCV SWAP) — public, no supplicator role required
+ * Single-pool swap (permissioned, only dedicated AA) — flips offset after swap
  * ──────────────────────────────────────────────────────────────────────────── */
 
-/** Quote like a searcher: uses Router.getAmountsOutFromStart (no storage peeking) */
-export async function mevQuote(router: FAFERouter, startPool: string, amountIn: bigint) {
-  const q = await (router as any).getAmountsOutFromStart(startPool, amountIn);
-  // q = [assetToUsdc(bool), orbit(address[3]), perHop(uint256[3]), total(uint256)]
-  return {
-    assetToUsdc: Boolean(q[0]),
-    orbit: q[1] as string[],
-    perHop: (q[2] as bigint[]).map((x: any) => BigInt(String(x))),
-    total: BigInt(String(q[3])),
-  };
+/** Quote a swap operation */
+export async function quoteSwap(
+  router: FAFERouter,
+  poolAddr: string,
+  assetToUsdc: boolean,
+  amountIn: bigint
+) {
+  return await router.quoteSwap(poolAddr, assetToUsdc, amountIn);
 }
 
-/** Prepare approvals for a swap:
- *  - Router needs allowance to pull fees on tokenIn.
- *  - Each pool needs allowance to pull principal (amountIn) for its hop.
- */
-export async function prepareSwapApprovals(params: {
-  caller: any;
-  router: FAFERouter;
-  orbit: string[];
-  tokenIn: TestERC20;
-}) {
-  const { caller, router, orbit, tokenIn } = params;
-  await approveMax(tokenIn, caller, await router.getAddress());
-  await approveMaxMany(tokenIn, caller, orbit);
-}
-
-/** Execute a 3-hop swap (MCV).
- *  - We first quote to know direction + tokenIn (so we don’t read custom storage)
- *  - Then do approvals and call router.swap(...)
+/** Execute a single-pool swap (permissioned, only dedicated AA can call).
+ *  - Requires caller to be the dedicated AA address
+ *  - Approves pool for principal
+ *  - Calls router.swap() which flips offset after execution
  */
 export async function runSwap(params: {
   router: FAFERouter;
-  caller: any;               // signer
-  startPool: string;
+  caller: any;               // signer (must be dedicated AA)
+  poolAddr: string;
+  assetToUsdc: boolean;
   amountIn: bigint;
-  minTotalAmountOut?: bigint;
+  minAmountOut?: bigint;
   to?: string;
   payer?: string;
 }) {
-  const { router, caller, startPool, amountIn } = params;
-  const minTotalAmountOut = params.minTotalAmountOut ?? 0n;
+  const { router, caller, poolAddr, assetToUsdc, amountIn } = params;
+  const minAmountOut = params.minAmountOut ?? 0n;
   const to = params.to ?? caller.address;
   const payer = params.payer ?? caller.address;
 
-  // Quote like a MEV
-  const q = await mevQuote(router, startPool, amountIn);
+  const { asset, usdc } = await getTokensFromPoolAddr(poolAddr);
+  const tokenIn = assetToUsdc ? asset : usdc;
 
-  // Resolve tokenIn from the first pool in orbit using direction
-  const { assetAddr, usdcAddr } = await getTokensFromPoolAddr(q.orbit[0]);
-  const tokenInAddr = q.assetToUsdc ? assetAddr : usdcAddr;
-  const tokenIn = (await ethers.getContractAt("TestERC20", tokenInAddr)) as TestERC20;
+  // Approve pool for principal
+  await approveMax(tokenIn, caller, poolAddr);
 
-  // Approvals: router (fee) + each pool (principal)
-  await prepareSwapApprovals({ caller, router, orbit: q.orbit, tokenIn });
-
-  // Call the MEV-facing surface
+  // Call the swap function (only dedicated AA can call)
   const tx = await (router.connect(caller) as any).swap({
-    startPool,
-    assetToUsdc: false,       // ignored if dual-orbit set; kept for legacy single-orbit
+    pool: poolAddr,
+    assetToUsdc,
     amountIn,
-    minTotalAmountOut,
+    minAmountOut,
     to,
     payer,
+  });
+  return await tx.wait();
+}
+
+/** Execute a deposit operation (permissioned, any approved supplicator) */
+export async function runDeposit(params: {
+  router: FAFERouter;
+  caller: any;               // signer (must be approved supplicator)
+  poolAddr: string;
+  isUsdc: boolean;
+  amount: bigint;
+}) {
+  const { router, caller, poolAddr, isUsdc, amount } = params;
+
+  const { asset, usdc } = await getTokensFromPoolAddr(poolAddr);
+  const token = isUsdc ? usdc : asset;
+
+  // Approve router for the deposit amount
+  await approveMax(token, caller, await router.getAddress());
+
+  // Call the deposit function
+  const tx = await (router.connect(caller) as any).deposit({
+    pool: poolAddr,
+    isUsdc,
+    amount,
   });
   return await tx.wait();
 }

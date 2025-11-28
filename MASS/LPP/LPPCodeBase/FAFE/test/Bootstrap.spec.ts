@@ -53,7 +53,6 @@ async function addr(x: any): Promise<string> {
 /** Reserve-only parity snapshot (no ERC20 balance peeks) */
 async function snapshotParity(pool: FAFEPool, label: string) {
   const details = {
-    addresses: { pool: await addr(pool) },
     reserves: {
       asset: ((await (pool as any).reserveAsset()) as bigint).toString(),
       usdc:  ((await (pool as any).reserveUsdc())  as bigint).toString(),
@@ -73,7 +72,6 @@ async function snapshotPriceDetail(pool: FAFEPool, label: string) {
   const resU = (await (pool as any).reserveUsdc()) as bigint;
 
   expect({
-    pool: await pool.getAddress(),
     priceX96: px.toString(),                 // asset / USDC (linear Q96)
     driftBps: driftBpsFromPriceX96(px),      // relative to 1.0
     sqrtPrices: {
@@ -276,6 +274,32 @@ describe("Bootstrap", () => {
     ).to.be.revertedWith("not owner");
   });
 
+  it("unauthorized caller cannot call bootstrapInitialize directly on pool", async () => {
+    const e: any = await deployCore();
+
+    const pool = e.pool as FAFEPool;
+    const asset = e.asset as TestERC20;
+    const usdc = e.usdc as TestERC20;
+    const deployer = e.deployer;
+    const [, unauthorized] = await ethers.getSigners();
+
+    const amtA = ethers.parseEther("1");
+    const amtU = ethers.parseEther("1");
+
+    // Fund the unauthorized caller
+    await (await asset.connect(deployer).mint(unauthorized.address, amtA)).wait();
+    await (await usdc.connect(deployer).mint(unauthorized.address, amtU)).wait();
+
+    // Approve pool to transfer tokens
+    await (await asset.connect(unauthorized).approve(await pool.getAddress(), amtA)).wait();
+    await (await usdc.connect(unauthorized).approve(await pool.getAddress(), amtU)).wait();
+
+    // Try to call bootstrapInitialize directly - should revert with "only auth"
+    await expect(
+      (pool as any).connect(unauthorized).bootstrapInitialize(amtA, amtU, 0n)
+    ).to.be.revertedWith("only auth");
+  });
+
   it("bootstrap with zero amounts is rejected", async () => {
     const e: any = await deployCore();
 
@@ -314,10 +338,10 @@ describe("Offset bootstrap seeding", () => {
     const usdcAddr  = await usdc.getAddress();
 
     // Create four pools:
-    //  - Pool A: center -500 bps
-    //  - Pool B: center -499 bps
-    //  - Pool C: center +499 bps
-    //  - Pool D: center +500 bps
+    //  - Pool A: -5000 bps
+    //  - Pool B: -4999 bps
+    //  - Pool C: +4999 bps
+    //  - Pool D: +5000 bps
     const poolA = await newPoolViaTreasuryWithTokens(treasury, factory, assetAddr, usdcAddr);
     const poolB = await newPoolViaTreasuryWithTokens(treasury, factory, assetAddr, usdcAddr);
     const poolC = await newPoolViaTreasuryWithTokens(treasury, factory, assetAddr, usdcAddr);
@@ -336,25 +360,24 @@ describe("Offset bootstrap seeding", () => {
       amtU * 4n
     );
 
-    await bootstrapViaTreasury(treasury, poolA, amtA, amtU, -500n);
-    await bootstrapViaTreasury(treasury, poolB, amtA, amtU, -499n);
-    await bootstrapViaTreasury(treasury, poolC, amtA, amtU,  499n);
-    await bootstrapViaTreasury(treasury, poolD, amtA, amtU,  500n);
+    await bootstrapViaTreasury(treasury, poolA, amtA, amtU, -5000n);
+    await bootstrapViaTreasury(treasury, poolB, amtA, amtU, -4999n);
+    await bootstrapViaTreasury(treasury, poolC, amtA, amtU,  4999n);
+    await bootstrapViaTreasury(treasury, poolD, amtA, amtU,  5000n);
 
-    await snapshotPriceDetail(poolA, "Offset seed — Pool A (-500 bps)");
-    await snapshotPriceDetail(poolB, "Offset seed — Pool B (-499 bps)");
-    await snapshotPriceDetail(poolC, "Offset seed — Pool C (+499 bps)");
-    await snapshotPriceDetail(poolD, "Offset seed — Pool D (+500 bps)");
+    await snapshotPriceDetail(poolA, "Offset seed — Pool A (-5000 bps)");
+    await snapshotPriceDetail(poolB, "Offset seed — Pool B (-4999 bps)");
+    await snapshotPriceDetail(poolC, "Offset seed — Pool C (+4999 bps)");
+    await snapshotPriceDetail(poolD, "Offset seed — Pool D (+5000 bps)");
   });
 });
 
-describe("Bootstrap topology (bootstrap + orbits)", () => {
-  it("bootstraps four pools and sets dual orbits atomically", async () => {
+describe("Bootstrap topology (bootstrap multiple pools)", () => {
+  it("bootstraps four pools with different offsets", async () => {
     const e: any = await deployCore();
 
     const treasury = e.treasury as FAFETreasury;
     const factory  = e.factory as FAFEFactory;
-    const router   = e.router as any;
     const asset    = e.asset as TestERC20;
     const usdc     = e.usdc as TestERC20;
     const deployer = e.deployer;
@@ -367,11 +390,6 @@ describe("Bootstrap topology (bootstrap + orbits)", () => {
     const pool1 = await newPoolViaTreasuryWithTokens(treasury, factory, assetAddr, usdcAddr);
     const pool2 = await newPoolViaTreasuryWithTokens(treasury, factory, assetAddr, usdcAddr);
     const pool3 = await newPoolViaTreasuryWithTokens(treasury, factory, assetAddr, usdcAddr);
-
-    const pool0Addr = await pool0.getAddress();
-    const pool1Addr = await pool1.getAddress();
-    const pool2Addr = await pool2.getAddress();
-    const pool3Addr = await pool3.getAddress();
 
     const amtA = ethers.parseEther("1"); // 1 ASSET
     const amtU = ethers.parseEther("1"); // 1 USDC
@@ -386,26 +404,11 @@ describe("Bootstrap topology (bootstrap + orbits)", () => {
       amtU * 4n
     );
 
-    // Bootstrap all 4 pools and set orbits atomically
-    const pools = [pool0Addr, pool1Addr, pool2Addr, pool3Addr];
-    const amountsAsset = [amtA, amtA, amtA, amtA];
-    const amountsUsdc = [amtU, amtU, amtU, amtU];
-    const offsetsBps = [-500n, -500n, 500n, 500n];
-    const negOrbit = [pool0Addr, pool1Addr];
-    const posOrbit = [pool2Addr, pool3Addr];
-    const routerAddr = await router.getAddress();
-
-    const tx = await (treasury as any).bootstrapTopology(
-      pools,
-      amountsAsset,
-      amountsUsdc,
-      offsetsBps,
-      routerAddr,
-      negOrbit,
-      posOrbit
-    );
-    const rcpt = await tx.wait();
-    await snapshotGasCost(rcpt!.gasUsed);
+    // Bootstrap all 4 pools individually with different offsets
+    await bootstrapViaTreasury(treasury, pool0, amtA, amtU, -5000n);
+    await bootstrapViaTreasury(treasury, pool1, amtA, amtU, -5000n);
+    await bootstrapViaTreasury(treasury, pool2, amtA, amtU, 5000n);
+    await bootstrapViaTreasury(treasury, pool3, amtA, amtU, 5000n);
 
     // Verify all pools are bootstrapped
     expect(await (pool0 as any).initialized()).to.be.true;
@@ -413,20 +416,112 @@ describe("Bootstrap topology (bootstrap + orbits)", () => {
     expect(await (pool2 as any).initialized()).to.be.true;
     expect(await (pool3 as any).initialized()).to.be.true;
 
-    // Verify orbits are set for all pools
-    for (const poolAddr of pools) {
-      const dualOrbit = await router.getDualOrbit(poolAddr);
-      // getDualOrbit returns (neg, pos, usingNeg) - if it doesn't revert, orbit is initialized
-      expect(dualOrbit[0]).to.deep.equal(negOrbit); // NEG orbit
-      expect(dualOrbit[1]).to.deep.equal(posOrbit); // POS orbit
-      expect(dualOrbit[0].length).to.equal(2); // Should have 2 pools
-      expect(dualOrbit[1].length).to.equal(2); // Should have 2 pools
-    }
-
     // Verify offsets
-    expect(await (pool0 as any).targetOffsetBps()).to.equal(-500n);
-    expect(await (pool1 as any).targetOffsetBps()).to.equal(-500n);
-    expect(await (pool2 as any).targetOffsetBps()).to.equal(500n);
-    expect(await (pool3 as any).targetOffsetBps()).to.equal(500n);
+    expect(await (pool0 as any).targetOffsetBps()).to.equal(-5000n);
+    expect(await (pool1 as any).targetOffsetBps()).to.equal(-5000n);
+    expect(await (pool2 as any).targetOffsetBps()).to.equal(5000n);
+    expect(await (pool3 as any).targetOffsetBps()).to.equal(5000n);
+  });
+});
+
+describe("Offset bounds validation", () => {
+  it("rejects offset greater than +10000 bps", async () => {
+    const e: any = await deployCore();
+
+    const pool = e.pool as FAFEPool;
+    const treasury = e.treasury as FAFETreasury;
+    const asset = e.asset as TestERC20;
+    const usdc = e.usdc as TestERC20;
+    const deployer = e.deployer;
+
+    const amtA = ethers.parseEther("1");
+    const amtU = ethers.parseEther("1");
+
+    await fundTreasuryForBootstrap(asset, usdc, deployer, treasury, amtA, amtU);
+
+    // Should revert with "offset out of bounds"
+    await expect(
+      bootstrapViaTreasury(treasury, pool, amtA, amtU, 10001n)
+    ).to.be.revertedWith("offset out of bounds");
+  });
+
+  it("rejects offset less than -10000 bps", async () => {
+    const e: any = await deployCore();
+
+    const pool = e.pool as FAFEPool;
+    const treasury = e.treasury as FAFETreasury;
+    const asset = e.asset as TestERC20;
+    const usdc = e.usdc as TestERC20;
+    const deployer = e.deployer;
+
+    const amtA = ethers.parseEther("1");
+    const amtU = ethers.parseEther("1");
+
+    await fundTreasuryForBootstrap(asset, usdc, deployer, treasury, amtA, amtU);
+
+    // Should revert - for -10001, (10000 + (-10001)) = -1, making combined negative, so "bad offset"
+    // The bounds check happens after, but we never reach it
+    await expect(
+      bootstrapViaTreasury(treasury, pool, amtA, amtU, -10001n)
+    ).to.be.revertedWith("bad offset");
+  });
+
+  it("accepts offset at exactly +10000 bps", async () => {
+    const e: any = await deployCore();
+
+    const pool = e.pool as FAFEPool;
+    const treasury = e.treasury as FAFETreasury;
+    const asset = e.asset as TestERC20;
+    const usdc = e.usdc as TestERC20;
+    const deployer = e.deployer;
+
+    const amtA = ethers.parseEther("1");
+    const amtU = ethers.parseEther("1");
+
+    await fundTreasuryForBootstrap(asset, usdc, deployer, treasury, amtA, amtU);
+
+    // Should succeed at exactly +10000
+    await bootstrapViaTreasury(treasury, pool, amtA, amtU, 10000n);
+    expect(await (pool as any).targetOffsetBps()).to.equal(10000n);
+  });
+
+  it("rejects offset at exactly -10000 bps (makes price calculation invalid)", async () => {
+    const e: any = await deployCore();
+
+    const pool = e.pool as FAFEPool;
+    const treasury = e.treasury as FAFETreasury;
+    const asset = e.asset as TestERC20;
+    const usdc = e.usdc as TestERC20;
+    const deployer = e.deployer;
+
+    const amtA = ethers.parseEther("1");
+    const amtU = ethers.parseEther("1");
+
+    await fundTreasuryForBootstrap(asset, usdc, deployer, treasury, amtA, amtU);
+
+    // For -10000, (10000 + (-10000)) = 0, making combined = 0, so "bad offset"
+    // This fails before the bounds check
+    await expect(
+      bootstrapViaTreasury(treasury, pool, amtA, amtU, -10000n)
+    ).to.be.revertedWith("bad offset");
+  });
+
+  it("accepts offset at exactly -9999 bps (maximum negative that works)", async () => {
+    const e: any = await deployCore();
+
+    const pool = e.pool as FAFEPool;
+    const treasury = e.treasury as FAFETreasury;
+    const asset = e.asset as TestERC20;
+    const usdc = e.usdc as TestERC20;
+    const deployer = e.deployer;
+
+    const amtA = ethers.parseEther("1");
+    const amtU = ethers.parseEther("1");
+
+    await fundTreasuryForBootstrap(asset, usdc, deployer, treasury, amtA, amtU);
+
+    // Should succeed at -9999 (one less than -10000, which would make combined = 0)
+    await bootstrapViaTreasury(treasury, pool, amtA, amtU, -9999n);
+    expect(await (pool as any).targetOffsetBps()).to.equal(-9999n);
   });
 });

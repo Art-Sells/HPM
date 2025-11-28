@@ -29,26 +29,15 @@ interface IFAFETreasury {
     ) external;
 
     // -----------------------------------------------------------------------
-    // Router forwarder (needed for orbit tests)
+    // Router forwarder
     // -----------------------------------------------------------------------
-    function setOrbitViaTreasury(
-        address router,
-        address startPool,
-        address[] calldata pools
-    ) external;
-
-    function setDualOrbitViaTreasury(
-        address router,
-        address startPool,
-        address[] calldata neg,
-        address[] calldata pos,
-        bool startWithNeg
-    ) external;
-
-    function setDailyEventCapViaTreasury(address router, uint16 newCap) external;
-
     function pauseRouterViaTreasury(address router) external;
     function unpauseRouterViaTreasury(address router) external;
+    
+    // -----------------------------------------------------------------------
+    // Access Manager forwarder (for setting dedicated AA)
+    // -----------------------------------------------------------------------
+    function setDedicatedAAViaTreasury(address accessManager, address aaAddress) external;
 
     // -----------------------------------------------------------------------
     // Bootstrap
@@ -66,16 +55,4 @@ interface IFAFETreasury {
         uint256 amountUsdc
     ) external;
 
-    // -----------------------------------------------------------------------
-    // Topology bootstrap
-    // -----------------------------------------------------------------------
-    function bootstrapTopology(
-        address[4] calldata pools,
-        uint256[4] calldata amountsAsset,
-        uint256[4] calldata amountsUsdc,
-        int256[4] calldata offsetsBps,
-        address router,
-        address[] calldata negOrbit,
-        address[] calldata posOrbit
-    ) external;
 }

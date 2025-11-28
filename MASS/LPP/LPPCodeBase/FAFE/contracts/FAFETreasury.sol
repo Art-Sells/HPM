@@ -5,6 +5,7 @@ import { IFAFETreasury } from "./interfaces/IFAFETreasury.sol";
 import { IFAFEFactory }  from "./interfaces/IFAFEFactory.sol";
 import { IFAFEPool }     from "./interfaces/IFAFEPool.sol";
 import { IFAFERouter }   from "./interfaces/IFAFERouter.sol";
+import { IFAFEAccessManager } from "./interfaces/IFAFEAccessManager.sol";
 import { IERC20 }       from "./external/IERC20.sol";
 
 contract FAFETreasury is IFAFETreasury {
@@ -86,33 +87,6 @@ contract FAFETreasury is IFAFETreasury {
     // Router forwarders (Router requires onlyTreasury)
     // -----------------------------------------------------------------------
 
-    /// @notice Configure a multi-pool orbit on the Router.
-    /// Calls Router.setOrbit(startPool, pools) as the Treasury contract
-    /// so it passes Router's onlyTreasury check.
-    function setOrbitViaTreasury(
-        address router,
-        address startPool,
-        address[] calldata pools
-    ) external onlyOwner {
-        IFAFERouter(router).setOrbit(startPool, pools);
-    }
-
-    /// @notice Configure dual multi-pool orbits (NEG = -500, POS = +500) and initial side.
-    /// Calls Router.setDualOrbit(...) via Treasury so it passes Router's onlyTreasury check.
-    function setDualOrbitViaTreasury(
-        address router,
-        address startPool,
-        address[] calldata neg,
-        address[] calldata pos,
-        bool startWithNeg
-    ) external onlyOwner {
-        IFAFERouter(router).setDualOrbit(startPool, neg, pos, startWithNeg);
-    }
-
-    function setDailyEventCapViaTreasury(address router, uint16 newCap) external onlyOwner {
-        IFAFERouter(router).setDailyEventCap(newCap);
-    }
-
     /// @notice Pause the router (swaps, supplications, etc.)
     /// Calls Router.pause() as the Treasury contract so it passes Router's onlyTreasury check.
     function pauseRouterViaTreasury(address router) external onlyOwner {
@@ -123,6 +97,17 @@ contract FAFETreasury is IFAFETreasury {
     /// Calls Router.unpause() as the Treasury contract so it passes Router's onlyTreasury check.
     function unpauseRouterViaTreasury(address router) external onlyOwner {
         IFAFERouter(router).unpause();
+    }
+
+    // -----------------------------------------------------------------------
+    // Access Manager forwarders (for setting dedicated AA)
+    // -----------------------------------------------------------------------
+
+    /// @notice Set the dedicated AA address for swap operations
+    /// Calls AccessManager.setDedicatedAA() as the Treasury contract
+    function setDedicatedAAViaTreasury(address accessManager, address aaAddress) external onlyOwner {
+        require(accessManager != address(0), "zero access");
+        IFAFEAccessManager(accessManager).setDedicatedAA(aaAddress);
     }
 
     // -----------------------------------------------------------------------
@@ -159,54 +144,4 @@ contract FAFETreasury is IFAFETreasury {
         bootstrapViaTreasury(pool, amountAsset, amountUsdc, 0);
     }
 
-    // -----------------------------------------------------------------------
-    // Topology bootstrap (bootstraps 4 pools + sets orbits atomically)
-    // -----------------------------------------------------------------------
-    /// @notice Bootstrap four pools and set dual orbits atomically.
-    /// This ensures orbits are configured as part of the bootstrap process, not as a separate step.
-    /// @param pools Array of 4 pool addresses [pool0, pool1, pool2, pool3]
-    /// @param amountsAsset Array of 4 ASSET amounts (one per pool)
-    /// @param amountsUsdc Array of 4 USDC amounts (one per pool)
-    /// @param offsetsBps Array of 4 offset values in bps [neg0, neg1, pos0, pos1] (typically [-500, -500, 500, 500])
-    /// @param router Router contract address
-    /// @param negOrbit Array of NEG orbit pool addresses (typically [pool0, pool1])
-    /// @param posOrbit Array of POS orbit pool addresses (typically [pool2, pool3])
-    function bootstrapTopology(
-        address[4] calldata pools,
-        uint256[4] calldata amountsAsset,
-        uint256[4] calldata amountsUsdc,
-        int256[4] calldata offsetsBps,
-        address router,
-        address[] calldata negOrbit,
-        address[] calldata posOrbit
-    ) external onlyOwner {
-        require(router != address(0), "zero router");
-        require(pools.length == 4, "need 4 pools");
-        require(amountsAsset.length == 4, "need 4 asset amounts");
-        require(amountsUsdc.length == 4, "need 4 usdc amounts");
-        require(offsetsBps.length == 4, "need 4 offsets");
-        require(negOrbit.length > 0 && posOrbit.length > 0, "empty orbit");
-        require(negOrbit.length == posOrbit.length, "orbit length mismatch");
-
-        // Bootstrap all 4 pools
-        for (uint256 i = 0; i < 4; i++) {
-            require(pools[i] != address(0), "zero pool");
-            require(amountsAsset[i] > 0 && amountsUsdc[i] > 0, "zero amount");
-            
-            address asset = IFAFEPool(pools[i]).asset();
-            address usdc  = IFAFEPool(pools[i]).usdc();
-            
-            // Transfer tokens from Treasury to the Pool
-            require(IERC20(asset).transfer(pools[i], amountsAsset[i]), "transfer asset fail");
-            require(IERC20(usdc).transfer(pools[i], amountsUsdc[i]), "transfer usdc fail");
-            
-            // Initialize the pool with the provided amounts and offset
-            IFAFEPool(pools[i]).bootstrapInitialize(amountsAsset[i], amountsUsdc[i], offsetsBps[i]);
-        }
-
-        // Set dual orbits for all pools (register same config under each pool address)
-        for (uint256 i = 0; i < 4; i++) {
-            IFAFERouter(router).setDualOrbit(pools[i], negOrbit, posOrbit, true);
-        }
-    }
 }

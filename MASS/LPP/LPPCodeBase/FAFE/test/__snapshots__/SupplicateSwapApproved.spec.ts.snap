@@ -1,0 +1,226 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Supplicate (Approved-only flow) AA FAFE Operations (Swaps and Deposits) AA deposit (USDC): verifies 5% treasury cut and pool state 1`] = `
+Object {
+  "depositAmount": "100000000000000000000",
+  "operation": "AA Deposit (USDC)",
+  "poolAmount": "95000000000000000000",
+  "poolReserves": Object {
+    "after": Object {
+      "a": "100000000000000000000",
+      "u": "195000000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+  "treasuryBalances": Object {
+    "after": Object {
+      "asset": "1000000000000000000000",
+      "usdc": "1005000000000000000000",
+    },
+    "before": Object {
+      "asset": "1000000000000000000000",
+      "usdc": "1000000000000000000000",
+    },
+  },
+  "treasuryCut": "5000000000000000000",
+}
+`;
+
+exports[`Supplicate (Approved-only flow) AA FAFE Operations (Swaps and Deposits) AA deposit: verifies 5% treasury cut and pool state 1`] = `
+Object {
+  "depositAmount": "100000000000000000000",
+  "operation": "AA Deposit (ASSET)",
+  "poolAmount": "95000000000000000000",
+  "poolReserveIncrease": "95000000000000000000",
+  "poolReserves": Object {
+    "after": Object {
+      "a": "195000000000000000000",
+      "u": "100000000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+  "treasuryBalances": Object {
+    "after": Object {
+      "asset": "1005000000000000000000",
+      "usdc": "1000000000000000000000",
+    },
+    "before": Object {
+      "asset": "1000000000000000000000",
+      "usdc": "1000000000000000000000",
+    },
+  },
+  "treasuryCut": "5000000000000000000",
+  "treasuryCutReceived": "5000000000000000000",
+}
+`;
+
+exports[`Supplicate (Approved-only flow) AA FAFE Operations (Swaps and Deposits) AA full cycle: swap then deposit profits with treasury tracking 1`] = `
+Object {
+  "deposit": Object {
+    "amount": "50000000000000000000",
+    "poolAmount": "47500000000000000000",
+    "treasuryCut": "2500000000000000000",
+  },
+  "operation": "AA Full Cycle (Swap + Deposit)",
+  "poolReserves": Object {
+    "afterSwap": Object {
+      "a": "110000000000000000000",
+      "u": "90000000000000000000",
+    },
+    "final": Object {
+      "a": "110000000000000000000",
+      "u": "137500000000000000000",
+    },
+    "initial": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+  "swap": Object {
+    "amountIn": "10000000000000000000",
+    "amountOut": "10000000000000000000",
+    "expectedOutput": "10000000000000000000",
+  },
+  "treasuryBalances": Object {
+    "afterSwap": Object {
+      "asset": "1000000000000000000000",
+      "usdc": "1000000000000000000000",
+    },
+    "final": Object {
+      "asset": "1000000000000000000000",
+      "usdc": "1002500000000000000000",
+    },
+    "initial": Object {
+      "asset": "1000000000000000000000",
+      "usdc": "1000000000000000000000",
+    },
+  },
+  "treasuryTotalReceived": "2500000000000000000",
+}
+`;
+
+exports[`Supplicate (Approved-only flow) AA FAFE Operations (Swaps and Deposits) AA swap: verifies before/after treasury and pool state 1`] = `
+Object {
+  "expectedOutput": "10000000000000000000",
+  "operation": "AA Swap (ASSET->USDC)",
+  "poolReserves": Object {
+    "after": Object {
+      "a": "110000000000000000000",
+      "u": "90000000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+  "swapAmount": "10000000000000000000",
+  "swapOutput": "10000000000000000000",
+  "treasuryBalances": Object {
+    "after": Object {
+      "asset": "1000000000000000000000",
+      "usdc": "1000000000000000000000",
+    },
+    "before": Object {
+      "asset": "1000000000000000000000",
+      "usdc": "1000000000000000000000",
+    },
+  },
+}
+`;
+
+exports[`Supplicate (Approved-only flow) Bypass guard via direct token movement (reserves authoritative) ERC20.transfer and transferFrom into pool address do NOT update pool reserves 1`] = `
+Object {
+  "note": "Raw token transfers cannot spoof/mutate FAFE reserves",
+  "reservesAfter": Object {
+    "a": "100000000000000000000",
+    "u": "100000000000000000000",
+  },
+  "reservesBefore": Object {
+    "a": "100000000000000000000",
+    "u": "100000000000000000000",
+  },
+}
+`;
+
+exports[`Supplicate (Approved-only flow) Snapshots & sqrt pricing (U->A path) captures sqrtPriceX96 movement and reserve deltas for USDC->ASSET 1`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "caller": Object {
+    "after": Object {
+      "a": "1000000000000000000",
+      "u": "0",
+    },
+    "before": Object {
+      "a": "0",
+      "u": "1000000000000000000",
+    },
+  },
+  "direction": "USDC->ASSET",
+  "quote": "1000000000000000000",
+  "reserves": Object {
+    "after": Object {
+      "a": "99000000000000000000",
+      "u": "101000000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+  "sqrtPriceX96": Object {
+    "implied": Object {
+      "after": "80024445461715625418353569927",
+      "before": "79228162514264337593543950336",
+    },
+    "stored": Object {
+      "after": "79228162514264337593543950336",
+      "before": "79228162514264337593543950336",
+    },
+  },
+}
+`;
+
+exports[`Supplicate (Approved-only flow) Treasury-approved address executes single-pool rebalance A->U 1`] = `
+Object {
+  "amountIn": "1000000000000000000",
+  "callerBalances": Object {
+    "after": Object {
+      "a": "0",
+      "u": "1000000000000000000",
+    },
+    "before": Object {
+      "a": "1000000000000000000",
+      "u": "0",
+    },
+  },
+  "direction": "ASSET->USDC",
+  "quote": "1000000000000000000",
+  "reserves": Object {
+    "after": Object {
+      "a": "101000000000000000000",
+      "u": "99000000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+  "routerStatic": "1000000000000000000",
+  "sqrtPriceX96": Object {
+    "implied": Object {
+      "after": "78439802977325216994227756661",
+      "before": "79228162514264337593543950336",
+    },
+    "stored": Object {
+      "after": "79228162514264337593543950336",
+      "before": "79228162514264337593543950336",
+    },
+  },
+}
+`;
