@@ -1,0 +1,47 @@
+{
+  "ASSET/USDC": [
+    {
+      "pairId": "ASSET/USDC",
+      "tokenIn": "USDC",
+      "tokenOut": "ASSET",
+      "amountIn": 1,
+      "amountOut": 1.52,
+      "price": 1.52,
+      "gasUsd": 0.04,
+      "liquidityUsd": 750000
+    },
+    {
+      "pairId": "ASSET/USDC",
+      "tokenIn": "ASSET",
+      "tokenOut": "USDC",
+      "amountIn": 1,
+      "amountOut": 0.64,
+      "price": 0.64,
+      "gasUsd": 0.04,
+      "liquidityUsd": 750000
+    }
+  ],
+  "cbBTC/USDC": [
+    {
+      "pairId": "cbBTC/USDC",
+      "tokenIn": "USDC",
+      "tokenOut": "cbBTC",
+      "amountIn": 1000,
+      "amountOut": 0.0151,
+      "price": 0.0000151,
+      "gasUsd": 0.05,
+      "liquidityUsd": 2500000
+    },
+    {
+      "pairId": "cbBTC/USDC",
+      "tokenIn": "cbBTC",
+      "tokenOut": "USDC",
+      "amountIn": 0.01,
+      "amountOut": 650,
+      "price": 65000,
+      "gasUsd": 0.05,
+      "liquidityUsd": 2500000
+    }
+  ]
+}
+

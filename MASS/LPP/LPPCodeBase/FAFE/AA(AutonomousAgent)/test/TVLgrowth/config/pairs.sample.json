@@ -1,0 +1,7 @@
+[
+  { "base": "ASSET", "quote": "USDC", "query": "cbETH USDC" },
+  { "base": "cbBTC", "quote": "USDC", "query": "cbBTC USDC" },
+  { "base": "AERO", "quote": "USDC", "query": "AERO USDC" },
+  { "base": "PEPE", "quote": "cbETH", "query": "PEPE cbETH" }
+]
+
