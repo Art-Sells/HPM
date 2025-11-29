@@ -47,6 +47,16 @@ type PoolOperation = {
   amountOut: string;
   timestamp: number;
   offsetBps: number;
+  poolStateBefore: {
+    reserveAsset: string;
+    reserveUsdc: string;
+    priceX96: string;
+  };
+  poolStateAfter: {
+    reserveAsset: string;
+    reserveUsdc: string;
+    priceX96: string;
+  };
 };
 
 type DailyOperationLog = {
@@ -76,6 +86,31 @@ type DailyOperationLog = {
     amount: string;
     treasuryCut: string;
     poolAmount: string;
+    timestamp: number;
+    poolStateBefore: {
+      reserveAsset: string;
+      reserveUsdc: string;
+      priceX96: string;
+    };
+    poolStateAfter: {
+      reserveAsset: string;
+      reserveUsdc: string;
+      priceX96: string;
+    };
+    treasuryStateBefore: {
+      assetBalance: string;
+      usdcBalance: string;
+    };
+    treasuryStateAfter: {
+      assetBalance: string;
+      usdcBalance: string;
+    };
+  }>;
+  rebalances: Array<{
+    sourcePool: string;
+    destPool: string;
+    token: "ASSET" | "USDC";
+    amount: string;
     timestamp: number;
   }>;
   completed: boolean;
@@ -114,6 +149,16 @@ async function setupAAEnvironment(): Promise<AAEnv> {
     offsetsBps
   );
 
+  // Set router on all pools (required for flipOffset)
+  const routerAddr = await core.router.getAddress();
+  for (const poolAddr of pools) {
+    const pool = (await ethers.getContractAt("FAFEPool", poolAddr)) as FAFEPool;
+    const currentRouter = await pool.router();
+    if (currentRouter === ethers.ZeroAddress) {
+      await (await pool.setRouter(routerAddr)).wait();
+    }
+  }
+
   return {
     deployer,
     treasuryOps,
@@ -138,6 +183,28 @@ async function getPoolReserves(poolAddr: string) {
   };
 }
 
+async function getPoolState(poolAddr: string) {
+  const pool = (await ethers.getContractAt("FAFEPool", poolAddr)) as FAFEPool;
+  const reserveAsset = await pool.reserveAsset();
+  const reserveUsdc = await pool.reserveUsdc();
+  const priceX96 = await pool.priceX96();
+  return {
+    reserveAsset: reserveAsset.toString(),
+    reserveUsdc: reserveUsdc.toString(),
+    priceX96: priceX96.toString(),
+  };
+}
+
+async function getTreasuryState(treasury: FAFETreasury, asset: TestERC20, usdc: TestERC20) {
+  const treasuryAddr = await treasury.getAddress();
+  const assetBalance = await asset.balanceOf(treasuryAddr);
+  const usdcBalance = await usdc.balanceOf(treasuryAddr);
+  return {
+    assetBalance: assetBalance.toString(),
+    usdcBalance: usdcBalance.toString(),
+  };
+}
+
 async function getBalance(token: TestERC20, address: string) {
   return BigInt((await token.balanceOf(address)).toString());
 }
@@ -145,17 +212,14 @@ async function getBalance(token: TestERC20, address: string) {
 async function snapshotDailyOperation(log: DailyOperationLog) {
   const snapshot = {
     date: log.date,
-    totalOperations: log.operations.length,
-    totalBorrows: log.borrows.length,
-    totalExternalSales: log.externalSales.length,
-    totalRepayments: log.repayments.length,
-    totalProfitDeposits: log.profitDeposits.length,
     operations: log.operations.map((op) => ({
       pool: op.poolAddress,
       direction: op.direction,
       amountIn: op.amountIn,
       amountOut: op.amountOut,
       offsetBps: op.offsetBps,
+      poolStateBefore: op.poolStateBefore,
+      poolStateAfter: op.poolStateAfter,
     })),
     borrows: log.borrows.map((b) => ({
       pool: b.poolAddress,
@@ -167,18 +231,34 @@ async function snapshotDailyOperation(log: DailyOperationLog) {
       amount: s.amount,
       depositedToTreasuryOps: s.depositedToTreasuryOps,
     })),
-    repayments: log.repayments.map((r) => ({
-      pool: r.poolAddress,
-      token: r.token,
-      principal: r.principal,
-    })),
     profitDeposits: log.profitDeposits.map((p) => ({
       pool: p.poolAddress,
       token: p.token,
       amount: p.amount,
       treasuryCut: p.treasuryCut,
       poolAmount: p.poolAmount,
+      poolStateBefore: p.poolStateBefore,
+      poolStateAfter: p.poolStateAfter,
+      treasuryStateBefore: p.treasuryStateBefore,
+      treasuryStateAfter: p.treasuryStateAfter,
     })),
+    repayments: log.repayments.map((r) => ({
+      pool: r.poolAddress,
+      token: r.token,
+      principal: r.principal,
+    })),
+    rebalances: log.rebalances.map((r) => ({
+      sourcePool: r.sourcePool,
+      destPool: r.destPool,
+      token: r.token,
+      amount: r.amount,
+    })),
+    totalBorrows: log.borrows.length,
+    totalExternalSales: log.externalSales.length,
+    totalOperations: log.operations.length,
+    totalProfitDeposits: log.profitDeposits.length,
+    totalRebalances: log.rebalances.length,
+    totalRepayments: log.repayments.length,
     completed: log.completed,
   };
   return snapshot;
@@ -201,12 +281,13 @@ describe("AA Daily FAFE Operations", () => {
       externalSales: [],
       repayments: [],
       profitDeposits: [],
+      rebalances: [],
       completed: false,
     };
   });
 
   it("executes full daily cycle through all 6 pools", async () => {
-    const { aa, router, pools, asset, usdc, treasuryOps, treasury } = env;
+    const { deployer, aa, router, pools, asset, usdc, treasuryOps, treasury } = env;
     const routerAddr = await router.getAddress();
     const treasuryOpsAddr = treasuryOps.address;
     const treasuryAddr = await treasury.getAddress();
@@ -250,6 +331,7 @@ describe("AA Daily FAFE Operations", () => {
       await approveMax(borrowToken, aa, routerAddr);
 
       // 3. SWAP: AA swaps on FAFE pool
+      const poolStateBeforeSwap = await getPoolState(poolAddr);
       const reservesBefore = await getPoolReserves(poolAddr);
       const swapResult = await runSwap({
         router,
@@ -258,6 +340,7 @@ describe("AA Daily FAFE Operations", () => {
         assetToUsdc,
         amountIn: borrowAmount,
       });
+      const poolStateAfterSwap = await getPoolState(poolAddr);
       const reservesAfter = await getPoolReserves(poolAddr);
 
       const amountOut = assetToUsdc
@@ -271,6 +354,8 @@ describe("AA Daily FAFE Operations", () => {
         amountOut: amountOut.toString(),
         timestamp: Math.floor(Date.now() / 1000),
         offsetBps,
+        poolStateBefore: poolStateBeforeSwap,
+        poolStateAfter: poolStateAfterSwap,
       });
 
       // 4. EXTERNAL SALE: AA sells the output externally and deposits back to TreasuryOps
@@ -290,7 +375,7 @@ describe("AA Daily FAFE Operations", () => {
       
       // Mint the profit to AA (simulating external sale proceeds)
       // In real scenario, this would come from external DEX
-      await (await outputToken.connect(treasuryOps).mint(aa.address, externalSaleProceeds - externalSaleAmount)).wait();
+      await (await outputToken.connect(deployer).mint(aa.address, externalSaleProceeds - externalSaleAmount)).wait();
       
       // Transfer original sale amount back to TreasuryOps (simulating repayment of flash loan proceeds)
       await (await outputToken.connect(aa).transfer(treasuryOpsAddr, externalSaleAmount)).wait();
@@ -322,7 +407,8 @@ describe("AA Daily FAFE Operations", () => {
         // Approve router for deposit
         await approveMax(outputToken, aa, routerAddr);
         
-        const reservesBeforeDeposit = await getPoolReserves(poolAddr);
+        const poolStateBeforeDeposit = await getPoolState(poolAddr);
+        const treasuryStateBefore = await getTreasuryState(treasury, asset, usdc);
         await runDeposit({
           router,
           caller: aa,
@@ -330,7 +416,8 @@ describe("AA Daily FAFE Operations", () => {
           isUsdc: assetToUsdc,
           amount: profitAmount,
         });
-        const reservesAfterDeposit = await getPoolReserves(poolAddr);
+        const poolStateAfterDeposit = await getPoolState(poolAddr);
+        const treasuryStateAfter = await getTreasuryState(treasury, asset, usdc);
 
         // Calculate treasury cut (5%) and pool amount
         const treasuryCut = (profitAmount * 500n) / 10000n; // 5%
@@ -343,7 +430,128 @@ describe("AA Daily FAFE Operations", () => {
           treasuryCut: treasuryCut.toString(),
           poolAmount: poolAmount.toString(),
           timestamp: Math.floor(Date.now() / 1000),
+          poolStateBefore: poolStateBeforeDeposit,
+          poolStateAfter: poolStateAfterDeposit,
+          treasuryStateBefore,
+          treasuryStateAfter,
         });
+      }
+    }
+
+    // 8. REBALANCE: After all 6 pools are processed, scan and rebalance if needed
+    const factory = env.factory;
+    const allPools = await factory.getPools();
+    
+    // Scan for imbalances and execute rebalances
+    for (let i = 0; i < allPools.length; i++) {
+      for (let j = i + 1; j < allPools.length; j++) {
+        const pool1Addr = allPools[i];
+        const pool2Addr = allPools[j];
+        
+        const pool1 = (await ethers.getContractAt("FAFEPool", pool1Addr)) as FAFEPool;
+        const pool2 = (await ethers.getContractAt("FAFEPool", pool2Addr)) as FAFEPool;
+        
+        // Check USDC reserves
+        const pool1Usdc = await pool1.reserveUsdc();
+        const pool2Usdc = await pool2.reserveUsdc();
+        
+        if (pool1Usdc > 0n && pool2Usdc > 0n) {
+          const pool1Scaled = pool1Usdc * 10000n;
+          const pool2Scaled = pool2Usdc * 10500n;
+          
+          if (pool1Scaled >= pool2Scaled) {
+            // Pool1 has ≥5% more USDC than Pool2
+            const amountToMove = (pool1Usdc * 250n) / 10000n; // 2.5% of excess
+            if (amountToMove > 0n) {
+              await (await router.connect(aa).rebalance({
+                sourcePool: pool1Addr,
+                destPool: pool2Addr,
+                isUsdc: true,
+              })).wait();
+              
+              dailyLog.rebalances.push({
+                sourcePool: pool1Addr,
+                destPool: pool2Addr,
+                token: "USDC",
+                amount: amountToMove.toString(),
+                timestamp: Math.floor(Date.now() / 1000),
+              });
+            }
+          }
+          
+          const pool2Scaled2 = pool2Usdc * 10000n;
+          const pool1Scaled2 = pool1Usdc * 10500n;
+          if (pool2Scaled2 >= pool1Scaled2) {
+            // Pool2 has ≥5% more USDC than Pool1
+            const amountToMove = (pool2Usdc * 250n) / 10000n;
+            if (amountToMove > 0n) {
+              await (await router.connect(aa).rebalance({
+                sourcePool: pool2Addr,
+                destPool: pool1Addr,
+                isUsdc: true,
+              })).wait();
+              
+              dailyLog.rebalances.push({
+                sourcePool: pool2Addr,
+                destPool: pool1Addr,
+                token: "USDC",
+                amount: amountToMove.toString(),
+                timestamp: Math.floor(Date.now() / 1000),
+              });
+            }
+          }
+        }
+        
+        // Check ASSET reserves
+        const pool1Asset = await pool1.reserveAsset();
+        const pool2Asset = await pool2.reserveAsset();
+        
+        if (pool1Asset > 0n && pool2Asset > 0n) {
+          const pool1Scaled = pool1Asset * 10000n;
+          const pool2Scaled = pool2Asset * 10500n;
+          
+          if (pool1Scaled >= pool2Scaled) {
+            // Pool1 has ≥5% more ASSET than Pool2
+            const amountToMove = (pool1Asset * 250n) / 10000n;
+            if (amountToMove > 0n) {
+              await (await router.connect(aa).rebalance({
+                sourcePool: pool1Addr,
+                destPool: pool2Addr,
+                isUsdc: false,
+              })).wait();
+              
+              dailyLog.rebalances.push({
+                sourcePool: pool1Addr,
+                destPool: pool2Addr,
+                token: "ASSET",
+                amount: amountToMove.toString(),
+                timestamp: Math.floor(Date.now() / 1000),
+              });
+            }
+          }
+          
+          const pool2Scaled2 = pool2Asset * 10000n;
+          const pool1Scaled2 = pool1Asset * 10500n;
+          if (pool2Scaled2 >= pool1Scaled2) {
+            // Pool2 has ≥5% more ASSET than Pool1
+            const amountToMove = (pool2Asset * 250n) / 10000n;
+            if (amountToMove > 0n) {
+              await (await router.connect(aa).rebalance({
+                sourcePool: pool2Addr,
+                destPool: pool1Addr,
+                isUsdc: false,
+              })).wait();
+              
+              dailyLog.rebalances.push({
+                sourcePool: pool2Addr,
+                destPool: pool1Addr,
+                token: "ASSET",
+                amount: amountToMove.toString(),
+                timestamp: Math.floor(Date.now() / 1000),
+              });
+            }
+          }
+        }
       }
     }
 
@@ -356,6 +564,7 @@ describe("AA Daily FAFE Operations", () => {
     expect(dailyLog.externalSales.length).to.equal(6);
     expect(dailyLog.repayments.length).to.equal(6);
     expect(dailyLog.profitDeposits.length).to.equal(6);
+    // Rebalances may be 0 or more depending on imbalances
     expect(dailyLog.completed).to.be.true;
 
     // Create snapshot

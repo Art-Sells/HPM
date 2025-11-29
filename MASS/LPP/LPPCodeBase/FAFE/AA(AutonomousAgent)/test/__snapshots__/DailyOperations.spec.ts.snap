@@ -1,0 +1,381 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`AA Daily FAFE Operations executes full daily cycle through all 6 pools 1`] = `
+Object {
+  "borrows": Array [
+    Object {
+      "amount": "1000000000000000000",
+      "pool": "0x856e4424f806D16E8CBC702B3c0F2ede5468eae5",
+      "token": "USDC",
+    },
+    Object {
+      "amount": "1000000000000000000",
+      "pool": "0xb0279Db6a2F1E01fbC8483FCCef0Be2bC6299cC3",
+      "token": "USDC",
+    },
+    Object {
+      "amount": "1000000000000000000",
+      "pool": "0x3dE2Da43d4c1B137E385F36b400507c1A24401f8",
+      "token": "USDC",
+    },
+    Object {
+      "amount": "12000000000000",
+      "pool": "0xddEA3d67503164326F90F53CFD1705b90Ed1312D",
+      "token": "ASSET",
+    },
+    Object {
+      "amount": "12000000000000",
+      "pool": "0xAbB608121Fd652F112827724B28a61e09f2dcDf4",
+      "token": "ASSET",
+    },
+    Object {
+      "amount": "12000000000000",
+      "pool": "0x7e919252cd379Aef5f911Eae090fF6b4909b78C6",
+      "token": "ASSET",
+    },
+  ],
+  "completed": true,
+  "date": "2025-11-29",
+  "externalSales": Array [
+    Object {
+      "amount": "1500000000000000000",
+      "depositedToTreasuryOps": "1500000000000000000",
+      "token": "ASSET",
+    },
+    Object {
+      "amount": "1500000000000000000",
+      "depositedToTreasuryOps": "1500000000000000000",
+      "token": "ASSET",
+    },
+    Object {
+      "amount": "1500000000000000000",
+      "depositedToTreasuryOps": "1500000000000000000",
+      "token": "ASSET",
+    },
+    Object {
+      "amount": "18000000000000",
+      "depositedToTreasuryOps": "18000000000000",
+      "token": "USDC",
+    },
+    Object {
+      "amount": "18000000000000",
+      "depositedToTreasuryOps": "18000000000000",
+      "token": "USDC",
+    },
+    Object {
+      "amount": "18000000000000",
+      "depositedToTreasuryOps": "18000000000000",
+      "token": "USDC",
+    },
+  ],
+  "operations": Array [
+    Object {
+      "amountIn": "1000000000000000000",
+      "amountOut": "-1500000000000000000",
+      "direction": "USDC->ASSET",
+      "offsetBps": -5000,
+      "pool": "0x856e4424f806D16E8CBC702B3c0F2ede5468eae5",
+      "poolStateAfter": Object {
+        "priceX96": "121858544374731443100730035288",
+        "reserveAsset": "98500000000000000000",
+        "reserveUsdc": "101000000000000000000",
+      },
+      "poolStateBefore": Object {
+        "priceX96": "39614081257132168796771975168",
+        "reserveAsset": "100000000000000000000",
+        "reserveUsdc": "100000000000000000000",
+      },
+    },
+    Object {
+      "amountIn": "1000000000000000000",
+      "amountOut": "-1500000000000000000",
+      "direction": "USDC->ASSET",
+      "offsetBps": -5000,
+      "pool": "0xb0279Db6a2F1E01fbC8483FCCef0Be2bC6299cC3",
+      "poolStateAfter": Object {
+        "priceX96": "121858544374731443100730035288",
+        "reserveAsset": "98500000000000000000",
+        "reserveUsdc": "101000000000000000000",
+      },
+      "poolStateBefore": Object {
+        "priceX96": "39614081257132168796771975168",
+        "reserveAsset": "100000000000000000000",
+        "reserveUsdc": "100000000000000000000",
+      },
+    },
+    Object {
+      "amountIn": "1000000000000000000",
+      "amountOut": "-1500000000000000000",
+      "direction": "USDC->ASSET",
+      "offsetBps": -5000,
+      "pool": "0x3dE2Da43d4c1B137E385F36b400507c1A24401f8",
+      "poolStateAfter": Object {
+        "priceX96": "121858544374731443100730035288",
+        "reserveAsset": "98500000000000000000",
+        "reserveUsdc": "101000000000000000000",
+      },
+      "poolStateBefore": Object {
+        "priceX96": "39614081257132168796771975168",
+        "reserveAsset": "100000000000000000000",
+        "reserveUsdc": "100000000000000000000",
+      },
+    },
+    Object {
+      "amountIn": "12000000000000",
+      "amountOut": "-18000000000000",
+      "direction": "ASSET->USDC",
+      "offsetBps": 5000,
+      "pool": "0xddEA3d67503164326F90F53CFD1705b90Ed1312D",
+      "poolStateAfter": Object {
+        "priceX96": "39614069372909217763875460083",
+        "reserveAsset": "100000012000000000000",
+        "reserveUsdc": "99999982000000000000",
+      },
+      "poolStateBefore": Object {
+        "priceX96": "118842243771396506390315925504",
+        "reserveAsset": "100000000000000000000",
+        "reserveUsdc": "100000000000000000000",
+      },
+    },
+    Object {
+      "amountIn": "12000000000000",
+      "amountOut": "-18000000000000",
+      "direction": "ASSET->USDC",
+      "offsetBps": 5000,
+      "pool": "0xAbB608121Fd652F112827724B28a61e09f2dcDf4",
+      "poolStateAfter": Object {
+        "priceX96": "39614069372909217763875460083",
+        "reserveAsset": "100000012000000000000",
+        "reserveUsdc": "99999982000000000000",
+      },
+      "poolStateBefore": Object {
+        "priceX96": "118842243771396506390315925504",
+        "reserveAsset": "100000000000000000000",
+        "reserveUsdc": "100000000000000000000",
+      },
+    },
+    Object {
+      "amountIn": "12000000000000",
+      "amountOut": "-18000000000000",
+      "direction": "ASSET->USDC",
+      "offsetBps": 5000,
+      "pool": "0x7e919252cd379Aef5f911Eae090fF6b4909b78C6",
+      "poolStateAfter": Object {
+        "priceX96": "39614069372909217763875460083",
+        "reserveAsset": "100000012000000000000",
+        "reserveUsdc": "99999982000000000000",
+      },
+      "poolStateBefore": Object {
+        "priceX96": "118842243771396506390315925504",
+        "reserveAsset": "100000000000000000000",
+        "reserveUsdc": "100000000000000000000",
+      },
+    },
+  ],
+  "profitDeposits": Array [
+    Object {
+      "amount": "1500000000000000",
+      "pool": "0x856e4424f806D16E8CBC702B3c0F2ede5468eae5",
+      "poolAmount": "1425000000000000",
+      "poolStateAfter": Object {
+        "priceX96": "121858544374731443100730035288",
+        "reserveAsset": "98501425000000000000",
+        "reserveUsdc": "101000000000000000000",
+      },
+      "poolStateBefore": Object {
+        "priceX96": "121858544374731443100730035288",
+        "reserveAsset": "98500000000000000000",
+        "reserveUsdc": "101000000000000000000",
+      },
+      "token": "ASSET",
+      "treasuryCut": "75000000000000",
+      "treasuryStateAfter": Object {
+        "assetBalance": "1000000075000000000000",
+        "usdcBalance": "1000000000000000000000",
+      },
+      "treasuryStateBefore": Object {
+        "assetBalance": "1000000000000000000000",
+        "usdcBalance": "1000000000000000000000",
+      },
+    },
+    Object {
+      "amount": "1500000000000000",
+      "pool": "0xb0279Db6a2F1E01fbC8483FCCef0Be2bC6299cC3",
+      "poolAmount": "1425000000000000",
+      "poolStateAfter": Object {
+        "priceX96": "121858544374731443100730035288",
+        "reserveAsset": "98501425000000000000",
+        "reserveUsdc": "101000000000000000000",
+      },
+      "poolStateBefore": Object {
+        "priceX96": "121858544374731443100730035288",
+        "reserveAsset": "98500000000000000000",
+        "reserveUsdc": "101000000000000000000",
+      },
+      "token": "ASSET",
+      "treasuryCut": "75000000000000",
+      "treasuryStateAfter": Object {
+        "assetBalance": "1000000150000000000000",
+        "usdcBalance": "1000000000000000000000",
+      },
+      "treasuryStateBefore": Object {
+        "assetBalance": "1000000075000000000000",
+        "usdcBalance": "1000000000000000000000",
+      },
+    },
+    Object {
+      "amount": "1500000000000000",
+      "pool": "0x3dE2Da43d4c1B137E385F36b400507c1A24401f8",
+      "poolAmount": "1425000000000000",
+      "poolStateAfter": Object {
+        "priceX96": "121858544374731443100730035288",
+        "reserveAsset": "98501425000000000000",
+        "reserveUsdc": "101000000000000000000",
+      },
+      "poolStateBefore": Object {
+        "priceX96": "121858544374731443100730035288",
+        "reserveAsset": "98500000000000000000",
+        "reserveUsdc": "101000000000000000000",
+      },
+      "token": "ASSET",
+      "treasuryCut": "75000000000000",
+      "treasuryStateAfter": Object {
+        "assetBalance": "1000000225000000000000",
+        "usdcBalance": "1000000000000000000000",
+      },
+      "treasuryStateBefore": Object {
+        "assetBalance": "1000000150000000000000",
+        "usdcBalance": "1000000000000000000000",
+      },
+    },
+    Object {
+      "amount": "18000000000",
+      "pool": "0xddEA3d67503164326F90F53CFD1705b90Ed1312D",
+      "poolAmount": "17100000000",
+      "poolStateAfter": Object {
+        "priceX96": "39614069372909217763875460083",
+        "reserveAsset": "100000012000000000000",
+        "reserveUsdc": "99999982017100000000",
+      },
+      "poolStateBefore": Object {
+        "priceX96": "39614069372909217763875460083",
+        "reserveAsset": "100000012000000000000",
+        "reserveUsdc": "99999982000000000000",
+      },
+      "token": "USDC",
+      "treasuryCut": "900000000",
+      "treasuryStateAfter": Object {
+        "assetBalance": "1000000225000000000000",
+        "usdcBalance": "1000000000000900000000",
+      },
+      "treasuryStateBefore": Object {
+        "assetBalance": "1000000225000000000000",
+        "usdcBalance": "1000000000000000000000",
+      },
+    },
+    Object {
+      "amount": "18000000000",
+      "pool": "0xAbB608121Fd652F112827724B28a61e09f2dcDf4",
+      "poolAmount": "17100000000",
+      "poolStateAfter": Object {
+        "priceX96": "39614069372909217763875460083",
+        "reserveAsset": "100000012000000000000",
+        "reserveUsdc": "99999982017100000000",
+      },
+      "poolStateBefore": Object {
+        "priceX96": "39614069372909217763875460083",
+        "reserveAsset": "100000012000000000000",
+        "reserveUsdc": "99999982000000000000",
+      },
+      "token": "USDC",
+      "treasuryCut": "900000000",
+      "treasuryStateAfter": Object {
+        "assetBalance": "1000000225000000000000",
+        "usdcBalance": "1000000000001800000000",
+      },
+      "treasuryStateBefore": Object {
+        "assetBalance": "1000000225000000000000",
+        "usdcBalance": "1000000000000900000000",
+      },
+    },
+    Object {
+      "amount": "18000000000",
+      "pool": "0x7e919252cd379Aef5f911Eae090fF6b4909b78C6",
+      "poolAmount": "17100000000",
+      "poolStateAfter": Object {
+        "priceX96": "39614069372909217763875460083",
+        "reserveAsset": "100000012000000000000",
+        "reserveUsdc": "99999982017100000000",
+      },
+      "poolStateBefore": Object {
+        "priceX96": "39614069372909217763875460083",
+        "reserveAsset": "100000012000000000000",
+        "reserveUsdc": "99999982000000000000",
+      },
+      "token": "USDC",
+      "treasuryCut": "900000000",
+      "treasuryStateAfter": Object {
+        "assetBalance": "1000000225000000000000",
+        "usdcBalance": "1000000000002700000000",
+      },
+      "treasuryStateBefore": Object {
+        "assetBalance": "1000000225000000000000",
+        "usdcBalance": "1000000000001800000000",
+      },
+    },
+  ],
+  "rebalances": Array [],
+  "repayments": Array [
+    Object {
+      "pool": "0x856e4424f806D16E8CBC702B3c0F2ede5468eae5",
+      "principal": "1000000000000000000",
+      "token": "USDC",
+    },
+    Object {
+      "pool": "0xb0279Db6a2F1E01fbC8483FCCef0Be2bC6299cC3",
+      "principal": "1000000000000000000",
+      "token": "USDC",
+    },
+    Object {
+      "pool": "0x3dE2Da43d4c1B137E385F36b400507c1A24401f8",
+      "principal": "1000000000000000000",
+      "token": "USDC",
+    },
+    Object {
+      "pool": "0xddEA3d67503164326F90F53CFD1705b90Ed1312D",
+      "principal": "12000000000000",
+      "token": "ASSET",
+    },
+    Object {
+      "pool": "0xAbB608121Fd652F112827724B28a61e09f2dcDf4",
+      "principal": "12000000000000",
+      "token": "ASSET",
+    },
+    Object {
+      "pool": "0x7e919252cd379Aef5f911Eae090fF6b4909b78C6",
+      "principal": "12000000000000",
+      "token": "ASSET",
+    },
+  ],
+  "totalBorrows": 6,
+  "totalExternalSales": 6,
+  "totalOperations": 6,
+  "totalProfitDeposits": 6,
+  "totalRebalances": 0,
+  "totalRepayments": 6,
+}
+`;
+
+exports[`AA Daily FAFE Operations tracks pool operation details correctly 1`] = `
+Array [
+  Object {
+    "amountIn": "1000000000000000000",
+    "amountOut": "-1500000000000000000",
+    "direction": "USDC->ASSET",
+    "offsetBps": -5000,
+    "pool": "0xeaF6B7a8eb2E3ff41E43a0d97cbCd749FA0cE94a",
+    "poolStateAfter": undefined,
+    "poolStateBefore": undefined,
+  },
+]
+`;
