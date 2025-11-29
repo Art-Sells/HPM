@@ -13,7 +13,7 @@ interface IFAFEAccessManager {
     function setTreasury(address treasury_) external;
     function treasury() external view returns (address);
     
-    // Dedicated AA address for swap operations
+    // Dedicated AA address for router automation (deposit/rebalance)
     function setDedicatedAA(address aaAddress) external;
     function dedicatedAA() external view returns (address);
     function isDedicatedAA(address who) external view returns (bool);

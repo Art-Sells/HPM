@@ -33,18 +33,6 @@ async function snapshotReserves(pool: FAFEPool, label: string) {
   }).to.matchSnapshot(label);
 }
 
-/** router per-hop fee split for a given amountIn */
-async function feeSplit(router: FAFERouter, amountIn: bigint) {
-  const bps = BigInt(await router.BPS_DENOMINATOR());
-  const feeBps = BigInt(await router.MCV_FEE_BPS());
-  // TREASURY_CUT_BPS isn't in the interface but exists on the concrete contract
-  const treasBps = BigInt(await (router as any).TREASURY_CUT_BPS());
-  const total = (amountIn * feeBps) / bps;
-  const treasury = (amountIn * treasBps) / bps;
-  const pools = total - treasury;
-  return { total, treasury, pools };
-}
-
 /** balanceOf helper */
 async function bal(token: TestERC20, who: string): Promise<bigint> {
   return BigInt((await token.balanceOf(who)).toString());

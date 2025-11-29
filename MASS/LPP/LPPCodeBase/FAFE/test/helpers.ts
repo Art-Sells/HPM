@@ -345,58 +345,6 @@ export async function runSupplicate(params: {
   return await tx.wait();
 }
 
-/* ────────────────────────────────────────────────────────────────────────────
- * Single-pool swap (permissioned, only dedicated AA) — flips offset after swap
- * ──────────────────────────────────────────────────────────────────────────── */
-
-/** Quote a swap operation */
-export async function quoteSwap(
-  router: FAFERouter,
-  poolAddr: string,
-  assetToUsdc: boolean,
-  amountIn: bigint
-) {
-  return await router.quoteSwap(poolAddr, assetToUsdc, amountIn);
-}
-
-/** Execute a single-pool swap (permissioned, only dedicated AA can call).
- *  - Requires caller to be the dedicated AA address
- *  - Approves pool for principal
- *  - Calls router.swap() which flips offset after execution
- */
-export async function runSwap(params: {
-  router: FAFERouter;
-  caller: any;               // signer (must be dedicated AA)
-  poolAddr: string;
-  assetToUsdc: boolean;
-  amountIn: bigint;
-  minAmountOut?: bigint;
-  to?: string;
-  payer?: string;
-}) {
-  const { router, caller, poolAddr, assetToUsdc, amountIn } = params;
-  const minAmountOut = params.minAmountOut ?? 0n;
-  const to = params.to ?? caller.address;
-  const payer = params.payer ?? caller.address;
-
-  const { asset, usdc } = await getTokensFromPoolAddr(poolAddr);
-  const tokenIn = assetToUsdc ? asset : usdc;
-
-  // Approve pool for principal
-  await approveMax(tokenIn, caller, poolAddr);
-
-  // Call the swap function (only dedicated AA can call)
-  const tx = await (router.connect(caller) as any).swap({
-    pool: poolAddr,
-    assetToUsdc,
-    amountIn,
-    minAmountOut,
-    to,
-    payer,
-  });
-  return await tx.wait();
-}
-
 /** Execute a deposit operation (permissioned, any approved supplicator) */
 export async function runDeposit(params: {
   router: FAFERouter;

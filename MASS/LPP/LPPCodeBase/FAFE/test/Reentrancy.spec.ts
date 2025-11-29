@@ -81,49 +81,6 @@ describe("Reentrancy protection: AA, approved supplicators, and malicious actors
   });
 
   /*───────────────────────────────────────────────────────────────────────────*
-   * 2) AA cannot drain treasury through swap reentrancy
-   *───────────────────────────────────────────────────────────────────────────*/
-  it("AA: cannot drain treasury through swap reentrancy", async () => {
-    // Fund AA with tokens
-    const swapAmount = ethers.parseEther("10");
-    await asset.mint(aa.address, swapAmount);
-    await asset.connect(aa).approve(await router.getAddress(), swapAmount);
-    await asset.connect(aa).approve(await pool.getAddress(), swapAmount);
-
-    // Get initial balances
-    const treasuryBalanceBefore = await asset.balanceOf(await treasury.getAddress());
-    const poolReservesBefore = {
-      asset: await pool.reserveAsset(),
-      usdc: await pool.reserveUsdc(),
-    };
-
-    const poolAddr = await pool.getAddress();
-
-    // Execute swap
-    await router.connect(aa).swap({
-      pool: poolAddr,
-      assetToUsdc: true,
-      amountIn: swapAmount,
-      minAmountOut: 0n,
-      to: aa.address,
-      payer: aa.address,
-    });
-
-    const poolReservesAfter = {
-      asset: await pool.reserveAsset(),
-      usdc: await pool.reserveUsdc(),
-    };
-
-    // Verify reserves changed correctly (single swap, no reentrancy drain)
-    expect(poolReservesAfter.asset).to.equal(poolReservesBefore.asset + swapAmount);
-    expect(poolReservesAfter.usdc).to.be.lt(poolReservesBefore.usdc);
-
-    // Treasury balance should not have changed (treasury doesn't hold pool reserves)
-    const treasuryBalanceAfter = await asset.balanceOf(await treasury.getAddress());
-    expect(treasuryBalanceAfter).to.equal(treasuryBalanceBefore);
-  });
-
-  /*───────────────────────────────────────────────────────────────────────────*
    * 3) Approved supplicator cannot drain treasury through supplicate reentrancy
    *───────────────────────────────────────────────────────────────────────────*/
   it("Approved supplicator: cannot drain treasury through supplicate reentrancy", async () => {
@@ -162,21 +119,9 @@ describe("Reentrancy protection: AA, approved supplicators, and malicious actors
   /*───────────────────────────────────────────────────────────────────────────*
    * 4) Malicious actor (not AA, not approved) cannot call swap/supplicate
    *───────────────────────────────────────────────────────────────────────────*/
-  it("Malicious actor: cannot call swap (not AA) or supplicate (not approved)", async () => {
+  it("Malicious actor: cannot call supplicate (not approved)", async () => {
     const poolAddr = await pool.getAddress();
     const amount = ethers.parseEther("10");
-
-    // Attacker cannot swap (not AA)
-    await expect(
-      router.connect(attacker).swap({
-        pool: poolAddr,
-        assetToUsdc: true,
-        amountIn: amount,
-        minAmountOut: 0n,
-        to: attacker.address,
-        payer: attacker.address,
-      })
-    ).to.be.revertedWith("only dedicated AA");
 
     // Attacker cannot supplicate (not approved)
     await expect(
@@ -192,52 +137,14 @@ describe("Reentrancy protection: AA, approved supplicators, and malicious actors
   });
 
   /*───────────────────────────────────────────────────────────────────────────*
-   * 5) AA cannot call supplicate (unless also approved)
-   *───────────────────────────────────────────────────────────────────────────*/
-  it("AA: cannot call supplicate (only swap allowed)", async () => {
-    const poolAddr = await pool.getAddress();
-    const amount = ethers.parseEther("10");
-
-    // AA should not be able to supplicate unless also approved
-    await expect(
-      router.connect(aa).supplicate({
-        pool: poolAddr,
-        assetToUsdc: true,
-        amountIn: amount,
-        minAmountOut: 0n,
-        to: aa.address,
-        payer: aa.address,
-      })
-    ).to.be.revertedWith("not permitted");
-
-    // But AA can swap
-    await asset.mint(aa.address, amount);
-    await asset.connect(aa).approve(await router.getAddress(), amount);
-    await asset.connect(aa).approve(await pool.getAddress(), amount);
-    await expect(
-      router.connect(aa).swap({
-        pool: poolAddr,
-        assetToUsdc: true,
-        amountIn: amount,
-        minAmountOut: 0n,
-        to: aa.address,
-        payer: aa.address,
-      })
-    ).to.not.be.reverted;
-  });
-
-  /*───────────────────────────────────────────────────────────────────────────*
    * 6) Multiple swaps/supplicates cannot drain reserves
    *───────────────────────────────────────────────────────────────────────────*/
-  it("Multiple operations: reserves remain consistent, no drain", async () => {
+  it("Multiple supplicates: reserves remain consistent, no drain", async () => {
     const poolAddr = await pool.getAddress();
     const amount = ethers.parseEther("5");
 
-    // Fund both AA and supplicator
-    await asset.mint(aa.address, amount);
-    await asset.mint(supplicator.address, amount);
-    await asset.connect(aa).approve(await router.getAddress(), amount);
-    await asset.connect(aa).approve(await pool.getAddress(), amount);
+    // Fund supplicator
+    await asset.mint(supplicator.address, amount * 2n);
     await asset.connect(supplicator).approve(await router.getAddress(), ethers.MaxUint256);
     await asset.connect(supplicator).approve(await pool.getAddress(), ethers.MaxUint256);
 
@@ -246,22 +153,7 @@ describe("Reentrancy protection: AA, approved supplicators, and malicious actors
       usdc: await pool.reserveUsdc(),
     };
 
-    // AA swaps
-    await router.connect(aa).swap({
-      pool: poolAddr,
-      assetToUsdc: true,
-      amountIn: amount,
-      minAmountOut: 0n,
-      to: aa.address,
-      payer: aa.address,
-    });
-
-    const reservesAfterSwap = {
-      asset: await pool.reserveAsset(),
-      usdc: await pool.reserveUsdc(),
-    };
-
-    // Supplicator supplicates
+    // Supplicator executes supplicate twice
     await router.connect(supplicator).supplicate({
       pool: poolAddr,
       assetToUsdc: true,
@@ -271,20 +163,30 @@ describe("Reentrancy protection: AA, approved supplicators, and malicious actors
       payer: supplicator.address,
     });
 
-    const reservesAfterSupplicate = {
+    const reservesAfterFirst = {
+      asset: await pool.reserveAsset(),
+      usdc: await pool.reserveUsdc(),
+    };
+
+    await router.connect(supplicator).supplicate({
+      pool: poolAddr,
+      assetToUsdc: true,
+      amountIn: amount,
+      minAmountOut: 0n,
+      to: supplicator.address,
+      payer: supplicator.address,
+    });
+
+    const reservesAfterSecond = {
       asset: await pool.reserveAsset(),
       usdc: await pool.reserveUsdc(),
     };
 
     // Verify reserves are consistent
-    expect(reservesAfterSwap.asset).to.equal(reservesBefore.asset + amount);
-    expect(reservesAfterSupplicate.asset).to.equal(reservesAfterSwap.asset + amount);
-    expect(reservesAfterSupplicate.usdc).to.be.lt(reservesAfterSwap.usdc);
-    expect(reservesAfterSwap.usdc).to.be.lt(reservesBefore.usdc);
-
-    // Verify no catastrophic drain (reserves should still be substantial)
-    expect(reservesAfterSupplicate.asset).to.be.gt(ethers.parseEther("1000"));
-    expect(reservesAfterSupplicate.usdc).to.be.gt(ethers.parseEther("900"));
+    expect(reservesAfterFirst.asset).to.equal(reservesBefore.asset + amount);
+    expect(reservesAfterSecond.asset).to.equal(reservesAfterFirst.asset + amount);
+    expect(reservesAfterSecond.usdc).to.be.lt(reservesAfterFirst.usdc);
+    expect(reservesAfterFirst.usdc).to.be.lt(reservesBefore.usdc);
   });
 
   /*───────────────────────────────────────────────────────────────────────────*
