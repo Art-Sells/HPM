@@ -192,7 +192,7 @@ contract FAFERouter is IFAFERouter {
         uint256 destScaled = destReserve * 10500;
         
         require(sourceScaled >= destScaled, "imbalance too small");
-
+        
         // Calculate 2.5% of source reserve to move
         uint256 amountToMove = (sourceReserve * 250) / 10000; // 2.5% = 250 bps
         require(amountToMove > 0, "zero amount");

@@ -1,0 +1,31 @@
+{
+  "generatedAt": 1764451248702,
+  "totals": {
+    "opportunities": 2,
+    "profitable": 2
+  },
+  "topOpportunities": [
+    {
+      "pairId": "ASSET/USDC",
+      "borrowToken": "USDC",
+      "buyVenue": "uniswap-v3",
+      "sellVenue": "aerodrome-v2",
+      "loanDurationHours": 1,
+      "netProfitUsd": 639.93,
+      "expectedProfitUsd": 639.93,
+      "isProfitable": true,
+      "timestamp": 1764451248701
+    },
+    {
+      "pairId": "ASSET/USDC",
+      "borrowToken": "ASSET",
+      "buyVenue": "uniswap-v3",
+      "sellVenue": "aerodrome-v2",
+      "loanDurationHours": 1,
+      "netProfitUsd": 639.93,
+      "expectedProfitUsd": 639.93,
+      "isProfitable": true,
+      "timestamp": 1764451248701
+    }
+  ]
+}

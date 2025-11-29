@@ -9,9 +9,9 @@ import hre from "hardhat";
 const { ethers } = hre;
 
 import { expect } from "./shared/expect.ts";
-import {
-  deployCore,
-  runSupplicate,
+import { 
+  deployCore, 
+  runSupplicate, 
   approveSupplicator,
   bootstrapPool,
   approveMax,
