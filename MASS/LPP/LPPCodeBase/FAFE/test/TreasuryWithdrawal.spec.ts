@@ -9,16 +9,15 @@ import hre from "hardhat";
 const { ethers } = hre;
 
 import { expect } from "./shared/expect.ts";
-import { 
-  deployCore, 
-  runSupplicate, 
-  runSwap, 
+import {
+  deployCore,
+  runSupplicate,
   approveSupplicator,
   bootstrapPool,
   approveMax,
   setDedicatedAA,
   A,
-  U
+  U,
 } from "./helpers.ts";
 
 import type {
@@ -311,71 +310,6 @@ describe("FAFETreasury — Router Pause", () => {
     ).to.not.be.reverted;
   });
 
-  it("blocks swap when paused", async () => {
-    const env = await deployCore();
-    const { deployer, treasury, router, pool, asset, usdc, access } = env;
-
-    // Bootstrap pool
-    const poolAddr = await pool.getAddress();
-    await bootstrapPool(treasury, poolAddr, asset, usdc, A, U, -5000);
-
-    // Set up AA
-    const [deployerSigner, , aa] = await ethers.getSigners();
-    await setDedicatedAA(treasury, access, aa.address, deployerSigner);
-
-    // Fund and approve
-    const amountIn = ethers.parseEther("1");
-    await (await asset.connect(deployer).mint(aa.address, amountIn * 10n)).wait();
-    await approveMax(asset, aa, poolAddr);
-
-    // Pause the router
-    await (await treasury.connect(deployer).pauseRouterViaTreasury(await router.getAddress())).wait();
-
-    // Swap should revert
-    await expect(
-      runSwap({
-        router,
-        caller: aa,
-        poolAddr,
-        assetToUsdc: true,
-        amountIn,
-      })
-    ).to.be.revertedWithCustomError(router, "RouterPaused");
-  });
-
-  it("allows swap when unpaused", async () => {
-    const env = await deployCore();
-    const { deployer, treasury, router, pool, asset, usdc, access } = env;
-
-    // Bootstrap pool
-    const poolAddr = await pool.getAddress();
-    await bootstrapPool(treasury, poolAddr, asset, usdc, A, U, -5000);
-
-    // Set up AA
-    const [deployerSigner, , aa] = await ethers.getSigners();
-    await setDedicatedAA(treasury, access, aa.address, deployerSigner);
-
-    // Fund and approve
-    const amountIn = ethers.parseEther("1");
-    await (await asset.connect(deployer).mint(aa.address, amountIn * 20n)).wait();
-    await approveMax(asset, aa, poolAddr);
-
-    // Pause and unpause
-    await (await treasury.connect(deployer).pauseRouterViaTreasury(await router.getAddress())).wait();
-    await (await treasury.connect(deployer).unpauseRouterViaTreasury(await router.getAddress())).wait();
-
-    // Swap should succeed
-    await expect(
-      runSwap({
-        router,
-        caller: aa,
-        poolAddr,
-        assetToUsdc: true,
-        amountIn,
-      })
-    ).to.not.be.reverted;
-  });
-
   it("view functions still work when paused", async () => {
     const env = await deployCore();
     const { deployer, treasury, router, pool, asset, usdc } = env;
@@ -389,7 +323,7 @@ describe("FAFETreasury — Router Pause", () => {
 
     // View functions should still work
     const amountIn = ethers.parseEther("1");
-    const quote = await router.quoteSwap(poolAddr, true, amountIn);
+    const quote = await pool.quoteSupplication(true, amountIn);
     expect(quote).to.not.be.undefined;
 
     const paused = await router.paused();

@@ -162,10 +162,7 @@ describe("Revocation enforcement (AccessManager-gated supplicate)", () => {
 
     // ----- compute fee & fund payer with amountIn + fee -----
     const amountIn = ethers.parseEther("0.1");
-    const BPS      = BigInt(await (router as any).BPS_DENOMINATOR());
-    const FEE_BPS  = BigInt(await (router as any).MCV_FEE_BPS());
-    const fee      = (amountIn * FEE_BPS) / BPS;   // fee pulled by router on input
-    const needed   = amountIn + fee;
+    const needed   = amountIn;
 
     // fund 'other' with enough for principal + fee and approve
     await (await asset.connect(deployer).mint(other.address, needed)).wait();

@@ -70,12 +70,12 @@ Object {
   "operation": "AA Full Cycle (Swap + Deposit)",
   "poolReserves": Object {
     "afterSwap": Object {
-      "a": "110000000000000000000",
-      "u": "90000000000000000000",
+      "a": "85000000000000000000",
+      "u": "110000000000000000000",
     },
     "final": Object {
-      "a": "110000000000000000000",
-      "u": "137500000000000000000",
+      "a": "85000000000000000000",
+      "u": "157500000000000000000",
     },
     "initial": Object {
       "a": "100000000000000000000",
@@ -84,8 +84,8 @@ Object {
   },
   "swap": Object {
     "amountIn": "10000000000000000000",
-    "amountOut": "10000000000000000000",
-    "expectedOutput": "10000000000000000000",
+    "amountOut": "15000000000000000000",
+    "expectedOutput": "15000000000000000000",
   },
   "treasuryBalances": Object {
     "afterSwap": Object {
@@ -105,22 +105,22 @@ Object {
 }
 `;
 
-exports[`Supplicate (Approved-only flow) AA FAFE Operations (Swaps and Deposits) AA swap: verifies before/after treasury and pool state 1`] = `
+exports[`Supplicate (Approved-only flow) AA FAFE Operations (Swaps and Deposits) AA swap: verifies before/after treasury and pool state (ASSET->USDC with +5000 bps) 1`] = `
 Object {
-  "expectedOutput": "10000000000000000000",
-  "operation": "AA Swap (ASSET->USDC)",
+  "expectedOutput": "15000000000000000000",
+  "operation": "AA Swap (ASSET->USDC, +5000 bps)",
   "poolReserves": Object {
     "after": Object {
-      "a": "110000000000000000000",
-      "u": "90000000000000000000",
+      "a": "109999999999999999999",
+      "u": "85000000000000000001",
     },
     "before": Object {
-      "a": "100000000000000000000",
-      "u": "100000000000000000000",
+      "a": "99999999999999999999",
+      "u": "100000000000000000001",
     },
   },
   "swapAmount": "10000000000000000000",
-  "swapOutput": "10000000000000000000",
+  "swapOutput": "15000000000000000000",
   "treasuryBalances": Object {
     "after": Object {
       "asset": "1000000000000000000000",
@@ -131,6 +131,95 @@ Object {
       "usdc": "1000000000000000000000",
     },
   },
+}
+`;
+
+exports[`Supplicate (Approved-only flow) AA FAFE Operations (Swaps and Deposits) AA swap: verifies before/after treasury and pool state (USDC->ASSET with -5000 bps) 1`] = `
+Object {
+  "expectedOutput": "15000000000000000000",
+  "operation": "AA Swap (USDC->ASSET, -5000 bps)",
+  "poolReserves": Object {
+    "after": Object {
+      "a": "85000000000000000000",
+      "u": "110000000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+  "swapAmount": "10000000000000000000",
+  "swapOutput": "15000000000000000000",
+  "treasuryBalances": Object {
+    "after": Object {
+      "asset": "1000000000000000000000",
+      "usdc": "1000000000000000000000",
+    },
+    "before": Object {
+      "asset": "1000000000000000000000",
+      "usdc": "1000000000000000000000",
+    },
+  },
+}
+`;
+
+exports[`Supplicate (Approved-only flow) AA external profit deposits AA deposit (USDC): verifies 5% treasury cut and pool state 1`] = `
+Object {
+  "depositAmount": "100000000000000000000",
+  "operation": "AA Deposit (USDC)",
+  "poolAmount": "95000000000000000000",
+  "poolReserves": Object {
+    "after": Object {
+      "a": "100000000000000000000",
+      "u": "195000000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+  "treasuryBalances": Object {
+    "after": Object {
+      "asset": "1000000000000000000000",
+      "usdc": "1005000000000000000000",
+    },
+    "before": Object {
+      "asset": "1000000000000000000000",
+      "usdc": "1000000000000000000000",
+    },
+  },
+  "treasuryCut": "5000000000000000000",
+}
+`;
+
+exports[`Supplicate (Approved-only flow) AA external profit deposits AA deposit: verifies 5% treasury cut and pool state 1`] = `
+Object {
+  "depositAmount": "100000000000000000000",
+  "operation": "AA Deposit (ASSET)",
+  "poolAmount": "95000000000000000000",
+  "poolReserveIncrease": "95000000000000000000",
+  "poolReserves": Object {
+    "after": Object {
+      "a": "195000000000000000000",
+      "u": "100000000000000000000",
+    },
+    "before": Object {
+      "a": "100000000000000000000",
+      "u": "100000000000000000000",
+    },
+  },
+  "treasuryBalances": Object {
+    "after": Object {
+      "asset": "1005000000000000000000",
+      "usdc": "1000000000000000000000",
+    },
+    "before": Object {
+      "asset": "1000000000000000000000",
+      "usdc": "1000000000000000000000",
+    },
+  },
+  "treasuryCut": "5000000000000000000",
+  "treasuryCutReceived": "5000000000000000000",
 }
 `;
 
@@ -153,7 +242,7 @@ Object {
   "amountIn": "1000000000000000000",
   "caller": Object {
     "after": Object {
-      "a": "1000000000000000000",
+      "a": "1500000000000000000",
       "u": "0",
     },
     "before": Object {
@@ -162,10 +251,10 @@ Object {
     },
   },
   "direction": "USDC->ASSET",
-  "quote": "1000000000000000000",
+  "quote": "1500000000000000000",
   "reserves": Object {
     "after": Object {
-      "a": "99000000000000000000",
+      "a": "98500000000000000000",
       "u": "101000000000000000000",
     },
     "before": Object {
@@ -175,12 +264,12 @@ Object {
   },
   "sqrtPriceX96": Object {
     "implied": Object {
-      "after": "80024445461715625418353569927",
+      "after": "80227296092510039935477019651",
       "before": "79228162514264337593543950336",
     },
     "stored": Object {
-      "after": "79228162514264337593543950336",
-      "before": "79228162514264337593543950336",
+      "after": "39614081257132168796771975168",
+      "before": "39614081257132168796771975168",
     },
   },
 }
@@ -192,7 +281,7 @@ Object {
   "callerBalances": Object {
     "after": Object {
       "a": "0",
-      "u": "1000000000000000000",
+      "u": "500000000000000000",
     },
     "before": Object {
       "a": "1000000000000000000",
@@ -200,26 +289,26 @@ Object {
     },
   },
   "direction": "ASSET->USDC",
-  "quote": "1000000000000000000",
+  "quote": "500000000000000000",
   "reserves": Object {
     "after": Object {
       "a": "101000000000000000000",
-      "u": "99000000000000000000",
+      "u": "99500000000000000000",
     },
     "before": Object {
       "a": "100000000000000000000",
       "u": "100000000000000000000",
     },
   },
-  "routerStatic": "1000000000000000000",
+  "routerStatic": "500000000000000000",
   "sqrtPriceX96": Object {
     "implied": Object {
-      "after": "78439802977325216994227756661",
+      "after": "78637633816054439274252601737",
       "before": "79228162514264337593543950336",
     },
     "stored": Object {
-      "after": "79228162514264337593543950336",
-      "before": "79228162514264337593543950336",
+      "after": "39614081257132168796771975168",
+      "before": "39614081257132168796771975168",
     },
   },
 }

@@ -7,7 +7,7 @@ contract FAFEAccessManager is IFAFEAccessManager {
     address public owner;
     address public treasury; // Treasury address (set once by owner)
     mapping(address => bool) private _approved;
-    address public override dedicatedAA; // Dedicated AA address for swap operations
+    address public override dedicatedAA; // Dedicated AA address for router automation (deposit/rebalance)
 
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
@@ -45,7 +45,7 @@ contract FAFEAccessManager is IFAFEAccessManager {
     }
 
     /// @notice Set the dedicated AA address (only callable by treasury)
-    /// @param aaAddress The address that will be the only one allowed to call swap()
+    /// @param aaAddress The address that will be the only one allowed to call AA-only router functions
     function setDedicatedAA(address aaAddress) external override onlyTreasury {
         require(aaAddress != address(0), "zero address");
         address previousAA = dedicatedAA;

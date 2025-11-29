@@ -126,7 +126,7 @@ contract FAFEPool is IFAFEPool {
     }
 
     /// @notice Flip the offset sign (e.g., -500 bps → +500 bps, or vice versa) and recalculate price.
-    /// Can only be called by router, treasury, or factory after a swap.
+    /// Can only be called by router, treasury, or factory to rotate the premium leg.
     function flipOffset() external {
         require(msg.sender == treasury || msg.sender == factory || msg.sender == router, "only auth");
         require(initialized, "not initialized");

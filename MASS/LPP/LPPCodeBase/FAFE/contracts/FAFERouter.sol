@@ -12,9 +12,6 @@ contract FAFERouter is IFAFERouter {
 
     /* -------- Fees (public constants = auto getters) -------- */
     uint16 public constant override BPS_DENOMINATOR = 10_000;
-    uint16 public constant override MCV_FEE_BPS      = 120; // 1.2% per hop
-    uint16 public constant override TREASURY_CUT_BPS = 20;  // .2% of hop input
-    uint16 public constant POOLS_CUT_BPS             = 100; // 1% of hop input
     uint16 public constant DEPOSIT_TREASURY_CUT_BPS  = 500; // 5% of deposit to treasury
 
     // Daily cap removed per README requirements
@@ -56,15 +53,6 @@ contract FAFERouter is IFAFERouter {
         address tokenOut,
         uint256 amountOut,
         uint256 fee
-    );
-
-    event SwapExecuted(
-        address indexed caller,
-        address indexed pool,
-        address indexed tokenIn,
-        uint256 amountIn,
-        address tokenOut,
-        uint256 amountOut
     );
 
     event DepositExecuted(
@@ -145,55 +133,6 @@ contract FAFERouter is IFAFERouter {
         emit SupplicateExecuted(msg.sender, p.pool, tokenIn, p.amountIn, tokenOut, amountOut, 0);
     }
 
-    /* ───────────────────────────────────────────
-       Single-pool swap (permissioned) — flips offset after swap
-       ─────────────────────────────────────────── */
-
-    function swap(SwapParams calldata p)
-        external
-        override
-        whenNotPaused
-        returns (uint256 amountOut)
-    {
-        require(access.isDedicatedAA(msg.sender), "only dedicated AA");
-        require(p.amountIn > 0, "zero input");
-        
-        address payer = p.payer == address(0) ? msg.sender : p.payer;
-        address to    = p.to    == address(0) ? msg.sender : p.to;
-
-        address tokenIn  = p.assetToUsdc ? IFAFEPool(p.pool).asset() : IFAFEPool(p.pool).usdc();
-        address tokenOut = p.assetToUsdc ? IFAFEPool(p.pool).usdc()  : IFAFEPool(p.pool).asset();
-
-        amountOut = IFAFEPool(p.pool).supplicate(
-            payer,
-            address(this),
-            p.assetToUsdc,
-            p.amountIn,
-            p.minAmountOut
-        );
-
-        IERC20(tokenOut).transfer(to, amountOut);
-
-        // After swap completes, flip the offset of the pool
-        IFAFEPool(p.pool).flipOffset();
-
-        emit SwapExecuted(msg.sender, p.pool, tokenIn, p.amountIn, tokenOut, amountOut);
-        emit HopExecuted(p.pool, p.assetToUsdc, tokenIn, tokenOut, p.amountIn, amountOut);
-    }
-
-    /* ───────────────────────────────────────────
-       Quoting
-       ─────────────────────────────────────────── */
-
-    function quoteSwap(
-        address pool,
-        bool assetToUsdc,
-        uint256 amountIn
-    ) external view override returns (uint256 amountOut) {
-        require(pool != address(0), "zero pool");
-        require(amountIn > 0, "amountIn=0");
-        (amountOut, ) = IFAFEPool(pool).quoteSupplication(assetToUsdc, amountIn);
-    }
 
     /* ───────────────────────────────────────────
        Deposit profits back to pool

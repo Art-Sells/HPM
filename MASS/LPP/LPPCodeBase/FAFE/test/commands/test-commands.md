@@ -10,6 +10,4 @@ npx hardhat test test/Revocation.spec.ts
 npx hardhat test test/SupplicateSwapApproved.spec.ts
 npx hardhat test test/TreasuryWithdrawal.spec.ts
 
-- Future AA / FAFE Operation Suites
-- - Placeholder for upcoming AA controller specs and six-pool regression tests.
 

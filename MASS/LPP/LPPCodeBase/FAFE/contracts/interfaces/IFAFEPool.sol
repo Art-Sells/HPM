@@ -78,7 +78,7 @@ interface IFAFEPool {
     // Set router address (one-time, treasury/factory only)
     function setRouter(address router_) external;
     
-    // Flip offset sign (called by router after swap)
+    // Flip offset sign (admin/AA-only hook to rotate pool orientation)
     function flipOffset() external;
     
     // Withdraw tokens for rebalancing (router-only)

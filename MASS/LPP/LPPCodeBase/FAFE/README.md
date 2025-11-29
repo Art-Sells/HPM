@@ -10,7 +10,7 @@
 
 - **Deterministic premiums/discounts.** Every swap enforces a ±5,000 bps offset, yielding exactly 1.5× (premium) or 0.5× (discount) of the base CFMM quote with output clamped to available reserves. The AA continuously refills pools through the arbitrage loop, ensuring premiums remain available.
 - **Six-pool lattice.** Three negative-offset pools (−5,000 bps) and three positive-offset pools (+5,000 bps) provide a fixed ladder of subsidized trades that our AA can harvest and refill.
-- **AA-driven loop.** A privileged agent borrows USDC/cbBTC via AAVE flash loans (1% of pool reserves), purchases discounted cbBTC/USDC on FAFE pools (which start at -50% price due to -5000 bps offsets), sells externally at full market price, repays AAVE loan + fees, deposits profits back to pools (5% to treasury, 95% to pool), and rebalances offsets automatically. This compounds TVL over time. 
+- **AA-driven loop.** The MCV (formerly MEV) agent iterates across **every major DEX** plus internal FAFE metrics, computes the largest borrow it can take (flash loans via AAVE/TreasuryOps), routes that size into the venue with the best net return (after fees), repays the loan, then pushes **only the realized profit** back into FAFE via `deposit` (5% treasury / 95% pool). After all six pools complete their pass, the AA triggers `rebalance` so reserves stay within ±5%. There are **no router swaps anymore**—all premiums are captured off-platform and recycled through deposits. 
 - **Single-source of truth.** Deployment manifests, pool manifests, snapshots, scripts, and guides all live in this repo; there is no hidden state.
 - **Permissioned surface.** `supplicate` is gated by `FAFEAccessManager`. Only whitelisted operators (e.g., `MASS_TESTER_ADDRESS`) can tap the subsidized pools.
 
@@ -25,7 +25,7 @@
 | **FAFETreasury** | `contracts/FAFETreasury.sol` | Owns factory/access/router, performs `bootstrapViaTreasury`, fee custody, and governance actions. |
 | **FAFEFactory** | `contracts/FAFEFactory.sol` | Mints `FAFEPool` instances (ASSET/USDC), enforces treasury-only creation, tracks metadata. |
 | **FAFEPool** | `contracts/FAFEPool.sol` | Holds reserves, applies ±5,000 bps multipliers via `_quoteAmount`, clamps payouts to inventory, exposes `supplicate`/`quote`. |
-| **FAFERouter** | `contracts/FAFERouter.sol` | Entry point for `supplicate`, handles access control, aggregates events, and there is no per-hop accounting. Multi-hop MCV logic has been removed. `swap` now is also permissioned like supplicate and there is no per-hop accounting. We also need to create a `deposit` function that after the Autonomous Agent (AA) deposits what it borrowed after selling on the outside it deposits the profits into the pool it swapped from. |
+| **FAFERouter** | `contracts/FAFERouter.sol` | Entry point for `supplicate`, AA-only `deposit`, and AA-only `rebalance`. There is no longer any router `swap` surface; MCV captures edge externally and only returns profit via `deposit`. |
 | **FAFESupplicationQuoter** | `contracts/FAFESupplicationQuoter.sol` | Off-chain helper mirroring router math for bots/tests. |
 | **IFAFE*** | `contracts/interfaces/` | Canonical interfaces for external integrations (access manager, factory, pool, router, treasury, quoter). |
 | **Libraries** | `contracts/libraries/FullMath.sol`, `FixedPointMath.sol` | Deterministic mul/div helpers used by `_quoteAmount`. |
@@ -57,22 +57,11 @@ multiplier = (10_000 ± offsetBps) / 10_000
 amountOut = min(baseOut * multiplier, reserveOpp)
 ```
 
-An ASCII sketch of the base FAFE operation (offsets should flip for each pool after `swap`)
+An ASCII sketch of the base FAFE operation (offsets flip after each `supplicate`)
 
-```
- USDC ----(−5k)----> [P1] || [P2] || [P3] (drain cbBTC)
-   ^                                             |
-   |                                             v
-  AA loops <-----(+5k, sell cbBTC)----- [P4] ||[P5] || [P6]
-```
-```
- cbBTC ----(+5k)----> [P1] || [P2] || [P3] (drain USDC)
-   ^                                             |
-   |                                             v
-  AA loops <-----(-5k, sell USDC)----- [P4] || [P5] || [P6]
-```
 
-Each `FAFEPool` applies its offset after each swap. Offsets remain fixed per pool.
+
+Each `FAFEPool` applies its offset after every `supplicate`. Offsets remain fixed per pool.
 
 ---
 
@@ -80,18 +69,18 @@ Each `FAFEPool` applies its offset after each swap. Offsets remain fixed per poo
 
 The AA processes pools sequentially in a continuous loop. For each pool, it executes steps 1-7, then after all 6 pools are processed once, it runs rebalancing (step 8), then repeats from pool 1.
 
-**Per-Pool Cycle (Steps 1-7):**
+**Per-Pool Cycle (Steps 1-6):**
 
-1. **Borrow from Flash Loan Provider (AAVE).** Based on the pool's offset (negative or positive bps), AA borrows USDC (for negative-bps pools) or cbBTC (for positive-bps pools) via AAVE flash loans. The amount is 1% of the pool's reserves for that token. Flash loans allow borrowing without collateral, with fees (~0.09%) paid upon repayment.
-2. **Swap on FAFE pool.** Use borrowed tokens to swap on the pool via authorized `swap` calls. Negative-bps pools (USDC → cbBTC) and positive-bps pools (cbBTC → USDC) both provide ~1.5× the base CFMM output due to ±5,000 bps offsets (pools start undervalued at -50% price).
-3. **Buy externally at market price.** Use borrowed funds to buy cbBTC/USDC on external DEXs/aggregators at full market price (no discount).
-4. **Sell externally at market price.** Sell the cbBTC/USDC obtained from FAFE swaps externally at full market price to realize profit (the difference between FAFE's -50% discount and external market price).
-5. **Return borrowed amount + fees to AAVE.** Repay the flash loan principal plus AAVE's fees (~0.09%), keeping the profit.
-6. **Deposit profit to pools.** Deposit remaining profit back to the pool through `FAFERouter.deposit()`, which sends 5% to treasury and 95% to the pool. This increases TVL.
+1. **Borrow 1% via Flash Loan (AAVE/TreasuryOps).** For negative pools the AA borrows USDC, for positive pools it borrows cbBTC. Borrow size = 1% of the live reserve to keep impact minimal.
+2. **Scan every DEX + RFQ endpoint.** The MCV service hits all allow‑listed DEX APIs (Uniswap, Aerodrome, BaseSwap, on-chain RFQs, etc.) plus its own fairness oracle, comparing output for the borrowed size (minus every venue's fee schedule).
+3. **Execute the best external leg.** The borrowed tokens are routed to the venue with the highest net return. Because FAFE pools are hard-coded at ±5,000 bps, the AA knows the minimum premium it can capture relative to fair price, so it only executes trades that net at least a 50% edge after gas + venue fees. **No router `swap` is called anymore.**
+4. **Repay flash lender.** The AA immediately returns principal + AAVE fee (~0.09%) from the external fills.
+5. **Deposit profit back into the originating pool.** Whatever remains after repayment is treated as profit. The AA approves the router, calls `deposit`, and the router sends 5% to treasury, 95% to the targeted pool. This is the only on-chain action that touches FAFE reserves.
+6. **Log + throttle.** Metrics are emitted to the AA API (pool id, borrow size, DEX chosen, realized profit, tx-hash) and the loop advances to the next pool.
 
 **After All 6 Pools Processed:**
 
-7. **Rebalance.** After completing one full cycle through all 6 pools, the AA scans all pools via `FAFEFactory.getPools()`, compares reserves using `FAFEPool.reserveAsset()` and `FAFEPool.reserveUsdc()`, and identifies pools where one has ≥5% more reserves than another. The AA then executes `FAFERouter.rebalance()` to move 2.5% of the excess from the imbalanced pool to the pool with less reserves. This ensures all pools maintain equal balances without requiring external asset purchases. See "Pool Scanner & Rebalancing Logic" in section 7 for implementation details.
+7. **Rebalance.** Once every pool has received a profit deposit, the AA scans `FAFEFactory.getPools()` and runs `FAFERouter.rebalance()` wherever one side carries ≥5% more USDC or ASSET than another. The router automatically withdraws 2.5% of the surplus and pushes it into the underweight pool, so no external inventory is required. See "Pool Scanner & Rebalancing Logic" in section 7 for implementation details.
 
 **Repeat:** After rebalancing, the cycle starts again from pool 1. Because premiums are deterministic and available in both directions (cbBTC and USDC), cycling this loop continuously compounds treasury TVL while keeping external participants blinded to the subsidy.
 
@@ -110,13 +99,12 @@ The AA processes pools sequentially in a continuous loop. For each pool, it exec
    npx hardhat test test/AccessGating.Supplicate.spec.ts
    npx hardhat test test/Deployment/*.spec.ts  # future FAFE suites
    ```
-   - Test Swap/Supplications to see how "in down markets" if Supplications(CBBTCtoUSDC/USDCtoCBBTC) will provide same premiums to-and-from like swaps and log onto API-LPP/MASS Buildnotes.md in Arells 
+   - Test `supplicate` flows only—router `swap` has been removed. Capture premium math from `SupplicateSwapApproved.spec.ts` and log into MASS build notes.
 3. **Build Dummy AA**
-  - **Daily FAFE Operations.** Build a "DUMMY AA API that borrows from "TreasuryOps" meaning it takes USDC/CBBTC from TreasuryOps (TreasuryOps calls deposit)" The AA must execute a daily cycle through all six pools (one operation per pool). The system tracks:
-    - **Pool operation tracking:** Log each swap operation with pool address, direction, amounts, and timestamp
-    - **External sale tracking:** Log when AA sells borrowed assets externally (deposits amount back to TreasuryOps (which will be Flash Loan distributor))
-    - **Borrow repayment:** Log when AA deposits the borrowed principal back to the pool it swapped from
-    - **Profit deposit:** Log when AA deposits profits back to the same pool
+  - **Daily FAFE Operations.** Build a "DUMMY AA API" that pulls flash loans from TreasuryOps/AAVE, runs external venue scans, and only deposits profit back into FAFE. The AA must execute a daily cycle through all six pools (one operation per pool). The system tracks:
+    - **Pool operation tracking:** Log each borrow + chosen DEX route (pool id, token, venue, realized APR)
+    - **External sale tracking:** Log when AA sells borrowed assets externally and when the flash loan principal is repaid
+    - **Profit deposit:** Log each `deposit` call (pool id, token, amount, tx-hash, treasury cut)
     - **Daily completion:** Track when all 6 pool operations are complete and stop further operations until next day
 
 4. **Deploy to Base mainnet** with verbose logging:
@@ -150,7 +138,7 @@ The AA processes pools sequentially in a continuous loop. For each pool, it exec
 ## 6. Monitoring & Next Steps
 
 - **Runtime telemetry:**
-  - `SwapExecuted`, `DepositExecuted`, `RebalanceExecuted`, and treasury donations for Grafana ingestion.
+  - `SupplicateExecuted`, `DepositExecuted`, `RebalanceExecuted`, and treasury donation events for Grafana ingestion.
   - `scripts/read-onchain-prices.ts` remains the lightweight sanity check for reserve/price drift.
 - **Daily FAFE Operations API (to be built inside AA directory [re-write README.md in AA Directory]):**
   - **TreasuryOp should Seed ETH/BASE to AA and approved Supplicators**
@@ -182,14 +170,14 @@ The AA processes pools sequentially in a continuous loop. For each pool, it exec
       - `POST /api/markets/quote` - Get external market quotes for buy/sell
       - `POST /api/markets/execute` - Execute external market trades
       - Track profit margins: external price vs FAFE pool price (with -50% discount)
-  - **Event listeners:** Monitor on-chain `SwapExecuted`, `DepositExecuted`, and `RebalanceExecuted` events from `FAFERouter`
+  - **Event listeners:** Monitor on-chain `SupplicateExecuted`, `DepositExecuted`, and `RebalanceExecuted` events from `FAFERouter`
   - **API endpoints:**
-    - `POST /api/operations/swap` - Log swap operation (pool, direction, amounts, tx hash)
     - `POST /api/operations/borrow` - Log flash loan initiation (lender, amount, token, fees)
-    - `POST /api/operations/external-buy` - Log external market purchase (venue, amount, price)
+    - `POST /api/operations/borrow` - Log flash loan initiation (lender, amount, token, fees)
+    - `POST /api/operations/dex-route` - Log the winning DEX/routing decision (venue, quote, expected slippage)
     - `POST /api/operations/external-sale` - Log external market sale (venue, amount, price, profit)
     - `POST /api/operations/repay` - Log borrow repayment (amount, fees paid)
-    - `POST /api/operations/profit` - Log profit deposit back to pool
+    - `POST /api/operations/profit` - Log profit deposit back to pool (pool id, token, amount, tx hash)
     - `GET /api/operations/daily-status` - Get current day's operation status (pools completed, remaining)
     - `GET /api/operations/history` - Query historical operations
   - **Daily cycle tracking:**
