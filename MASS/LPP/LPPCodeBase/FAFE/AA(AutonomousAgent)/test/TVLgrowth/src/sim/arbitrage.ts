@@ -21,6 +21,7 @@ export interface SimulationInput {
   extraFeesUsd?: number;
   loanAprBps?: number;
   loanDurationHours?: number;
+  borrowTokenPriceUsd?: number;
 }
 
 export interface SimulationResult {
@@ -39,6 +40,7 @@ export function simulateArb({
   extraFeesUsd = 0,
   loanAprBps,
   loanDurationHours = 1,
+  borrowTokenPriceUsd,
 }: SimulationInput): SimulationResult {
   let realizedProfit = scaleProfit(opportunity, borrowSize);
   let realizedBorrowSize = borrowSize;
@@ -64,14 +66,22 @@ export function simulateArb({
     realizedProfit *= slippageFactor;
   }
 
-  const loanCostUsd =
+  const loanCostTokens =
     loanAprBps && borrowSize > 0
       ? (borrowSize * loanAprBps * (loanDurationHours / (24 * 365))) / 10_000
       : 0;
+  const loanCostUsd =
+    borrowTokenPriceUsd !== undefined
+      ? loanCostTokens * borrowTokenPriceUsd
+      : loanCostTokens;
 
   const netProfit = realizedProfit - extraFeesUsd - loanCostUsd;
+  const notionalUsd =
+    borrowTokenPriceUsd !== undefined
+      ? realizedBorrowSize * borrowTokenPriceUsd
+      : realizedBorrowSize;
   const edgeBps =
-    realizedBorrowSize === 0 ? 0 : (netProfit / realizedBorrowSize) * 10_000;
+    notionalUsd === 0 ? 0 : (netProfit / notionalUsd) * 10_000;
 
   return {
     borrowSize: realizedBorrowSize,

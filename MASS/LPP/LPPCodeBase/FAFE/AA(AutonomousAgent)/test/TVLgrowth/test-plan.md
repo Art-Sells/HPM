@@ -54,6 +54,7 @@ Once charts exist, capture static JSON from the data pipeline and ensure plotted
 | P2 | Arb simulator + ranking | `sim/arbitrage.ts`, slippage specs, scoring snapshots |
 | P3 | Playbook + AA integration tests | `strategies/*`, `tests/integration/playbook-to-aa.spec.ts`, `DailyOperations` hook |
 | P4 | Dashboard & alert smoke tests | datasource scripts, dashboard config, validation snapshots |
+| P5 | Flash executor scaffolding | `contracts/TVLGrowth/FlashArbExecutor.sol`, deployment + run scripts under `TVLgrowth/execution` |
 
 Each phase should land with at least one automated test plus fixture data under `fixtures/`.
 

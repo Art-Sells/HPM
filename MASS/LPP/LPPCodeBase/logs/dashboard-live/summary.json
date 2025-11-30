@@ -1,5 +1,5 @@
 {
-  "generatedAt": 1764455112021,
+  "generatedAt": 1764460790820,
   "totals": {
     "opportunities": 114,
     "profitable": 114
@@ -14,7 +14,7 @@
       "netProfitUsd": 12062539.75,
       "expectedProfitUsd": 12062539.75,
       "isProfitable": true,
-      "timestamp": 1764455112019
+      "timestamp": 1764460790820
     },
     {
       "pairId": "BASE/ETH",
@@ -25,7 +25,7 @@
       "netProfitUsd": 12062539.75,
       "expectedProfitUsd": 12062539.75,
       "isProfitable": true,
-      "timestamp": 1764455112019
+      "timestamp": 1764460790820
     },
     {
       "pairId": "BASE/ETH",
@@ -36,7 +36,7 @@
       "netProfitUsd": 12062539.75,
       "expectedProfitUsd": 12062539.75,
       "isProfitable": true,
-      "timestamp": 1764455112019
+      "timestamp": 1764460790820
     },
     {
       "pairId": "BASE/ETH",
@@ -47,7 +47,7 @@
       "netProfitUsd": 12062539.75,
       "expectedProfitUsd": 12062539.75,
       "isProfitable": true,
-      "timestamp": 1764455112019
+      "timestamp": 1764460790820
     },
     {
       "pairId": "BASE/ETH",
@@ -58,7 +58,7 @@
       "netProfitUsd": 12062539.75,
       "expectedProfitUsd": 12062539.75,
       "isProfitable": true,
-      "timestamp": 1764455112019
+      "timestamp": 1764460790820
     },
     {
       "pairId": "BASE/ETH",
@@ -69,7 +69,7 @@
       "netProfitUsd": 12062539.75,
       "expectedProfitUsd": 12062539.75,
       "isProfitable": true,
-      "timestamp": 1764455112019
+      "timestamp": 1764460790820
     },
     {
       "pairId": "BASE/ETH",
@@ -80,7 +80,7 @@
       "netProfitUsd": 8930009.37,
       "expectedProfitUsd": 8930009.37,
       "isProfitable": true,
-      "timestamp": 1764455112019
+      "timestamp": 1764460790820
     },
     {
       "pairId": "BASE/ETH",
@@ -91,7 +91,7 @@
       "netProfitUsd": 8930009.37,
       "expectedProfitUsd": 8930009.37,
       "isProfitable": true,
-      "timestamp": 1764455112019
+      "timestamp": 1764460790820
     },
     {
       "pairId": "BASE/ETH",
@@ -102,7 +102,7 @@
       "netProfitUsd": 8930009.37,
       "expectedProfitUsd": 8930009.37,
       "isProfitable": true,
-      "timestamp": 1764455112019
+      "timestamp": 1764460790820
     },
     {
       "pairId": "BASE/ETH",
@@ -113,7 +113,7 @@
       "netProfitUsd": 8930009.37,
       "expectedProfitUsd": 8930009.37,
       "isProfitable": true,
-      "timestamp": 1764455112019
+      "timestamp": 1764460790820
     }
   ]
 }

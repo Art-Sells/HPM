@@ -2,11 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { buildPlaybook, Playbook } from "./generator";
-import { detectMispricings } from "../detectors/mispricing";
+import {
+  detectMispricings,
+  ExecutionHooks,
+} from "../detectors/mispricing";
 import { getDefaultAdapters } from "../adapters";
 import { getActivePairs } from "../pairs";
 import { loadLoanQuotes } from "../loan/loanFeed";
 import {
+  LoanQuote,
   DetectionConfig,
   PairRequest,
   VenueAdapter,
@@ -27,6 +31,8 @@ export interface PublishOptions {
   detector?: Partial<DetectionConfig>;
   limit?: number;
   outputPath?: string;
+  loanQuotes?: LoanQuote[];
+  execution?: ExecutionHooks;
 }
 
 export async function buildAndWritePlaybook(
@@ -39,21 +45,28 @@ export async function buildAndWritePlaybook(
   ).flat();
 
   const detectorCfg: DetectionConfig = {
-    defaultTradeSize: 10_000,
+    defaultTradeSize: 200,
     minProfitUsd: 0,
     liquidityFraction: 0.2,
     minLiquidityUsd: 50_000,
     maxPriceRatio: 3,
     slippageBps: 50,
+    minLoanDurationHours: 0.1,
     ...options.detector,
   };
 
-  const loanQuotes = loadLoanQuotes();
-  const mispricings = detectMispricings(
+  const loanQuotes =
+    options.loanQuotes ??
+    (await loadLoanQuotes({
+      dynamicAssets: pairs.flatMap((pair) => [pair.base, pair.quote]),
+    }));
+  const mispricings = await detectMispricings(
     quotes,
     pairs,
     loanQuotes,
-    detectorCfg
+    detectorCfg,
+    undefined,
+    options.execution
   );
   const playbook = buildPlaybook(mispricings, options.limit ?? 10);
   const output = options.outputPath ?? DEFAULT_OUTPUT;

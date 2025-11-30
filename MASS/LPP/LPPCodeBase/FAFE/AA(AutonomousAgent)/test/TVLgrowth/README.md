@@ -12,7 +12,9 @@ This directory hosts simulation + monitoring scaffolding for measuring how often
 ### 2. Mispricing Logger
 - `detectors/mispricing.ts` now focuses purely on **dollar profit after gas**, not basis points. Any venue combination that yields `netProfitUsd > 0` is surfaced so the AA can borrow whichever token unlocks immediate profit (no need to compare against FAFE’s offsets).
 - **Liquidity-aware sizing:** trade inputs are capped by `liquidityFraction × liquidityUsd`, so thin pools can’t fabricate huge spreads.
-- **Loan matching:** an alert is emitted only if the borrow token exists in the loan feed and `available ≥ borrowSize`; APR + duration feed into the PnL haircut.
+- **Loan matching:** an alert is emitted only if the borrow token exists in the loan feed, `available ≥ borrowSize`, **and** the quote’s `maxDurationHours` clears the configured minimum (default 0.1h). APR + that minimum duration are charged against the spread before we call it profitable.
+- **Execution-grade sizing:** every candidate is repriced via live router quotes (0x Base) for both hops, and the returned gas estimate is charged against the spread. Trade size is capped by Uniswap v3 depth (via QuoterV2) or Aerodrome `getReserves()` walks rather than heuristic liquidity; heuristics only apply if `TVL_WATCHER_DEPTH_MODE=mock`.
+- **No fixtures/fallbacks:** loan data is always fetched from Aave’s Base reserves; disabling the fetch simply yields an empty loan set instead of loading JSON fixtures.
 - **Slippage sim:** each candidate runs through `sim/arbitrage.ts` (configurable `slippageBps`) which applies price-impact + loan-fee haircuts before it’s considered profitable.
 - **Junk filtering:** venues that fail basic sanity checks (e.g., liquidity below `minLiquidityUsd`, absurd price ratios with no depth) are skipped.
 - Persist every alert even when size is tiny; fields: `{pair, venueA, venueB, borrowToken, netProfitUsd, liquidityClass, timestamp}` alongside legacy edge data for reference.
@@ -62,6 +64,7 @@ TS_NODE_PROJECT=AA(AutonomousAgent)/test/TVLgrowth/tsconfig.json \
 - Set `TVL_WATCHER_MODE=live` to swap the mock adapters for the Dexscreener-backed adapter under `src/adapters/live/dexscreener.ts`.
 - Optional: set `TVL_WATCHER_ALLOW_INSECURE=1` when running inside sandboxes that lack a CA bundle (the adapter will use an Undici agent with `rejectUnauthorized: false`).
 - By default the watcher **auto-discovers the top 10 Base pools ranked by USD liquidity** before each run via Dexscreener, so you don't need to hand-maintain a pair list. Set `TVL_WATCHER_DYNAMIC=0` to force the static fallback list.
+- Router execution always hits the 0x Base API (`ZERO_EX_BASE_URL` / `ZERO_EX_API_KEY`). There is no runtime “mock” execution mode; tests inject their own stubs directly.
 - Optional: point `TVL_WATCHER_PAIRS=/absolute/path/to/pairs.json` at a JSON array like:
 
 ```json
@@ -87,4 +90,36 @@ npx ts-node AA(AutonomousAgent)/test/TVLgrowth/src/watcherRunner.ts 60000 10000
 ```
 
 Arguments: `<durationMs?> <intervalMs?> <logDir?> <outputDir?>`. Logs land in `logs/tvl-growth/*.ndjson` and the dashboard summary goes to `logs/dashboard/summary.json`.
+
+## Flash Execution Harness (experimental)
+
+To validate a live opportunity on Base mainnet we scaffolded a flash-loan executor and helper scripts. **Use at your own risk.**
+
+1. **Deploy `FlashArbExecutor`:**
+
+   ```bash
+   PRIVATE_KEY=0xabc... \
+   BASE_INFURA_RPC=https://base-mainnet.infura.io/v3/... \
+   npx hardhat run AA(AutonomousAgent)/test/TVLgrowth/scripts/deployFlashExecutor.ts --network base
+   ```
+
+   The constructor expects the Aave v3 `PoolAddressesProvider` (default `0xa97684...`); override via `AAVE_ADDRESSES_PROVIDER_BASE` if needed.
+
+2. **Trigger a single flash arb:**
+
+   ```bash
+   TS_NODE_PROJECT=AA(AutonomousAgent)/test/TVLgrowth/tsconfig.json \
+   BASE_INFURA_RPC=https://base-mainnet.infura.io/v3/... \
+   PRIVATE_KEY=0xabc... \
+   ts-node AA(AutonomousAgent)/test/TVLgrowth/execution/runFlashArb.ts \
+     --executor 0xYourExecutor \
+     --borrowToken 0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA \
+     --intermediateToken 0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22 \
+     --borrowAmount 1000 \
+     --minProfit 10
+   ```
+
+   The script fetches two 0x Base quotes (borrow→intermediate and back), builds the `SwapCall` payloads, and calls `executeFlashArb`. It stops after one tx; add your own loop/guards if you want to chase multiple routes or stop after $10k profit.
+
+**Safety checklist:** verify watcher output, use conservative `minProfit`, keep a close eye on gas, and remember this contract can approve arbitrary routers—only send calldata you trust.
 

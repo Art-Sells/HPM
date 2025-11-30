@@ -1,33 +1,29 @@
-import fs from "node:fs";
-import path from "node:path";
-
 import { LoanQuote } from "../types";
-
-const DEFAULT_LOAN_FILE = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "fixtures",
-  "loans",
-  "aave-base.json"
-);
+import { fetchAaveLoanQuotes } from "./aave";
 
 export interface LoanFeedOptions {
-  filePath?: string;
+  dynamicAssets?: string[];
 }
 
-export function loadLoanQuotes(
+export async function loadLoanQuotes(
   options: LoanFeedOptions = {}
-): LoanQuote[] {
-  const file = options.filePath ?? DEFAULT_LOAN_FILE;
-  if (!fs.existsSync(file)) return [];
-  try {
-    const data = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (Array.isArray(data)) {
-      return data as LoanQuote[];
-    }
+): Promise<LoanQuote[]> {
+  const shouldFetch =
+    (process.env.TVL_WATCHER_FETCH_AAVE ?? "1").toLowerCase() !== "0";
+  if (!shouldFetch) {
+    console.warn(
+      "[loan] TVL_WATCHER_FETCH_AAVE=0; returning empty loan quote set"
+    );
     return [];
-  } catch {
+  }
+
+  try {
+    const dynamicQuotes = await fetchAaveLoanQuotes(
+      options.dynamicAssets ?? []
+    );
+    return dynamicQuotes;
+  } catch (err) {
+    console.warn("[loan] failed to fetch dynamic Aave loans", err);
     return [];
   }
 }

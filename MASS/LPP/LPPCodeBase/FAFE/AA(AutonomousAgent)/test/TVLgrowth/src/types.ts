@@ -13,7 +13,9 @@ export interface PairRequest {
   quote: TokenSymbol;            // e.g. USDC
   query?: string;                // optional custom search string for adapters
   baseAddress?: string;          // optional token contract address
+  baseDecimals?: number;
   quoteAddress?: string;
+  quoteDecimals?: number;
   pairAddress?: string;          // optional DEX pair contract address
   chainId?: string;              // preferred chain (default Base)
 }
@@ -39,6 +41,7 @@ export interface LoanQuote {
   available: number;
   aprBps: number;
   maxDurationHours: number;
+  flashFeeBps?: number;
   timestamp: number;
 }
 
@@ -61,11 +64,12 @@ export interface Mispricing {
 
 export interface DetectionConfig {
   minProfitUsd: number;
-  defaultTradeSize: number;
+  defaultTradeSize: number;  // target notional in USD
   liquidityFraction: number;
   minLiquidityUsd: number;
   maxPriceRatio: number;
   slippageBps: number;
+  minLoanDurationHours: number;
 }
 
 export interface WatcherResult {

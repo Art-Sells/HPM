@@ -13,18 +13,34 @@ describe("pair discovery", () => {
     pairs: [
       {
         chainId: "base",
-        pairAddress: "0x123",
+        pairAddress: "0x1234567890123456789012345678901234567890",
         dexId: "uniswap",
-        baseToken: { address: "0xaaa", symbol: "AAA", name: "AAA Token" },
-        quoteToken: { address: "0xbbb", symbol: "BBB", name: "BBB Token" },
+        baseToken: {
+          address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          symbol: "AAA",
+          name: "AAA Token",
+        },
+        quoteToken: {
+          address: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          symbol: "BBB",
+          name: "BBB Token",
+        },
         liquidity: { usd: 1_000_000 },
       },
       {
         chainId: "base",
-        pairAddress: "0x456",
+        pairAddress: "0x4564567890123456789012345678901234567890",
         dexId: "aerodrome",
-        baseToken: { address: "0xccc", symbol: "CCC", name: "CCC Token" },
-        quoteToken: { address: "0xddd", symbol: "DDD", name: "DDD Token" },
+        baseToken: {
+          address: "0xcccccccccccccccccccccccccccccccccccccccc",
+          symbol: "CCC",
+          name: "CCC Token",
+        },
+        quoteToken: {
+          address: "0xdddddddddddddddddddddddddddddddddddddddd",
+          symbol: "DDD",
+          name: "DDD Token",
+        },
         liquidity: { usd: 500_000 },
       },
     ],
@@ -45,8 +61,14 @@ describe("pair discovery", () => {
   it("discovers top base pairs sorted by liquidity", async () => {
     const pairs = await discoverDynamicPairs(2);
     assert.equal(pairs.length, 2);
-    assert.equal(pairs[0].pairAddress, "0x123");
-    assert.equal(pairs[1].pairAddress, "0x456");
+    assert.equal(
+      pairs[0].pairAddress,
+      "0x1234567890123456789012345678901234567890"
+    );
+    assert.equal(
+      pairs[1].pairAddress,
+      "0x4564567890123456789012345678901234567890"
+    );
   });
 
   it("falls back to configured pairs when dynamic disabled", async () => {
