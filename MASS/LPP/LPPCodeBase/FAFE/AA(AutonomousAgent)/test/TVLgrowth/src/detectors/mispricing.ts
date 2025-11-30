@@ -16,7 +16,7 @@ import { capTradeSizeByDepth } from "../depth";
 
 const DEFAULT_CONFIG: DetectionConfig = {
   minProfitUsd: 0,
-  defaultTradeSize: 200,
+  defaultTradeSize: 10_000,
   liquidityFraction: 0.2,
   minLiquidityUsd: 50_000,
   maxPriceRatio: 3,

@@ -31,7 +31,7 @@ const LOG_DIR = path.join(
 export const WATCHER_LOG_DIR = LOG_DIR;
 
 const DETECTOR_CONFIG: DetectionConfig = {
-  defaultTradeSize: 200,
+  defaultTradeSize: 10_000,
   minProfitUsd: 0,
   liquidityFraction: 0.2,
   minLiquidityUsd: 50_000,
