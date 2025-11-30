@@ -91,35 +91,3 @@ npx ts-node AA(AutonomousAgent)/test/TVLgrowth/src/watcherRunner.ts 60000 10000
 
 Arguments: `<durationMs?> <intervalMs?> <logDir?> <outputDir?>`. Logs land in `logs/tvl-growth/*.ndjson` and the dashboard summary goes to `logs/dashboard/summary.json`.
 
-## Flash Execution Harness (experimental)
-
-To validate a live opportunity on Base mainnet we scaffolded a flash-loan executor and helper scripts. **Use at your own risk.**
-
-1. **Deploy `FlashArbExecutor`:**
-
-   ```bash
-   PRIVATE_KEY=0xabc... \
-   BASE_INFURA_RPC=https://base-mainnet.infura.io/v3/... \
-   npx hardhat run AA(AutonomousAgent)/test/TVLgrowth/scripts/deployFlashExecutor.ts --network base
-   ```
-
-   The constructor expects the Aave v3 `PoolAddressesProvider` (default `0xa97684...`); override via `AAVE_ADDRESSES_PROVIDER_BASE` if needed.
-
-2. **Trigger a single flash arb:**
-
-   ```bash
-   TS_NODE_PROJECT=AA(AutonomousAgent)/test/TVLgrowth/tsconfig.json \
-   BASE_INFURA_RPC=https://base-mainnet.infura.io/v3/... \
-   PRIVATE_KEY=0xabc... \
-   ts-node AA(AutonomousAgent)/test/TVLgrowth/execution/runFlashArb.ts \
-     --executor 0xYourExecutor \
-     --borrowToken 0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA \
-     --intermediateToken 0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22 \
-     --borrowAmount 1000 \
-     --minProfit 10
-   ```
-
-   The script fetches two 0x Base quotes (borrow→intermediate and back), builds the `SwapCall` payloads, and calls `executeFlashArb`. It stops after one tx; add your own loop/guards if you want to chase multiple routes or stop after $10k profit.
-
-**Safety checklist:** verify watcher output, use conservative `minProfit`, keep a close eye on gas, and remember this contract can approve arbitrary routers—only send calldata you trust.
-

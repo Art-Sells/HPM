@@ -13,9 +13,4 @@ library SafeERC20 {
         bool ok = t.transfer(to, v);
         require(ok, "ERC20: transfer failed");
     }
-
-    function safeApprove(IERC20 t, address spender, uint256 v) internal {
-        bool ok = t.approve(spender, v);
-        require(ok, "ERC20: approve failed");
-    }
 }

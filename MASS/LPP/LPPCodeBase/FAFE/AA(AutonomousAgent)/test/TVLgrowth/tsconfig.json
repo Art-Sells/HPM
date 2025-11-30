@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "Node16",
+    "module": "CommonJS",
     "moduleResolution": "Node16",
     "esModuleInterop": true,
     "resolveJsonModule": true,
