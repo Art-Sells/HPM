@@ -86,3 +86,7 @@
 {"timestamp":1764473398385,"quotes":[],"mispricings":[],"loanQuotes":[{"lender":"aave-v3-base","asset":"WETH","available":0,"aprBps":1,"maxDurationHours":0.000278,"flashFeeBps":9,"timestamp":1764473398385},{"lender":"aave-v3-base","asset":"USDC","available":0,"aprBps":0,"maxDurationHours":0.000278,"flashFeeBps":9,"timestamp":1764473398385}]}
 {"timestamp":1764473409109,"quotes":[],"mispricings":[],"loanQuotes":[{"lender":"aave-v3-base","asset":"WETH","available":0,"aprBps":1,"maxDurationHours":0.000278,"flashFeeBps":9,"timestamp":1764473409109},{"lender":"aave-v3-base","asset":"USDC","available":0,"aprBps":0,"maxDurationHours":0.000278,"flashFeeBps":9,"timestamp":1764473409109}]}
 {"timestamp":1764473419785,"quotes":[],"mispricings":[],"loanQuotes":[{"lender":"aave-v3-base","asset":"WETH","available":0,"aprBps":1,"maxDurationHours":0.000278,"flashFeeBps":9,"timestamp":1764473419785},{"lender":"aave-v3-base","asset":"USDC","available":0,"aprBps":0,"maxDurationHours":0.000278,"flashFeeBps":9,"timestamp":1764473419785}]}
+{"timestamp":1764476191443,"quotes":[],"mispricings":[],"loanQuotes":[]}
+{"timestamp":1764476202106,"quotes":[],"mispricings":[],"loanQuotes":[]}
+{"timestamp":1764476212777,"quotes":[],"mispricings":[],"loanQuotes":[]}
+{"timestamp":1764476223581,"quotes":[],"mispricings":[],"loanQuotes":[]}
