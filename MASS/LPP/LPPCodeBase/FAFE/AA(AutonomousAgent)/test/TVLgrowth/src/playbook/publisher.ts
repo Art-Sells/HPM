@@ -45,7 +45,7 @@ export async function buildAndWritePlaybook(
   ).flat();
 
   const detectorCfg: DetectionConfig = {
-    defaultTradeSize: 10_000,
+    defaultTradeSize: 12_000,
     minProfitUsd: 0,
     liquidityFraction: 0.2,
     minLiquidityUsd: 50_000,
