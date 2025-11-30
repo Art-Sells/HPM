@@ -5,16 +5,27 @@ import { strict as assert } from "node:assert";
 
 import { getDefaultAdapters } from "../../src/adapters";
 import { runWatcherOnce } from "../../src/watcher";
+import { createExecutionStub } from "../utils/executionStub";
+import { createSampleLoanQuotes } from "../utils/sampleLoans";
 
 describe("integration: watch -> detect pipeline", () => {
   const originalDynamic = process.env.TVL_WATCHER_DYNAMIC;
+  const originalOnchain = process.env.TVL_WATCHER_ONCHAIN;
+  const originalFetchLoans = process.env.TVL_WATCHER_FETCH_AAVE;
+  const originalDepth = process.env.TVL_WATCHER_DEPTH_MODE;
 
   before(() => {
     process.env.TVL_WATCHER_DYNAMIC = "0";
+    process.env.TVL_WATCHER_ONCHAIN = "0";
+    process.env.TVL_WATCHER_FETCH_AAVE = "0";
+    process.env.TVL_WATCHER_DEPTH_MODE = "mock";
   });
 
   after(() => {
     process.env.TVL_WATCHER_DYNAMIC = originalDynamic;
+    process.env.TVL_WATCHER_ONCHAIN = originalOnchain;
+    process.env.TVL_WATCHER_FETCH_AAVE = originalFetchLoans;
+    process.env.TVL_WATCHER_DEPTH_MODE = originalDepth;
   });
 
   it("writes NDJSON logs with opportunities", async () => {
@@ -27,6 +38,8 @@ describe("integration: watch -> detect pipeline", () => {
       const result = await runWatcherOnce({
         adapters: getDefaultAdapters(),
         logDir: tmpDir,
+        loanQuotes: createSampleLoanQuotes(),
+        execution: createExecutionStub(),
       });
       assert.equal(result.timestamp, fixedNow);
       assert.ok(result.mispricings.length > 0, "should detect mispricings");

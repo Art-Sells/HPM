@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { ethers } from "ethers";
+
 import { PairRequest } from "./types";
 
 const DEXSCREENER_SEARCH_URL =
@@ -8,15 +10,43 @@ const DEXSCREENER_SEARCH_URL =
 const DEFAULT_DISCOVERY_QUERY =
   process.env.TVL_WATCHER_DISCOVERY_QUERY ?? "BASE";
 const DEFAULT_DISCOVERY_LIMIT = Number(
-  process.env.TVL_WATCHER_DISCOVERY_LIMIT ?? "10"
+  process.env.TVL_WATCHER_DISCOVERY_LIMIT ?? "20"
 );
 const DYNAMIC_CACHE_MS = Number(
   process.env.TVL_WATCHER_DISCOVERY_CACHE_MS ?? "60000"
 );
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const USDC_ADDRESS = "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA";
+const CBETH_ADDRESS = "0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22";
+const CBBTC_ADDRESS = "0xBe9895146f7AF43049ca1C1AE358B0541Ea49704";
+
+function isValidAddress(address?: string): address is string {
+  if (!address) return false;
+  if (address.toLowerCase() === ZERO_ADDRESS) return false;
+  try {
+    return ethers.isAddress(address);
+  } catch {
+    return false;
+  }
+}
 
 export const DEFAULT_PAIRS: PairRequest[] = [
-  { base: "ASSET", quote: "USDC" },
-  { base: "cbBTC", quote: "USDC" },
+  {
+    base: "ASSET",
+    quote: "USDC",
+    baseAddress: CBETH_ADDRESS,
+    baseDecimals: 18,
+    quoteAddress: USDC_ADDRESS,
+    quoteDecimals: 6,
+  },
+  {
+    base: "cbBTC",
+    quote: "USDC",
+    baseAddress: CBBTC_ADDRESS,
+    baseDecimals: 8,
+    quoteAddress: USDC_ADDRESS,
+    quoteDecimals: 6,
+  },
 ];
 
 let cachedPairsFile: PairRequest[] | null = null;
@@ -89,6 +119,12 @@ async function fetchTopBasePairs(
   const body = (await response.json()) as DexScreenerResponse;
   const pairs = (body.pairs ?? [])
     .filter((pair) => pair.chainId?.toLowerCase() === "base")
+    .filter(
+      (pair) =>
+        isValidAddress(pair?.pairAddress) &&
+        isValidAddress(pair?.baseToken?.address) &&
+        isValidAddress(pair?.quoteToken?.address)
+    )
     .sort(
       (a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0)
     )
