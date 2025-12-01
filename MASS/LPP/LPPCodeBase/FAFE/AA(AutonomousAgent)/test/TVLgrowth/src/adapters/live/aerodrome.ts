@@ -38,11 +38,21 @@ async function fetchPairData(
 
   try {
     const pairContract = new ethers.Contract(pairAddress, PAIR_ABI, provider);
-    const [token0, token1, reserves] = await Promise.all([
-      pairContract.token0(),
-      pairContract.token1(),
-      pairContract.getReserves(),
-    ]);
+    
+    // Check if it's actually a valid pair contract by trying to read basic functions
+    let token0: string;
+    let token1: string;
+    let reserves: [bigint, bigint, number];
+    try {
+      [token0, token1, reserves] = await Promise.all([
+        pairContract.token0(),
+        pairContract.token1(),
+        pairContract.getReserves(),
+      ]);
+    } catch (err) {
+      // Not a valid Aerodrome pair (might be Uniswap or different contract type)
+      return null;
+    }
 
     const reserve0 = reserves[0];
     const reserve1 = reserves[1];
