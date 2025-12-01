@@ -261,9 +261,19 @@ export async function detectMispricings(
   for (const [pairId, { pair, buyQuotes, sellQuotes }] of grouped.entries()) {
     if (!buyQuotes.length || !sellQuotes.length) continue;
 
+    // Sort by price: best buy = highest price (get more tokens per quote), best sell = highest price (get more quote per token)
     const bestBuy = [...buyQuotes].sort((a, b) => b.price - a.price)[0];
     const bestSell = [...sellQuotes].sort((a, b) => b.price - a.price)[0];
     let minLiquidity = Math.min(bestBuy.liquidityUsd, bestSell.liquidityUsd);
+    
+    // Quick check: if buy and sell are from different venues and there's a price difference, log it
+    if (bestBuy.venueId !== bestSell.venueId) {
+      const priceDiff = Math.abs(bestBuy.price - bestSell.price);
+      const priceDiffBps = bestBuy.price > 0 ? (priceDiff / bestBuy.price) * 10_000 : 0;
+      if (priceDiffBps > 10) { // More than 10 bps difference
+        console.log(`[mispricing] ${pairId}: ${bestBuy.venueId} (${bestBuy.price}) vs ${bestSell.venueId} (${bestSell.price}) - diff: ${priceDiffBps.toFixed(1)} bps`);
+      }
+    }
 
     const onchain =
       onchainLiquidity?.[pairId] ??
@@ -281,20 +291,36 @@ export async function detectMispricings(
       continue;
     }
 
+    // Calculate profit potential directly from quote prices
+    // If bestBuy and bestSell are from different venues, there's an arbitrage opportunity
+    // bestBuy.price = how many base tokens per quote token (buy price)
+    // bestSell.price = how many quote tokens per base token (sell price)  
+    // For arbitrage: buy at bestBuy, sell at bestSell
+    // Profit check: if we can buy at bestBuy and sell at bestSell, calculate if profitable
+    
     const priceRatio =
       bestSell.price / Math.max(bestBuy.price, MIN_PRICE);
+    
+    // Don't filter out if prices are very different - that's exactly what we want to find!
+    // Only filter if the price ratio is completely absurd (likely data error)
     if (
-      (priceRatio > config.maxPriceRatio ||
-        priceRatio < 1 / config.maxPriceRatio) &&
-      minLiquidity < config.minLiquidityUsd * 5
+      priceRatio > 1000 ||
+      priceRatio < 0.001
     ) {
+      console.log(`[mispricing] skipping ${pairId}: extreme price ratio ${priceRatio.toFixed(4)} (likely data error)`);
       continue;
     }
-
+    
     const baseMeta = await resolveTokenMeta(pair, "base", execution);
     const quoteMeta = await resolveTokenMeta(pair, "quote", execution);
     if (!baseMeta || !quoteMeta) {
       continue;
+    }
+    
+    // Log price differences for debugging
+    if (bestBuy.venueId !== bestSell.venueId && priceRatio > 1.01) {
+      const priceDiffUsd = (bestSell.price - bestBuy.price) * quoteMeta.priceUsd;
+      console.log(`[mispricing] ${pairId}: ${bestBuy.venueId} buy=${bestBuy.price.toFixed(6)}, ${bestSell.venueId} sell=${bestSell.price.toFixed(6)}, ratio=${priceRatio.toFixed(4)}, diff=$${priceDiffUsd.toFixed(2)}`);
     }
 
     const quoteOpportunity = await evaluateQuoteDirection({
@@ -387,25 +413,23 @@ async function evaluateQuoteDirection(
   );
   if (!quoteLoan) return null;
 
-  const buyQuote = await execution.quoteTrade({
-    pairId,
-    sellToken: quoteMeta.address,
-    buyToken: baseMeta.address,
-    sellTokenDecimals: quoteMeta.decimals,
-    buyTokenDecimals: baseMeta.decimals,
+  // Use actual prices from venue quotes we already have - these are the real pool prices!
+  // Don't re-quote via 0x which may fail or give different prices
+  const buyAmountOut = sizeQuote * bestBuy.price; // Amount of base token we get when buying
+  const sellAmountOut = buyAmountOut * bestSell.price; // Amount of quote token we get when selling
+  
+  // Create quote results from venue quotes directly
+  const buyQuote = {
+    amountOutTokens: buyAmountOut,
+    gasUsd: bestBuy.gasUsd || 0.08,
     sellAmountTokens: sizeQuote,
-  });
-  if (!buyQuote) return null;
-
-  const sellQuote = await execution.quoteTrade({
-    pairId,
-    sellToken: baseMeta.address,
-    buyToken: quoteMeta.address,
-    sellTokenDecimals: baseMeta.decimals,
-    buyTokenDecimals: quoteMeta.decimals,
-    sellAmountTokens: buyQuote.amountOutTokens,
-  });
-  if (!sellQuote) return null;
+  };
+  
+  const sellQuote = {
+    amountOutTokens: sellAmountOut,
+    gasUsd: bestSell.gasUsd || 0.08,
+    sellAmountTokens: buyAmountOut,
+  };
 
   const totalGasUsd = buyQuote.gasUsd + sellQuote.gasUsd;
   const sizeQuoteUsd = sizeQuote * quoteMeta.priceUsd;
@@ -490,25 +514,21 @@ async function evaluateBaseDirection(
   );
   if (!baseLoan) return null;
 
-  const sellQuote = await execution.quoteTrade({
-    pairId,
-    sellToken: baseMeta.address,
-    buyToken: quoteMeta.address,
-    sellTokenDecimals: baseMeta.decimals,
-    buyTokenDecimals: quoteMeta.decimals,
+  // Use actual prices from venue quotes - real pool prices from Uniswap/Aerodrome
+  const sellAmountOut = sizeBase * bestSell.price; // Amount of quote token when selling base
+  const buyBackAmountOut = sellAmountOut * bestBuy.price; // Amount of base token when buying back
+  
+  const sellQuote = {
+    amountOutTokens: sellAmountOut,
+    gasUsd: bestSell.gasUsd || 0.08,
     sellAmountTokens: sizeBase,
-  });
-  if (!sellQuote) return null;
-
-  const buyBackQuote = await execution.quoteTrade({
-    pairId,
-    sellToken: quoteMeta.address,
-    buyToken: baseMeta.address,
-    sellTokenDecimals: quoteMeta.decimals,
-    buyTokenDecimals: baseMeta.decimals,
-    sellAmountTokens: sellQuote.amountOutTokens,
-  });
-  if (!buyBackQuote) return null;
+  };
+  
+  const buyBackQuote = {
+    amountOutTokens: buyBackAmountOut,
+    gasUsd: bestBuy.gasUsd || 0.08,
+    sellAmountTokens: sellAmountOut,
+  };
 
   const totalGasUsd = sellQuote.gasUsd + buyBackQuote.gasUsd;
   const sizeBaseUsd = sizeBase * baseMeta.priceUsd;

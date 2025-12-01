@@ -60,7 +60,7 @@ export function publishDashboard(options: PublishOptions) {
 
 if (require.main === module) {
   const args = process.argv.slice(2);
-  const logsDir = args[0] ?? path.join(process.cwd(), "logs", "tvl-growth");
+  const logsDir = args[0] ?? path.join(__dirname, "..", "logs", "tvl-growth");
   const outputDir = args[1];
   try {
     const { filePath, summary } = publishDashboard({ logsDir, outputDir });

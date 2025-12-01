@@ -106,41 +106,87 @@ async function fetchTopBasePairs(
   limit: number,
   query: string = DEFAULT_DISCOVERY_QUERY
 ): Promise<PairRequest[]> {
-  const searchLimit = Math.max(limit * 4, 50);
-  const url = `${DEXSCREENER_SEARCH_URL}?q=${encodeURIComponent(
-    query
-  )}&limit=${searchLimit}`;
-  const response = await fetch(url, {
-    headers: { "User-Agent": "FAFE-TVLGrowth/1.0" },
+  // Query Dexscreener's /dex/tokens endpoint for ALL major tokens on Base
+  // This aggregates pairs across all major tokens to find the true top pairs by liquidity
+  const MAJOR_BASE_TOKENS = [
+    "0x4200000000000000000000000000000000000006", // WETH - most liquid
+    USDC_ADDRESS,      // USDC - most liquid stablecoin  
+    CBETH_ADDRESS,     // cbETH (ASSET)
+    "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb", // DAI
+    "0x940181a94A35A4569E4529A3CDfB74e38FD98631", // AERO
+    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC (different address?)
+    "0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452", // wstETH
+    CBBTC_ADDRESS,     // cbBTC
+    "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed", // DEGEN
+    "0xd1dCEbF50E3144Fe43aFac7575EfCE9e33f97B13", // BRETT
+  ];
+  
+  const TOKENS_URL = "https://api.dexscreener.com/latest/dex/tokens";
+  const allPairs: DexScreenerPair[] = [];
+  const seenAddresses = new Set<string>();
+  
+  // Fetch pairs for each major token in parallel
+  const fetchPromises = MAJOR_BASE_TOKENS.map(async (tokenAddress) => {
+    try {
+      const url = `${TOKENS_URL}/${tokenAddress}`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "FAFE-TVLGrowth/1.0" },
+      });
+      if (!response.ok) {
+        return [];
+      }
+      const body = (await response.json()) as DexScreenerResponse;
+      return body.pairs ?? [];
+    } catch (err) {
+      console.warn(`[pairs] error fetching pairs for token ${tokenAddress}:`, err);
+      return [];
+    }
   });
-  if (!response.ok) {
-    throw new Error(`dexscreener discovery failed (${response.status})`);
+  
+  const allResults = await Promise.all(fetchPromises);
+  
+  // Deduplicate and filter valid Base pairs
+  for (const pairs of allResults) {
+    for (const pair of pairs) {
+      if (pair.chainId?.toLowerCase() !== "base") continue;
+      if (!isValidAddress(pair?.pairAddress)) continue;
+      if (!isValidAddress(pair?.baseToken?.address)) continue;
+      if (!isValidAddress(pair?.quoteToken?.address)) continue;
+      
+      const addr = pair.pairAddress.toLowerCase();
+      if (!seenAddresses.has(addr)) {
+        seenAddresses.add(addr);
+        allPairs.push(pair);
+      }
+    }
   }
-  const body = (await response.json()) as DexScreenerResponse;
-  const pairs = (body.pairs ?? [])
-    .filter((pair) => pair.chainId?.toLowerCase() === "base")
-    .filter(
-      (pair) =>
-        isValidAddress(pair?.pairAddress) &&
-        isValidAddress(pair?.baseToken?.address) &&
-        isValidAddress(pair?.quoteToken?.address)
-    )
-    .sort(
-      (a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0)
-    )
-    .slice(0, limit)
-    .map<PairRequest>((pair) => ({
-      base: pair.baseToken.symbol ?? pair.baseToken.name ?? "UNKNOWN",
-      quote: pair.quoteToken.symbol ?? pair.quoteToken.name ?? "UNKNOWN",
-      baseAddress: pair.baseToken.address,
-      quoteAddress: pair.quoteToken.address,
-      pairAddress: pair.pairAddress,
-      chainId: pair.chainId,
-      query: `${pair.baseToken.symbol ?? ""} ${
-        pair.quoteToken.symbol ?? ""
-      }`.trim(),
-    }));
-  return pairs;
+  
+  // Sort all collected pairs by liquidity (USD) descending and take top N
+  const sorted = allPairs.sort(
+    (a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0)
+  );
+  
+  const topPairs = sorted.slice(0, limit).map<PairRequest>((pair) => ({
+    base: pair.baseToken.symbol ?? pair.baseToken.name ?? "UNKNOWN",
+    quote: pair.quoteToken.symbol ?? pair.quoteToken.name ?? "UNKNOWN",
+    baseAddress: pair.baseToken.address,
+    quoteAddress: pair.quoteToken.address,
+    pairAddress: pair.pairAddress,
+    chainId: pair.chainId,
+    query: `${pair.baseToken.symbol ?? ""} ${
+      pair.quoteToken.symbol ?? ""
+    }`.trim(),
+  }));
+  
+  console.log(`[pairs] discovered ${allPairs.length} total Base pairs, selected top ${topPairs.length} by liquidity`);
+  if (sorted.length > 0) {
+    const topLiquidity = sorted[0]?.liquidity?.usd ?? 0;
+    console.log(`[pairs] Top pair: ${topPairs[0].base}/${topPairs[0].quote} ($${topLiquidity.toLocaleString()} USD liquidity)`);
+    if (sorted.length >= 3) {
+      console.log(`[pairs] Top 3: ${sorted.slice(0, 3).map(p => `${p.baseToken.symbol}/${p.quoteToken.symbol} ($${(p.liquidity?.usd ?? 0).toLocaleString()})`).join(', ')}`);
+    }
+  }
+  return topPairs;
 }
 
 export async function discoverDynamicPairs(

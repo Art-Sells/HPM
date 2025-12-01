@@ -20,10 +20,6 @@ import {
 const LOG_DIR = path.join(
   __dirname,
   "..",
-  "..",
-  "..",
-  "..",
-  "..",
   "logs",
   "tvl-growth"
 );
@@ -56,7 +52,11 @@ export async function runWatcherOnce(
 ): Promise<WatcherResult> {
   const adapters = options.adapters ?? getDefaultAdapters();
   const pairs =
-    options.pairs ?? (await getActivePairs({ dynamic: options.dynamicPairs }));
+    options.pairs ??
+    (await getActivePairs({
+      dynamic: options.dynamicPairs,
+      limit: 30, // Scan top 30 pairs by liquidity for maximum opportunity discovery
+    }));
   const onchainLiquidity = await fetchOnchainLiquidity(pairs);
   const quotes = (
     await Promise.all(adapters.map((adapter) => adapter.fetchQuotes(pairs)))
