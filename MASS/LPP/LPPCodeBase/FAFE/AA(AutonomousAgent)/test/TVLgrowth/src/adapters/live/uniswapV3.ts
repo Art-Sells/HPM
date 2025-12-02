@@ -25,6 +25,13 @@ const POOL_ABI = [
   "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)",
 ];
 
+// Calculate price from tick: price = 1.0001^tick
+function tickToPrice(tick: number, decimals0: number, decimals1: number): number {
+  const price = Math.pow(1.0001, tick);
+  // Adjust for decimals: price is token1/token0, we want it in human-readable terms
+  return price * (Math.pow(10, decimals0) / Math.pow(10, decimals1));
+}
+
 const QUOTER_ABI = [
   "function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) view returns (uint256 amountOut)",
 ];
@@ -34,15 +41,42 @@ const ERC20_ABI = [
 ];
 
 function sqrtPriceX96ToPrice(sqrtPriceX96: bigint, decimals0: number, decimals1: number): number {
-  // sqrtPriceX96 = sqrt(price) * 2^96
-  // price = (sqrtPriceX96 / 2^96)^2
-  const Q96 = BigInt(2) ** BigInt(96);
-  const sqrtPrice = Number(sqrtPriceX96) / Number(Q96);
-  const price = sqrtPrice * sqrtPrice;
+  // sqrtPriceX96 = sqrt(token1/token0) * 2^96 (in raw token units)
+  // price = (sqrtPriceX96 / 2^96)^2 = token1/token0 (raw token amounts)
+  // Adjust for decimals: actual_price = (token1/token0) * (10^decimals0 / 10^decimals1)
   
-  // Adjust for decimals: price in token1/token0 terms, adjust for decimal difference
-  const decimalAdjustment = Math.pow(10, decimals0) / Math.pow(10, decimals1);
-  return price * decimalAdjustment;
+  try {
+    const Q96 = 79228162514264337593543950336n; // 2^96 precomputed
+    
+    // Use BigInt arithmetic with scaling to avoid overflow
+    // Calculate (sqrtPriceX96^2) / (Q96^2) with proper scaling
+    const SCALE = 10n ** 27n; // Large scale factor to maintain precision
+    
+    // Calculate numerator: sqrtPriceX96^2 * SCALE
+    const sqrtPriceSquared = sqrtPriceX96 * sqrtPriceX96;
+    const numerator = sqrtPriceSquared * SCALE;
+    
+    // Calculate denominator: Q96^2
+    const q96Squared = Q96 * Q96;
+    
+    // Divide: (sqrtPriceX96^2 * SCALE) / (Q96^2)
+    const scaledResult = numerator / q96Squared;
+    
+    // Convert to number and divide by scale
+    const priceRatio = Number(scaledResult) / Number(SCALE);
+    
+    if (!isFinite(priceRatio) || priceRatio <= 0 || priceRatio > 1e20) {
+      return 0;
+    }
+    
+    // Adjust for decimals: (token1/token0) * (10^decimals0 / 10^decimals1)
+    const decAdjust = Math.pow(10, decimals0) / Math.pow(10, decimals1);
+    const finalPrice = priceRatio * decAdjust;
+    
+    return isFinite(finalPrice) && finalPrice > 0 && finalPrice < 1e20 ? finalPrice : 0;
+  } catch (err) {
+    return 0;
+  }
 }
 
 async function findPool(
@@ -89,6 +123,29 @@ async function getPoolQuote(
   }
 }
 
+// Simple price calculation using quoter contract for accurate quotes
+async function getPriceFromQuoter(
+  quoter: ethers.Contract,
+  tokenIn: string,
+  tokenOut: string,
+  fee: number,
+  amountIn: bigint = ethers.parseUnits("1", 18)
+): Promise<number | null> {
+  try {
+    const amountOut = await quoter.quoteExactInputSingle.staticCall(
+      tokenIn,
+      tokenOut,
+      fee,
+      amountIn,
+      0n
+    );
+    // Convert to price: amountOut / amountIn (adjusting for decimals)
+    return Number(amountOut) / Number(amountIn);
+  } catch (err) {
+    return null;
+  }
+}
+
 async function fetchPoolData(
   poolAddress: string,
   pair: PairRequest
@@ -105,6 +162,7 @@ async function fetchPoolData(
     ]);
 
     const sqrtPriceX96 = slot0.sqrtPriceX96;
+    const tick = Number(slot0.tick);
     if (!sqrtPriceX96 || sqrtPriceX96 === 0n) return null;
 
     // Determine which token is which
@@ -117,17 +175,11 @@ async function fetchPoolData(
     let quoteToken: string;
     let baseIsToken0: boolean;
 
-    if (
-      baseAddr === token0Lower &&
-      quoteAddr === token1Lower
-    ) {
+    if (baseAddr === token0Lower && quoteAddr === token1Lower) {
       baseToken = token0;
       quoteToken = token1;
       baseIsToken0 = true;
-    } else if (
-      baseAddr === token1Lower &&
-      quoteAddr === token0Lower
-    ) {
+    } else if (baseAddr === token1Lower && quoteAddr === token0Lower) {
       baseToken = token1;
       quoteToken = token0;
       baseIsToken0 = false;
@@ -139,27 +191,39 @@ async function fetchPoolData(
     const quoteDecimals = await getTokenDecimals(quoteToken);
     if (!baseDecimals || !quoteDecimals) return null;
 
-    // Calculate price: base/quote ratio
-    const price = baseIsToken0
-      ? sqrtPriceX96ToPrice(sqrtPriceX96, baseDecimals, quoteDecimals)
-      : 1 / sqrtPriceX96ToPrice(sqrtPriceX96, quoteDecimals, baseDecimals);
+    // Calculate price from tick (more reliable than sqrtPriceX96 for very small ratios)
+    // In Uniswap V3: price = 1.0001^tick, where price = token1/token0
+    // tick gives us the price directly without precision issues
+    let price: number;
+    if (baseIsToken0) {
+      // token0 = base, token1 = quote
+      // tick price = quote/base
+      // We want base/quote, so invert
+      const quoteOverBase = tickToPrice(tick, baseDecimals, quoteDecimals);
+      price = quoteOverBase > 0 && isFinite(quoteOverBase) ? 1 / quoteOverBase : 0;
+    } else {
+      // token0 = quote, token1 = base
+      // tick price = base/quote
+      price = tickToPrice(tick, quoteDecimals, baseDecimals);
+    }
+    
+    if (!isFinite(price) || price <= 0 || price === Infinity || price === 0 || price > 1e20) {
+      return null;
+    }
 
-    // Estimate liquidity in USD from sqrtPriceX96 and liquidity value
-    // For V3, we can estimate from sqrtPriceX96: get current tick, estimate reserves
-    // Simplified: use price and liquidity value as rough estimate
+    // Estimate liquidity
     let liquidityUsd = 0;
     try {
       const liquidity = await pool.liquidity();
-      // Rough estimate: assume liquidity value is proportional to price * liquidity amount
-      const liquidityValue = Number(liquidity) / 1e18; // Rough normalization
-      liquidityUsd = liquidityValue * price * 1000; // Rough multiplier
+      liquidityUsd = Number(liquidity) / 1e18 * price * 1000;
     } catch (err) {
-      // Fallback: estimate from price
-      liquidityUsd = price * 1000000; // Rough estimate
+      liquidityUsd = price * 1000000;
     }
 
-    const amountIn = 1;
-    const amountOut = price;
+    const reversePrice = price > 0 ? 1 / price : 0;
+    if (!isFinite(reversePrice) || reversePrice <= 0) {
+      return null;
+    }
 
     const quotes: Quote[] = [
       {
@@ -167,8 +231,8 @@ async function fetchPoolData(
         venueId: `uniswap-v3:${poolAddress}`,
         tokenIn: pair.base,
         tokenOut: pair.quote,
-        amountIn,
-        amountOut,
+        amountIn: 1,
+        amountOut: price,
         price,
         gasUsd: 0.08,
         liquidityUsd,
@@ -180,8 +244,8 @@ async function fetchPoolData(
         tokenIn: pair.quote,
         tokenOut: pair.base,
         amountIn: 1,
-        amountOut: 1 / price,
-        price: 1 / price,
+        amountOut: reversePrice,
+        price: reversePrice,
         gasUsd: 0.08,
         liquidityUsd,
         timestamp: Date.now(),
@@ -208,41 +272,34 @@ export function getUniswapV3Adapter(): VenueAdapter {
       const factory = new ethers.Contract(UNISWAP_V3_FACTORY, FACTORY_ABI, provider);
       const allQuotes: Quote[] = [];
 
-      for (const pair of pairs) {
+      // Log which pairs we're querying
+      console.log(`[uniswap-v3] Querying ${pairs.length} pairs for Uniswap pools`);
+
+      // Query pools in parallel for better performance
+      const poolPromises = pairs.map(async (pair) => {
         const baseAddr = pair.baseAddress;
         const quoteAddr = pair.quoteAddress;
         if (!baseAddr || !quoteAddr) {
-          console.warn(`[uniswap-v3] Missing addresses for ${pair.base}/${pair.quote}`);
-          continue;
+          return [];
         }
 
-        // Try each fee tier (0.05%, 0.3%, 1%)
-        let foundPool = false;
+        // Try each fee tier (0.05%, 0.3%, 1%) - try both token orders
         for (const fee of FEE_TIERS) {
           try {
-            const poolAddress = await findPool(factory, baseAddr, quoteAddr, fee);
-            if (!poolAddress) continue;
-
-            const quotes = await fetchPoolData(poolAddress, pair);
-            if (quotes && quotes.length > 0) {
-              allQuotes.push(...quotes);
-              foundPool = true;
-              break; // Use first pool found
+            // Try normal order
+            let poolAddress = await findPool(factory, baseAddr, quoteAddr, fee);
+            if (poolAddress) {
+              const quotes = await fetchPoolData(poolAddress, pair);
+              if (quotes && quotes.length > 0) {
+                console.log(`[uniswap-v3] Found pool for ${pair.base}/${pair.quote} at ${poolAddress} (fee ${fee})`);
+                return quotes;
+              }
             }
-          } catch (err) {
-            // Try next fee tier
-            continue;
-          }
-        }
-        
-        if (!foundPool) {
-          // Try reverse order (token1, token0) - Uniswap pools can be in either order
-          for (const fee of FEE_TIERS) {
-            try {
-              const poolAddress = await findPool(factory, quoteAddr, baseAddr, fee);
-              if (!poolAddress) continue;
 
-              // Swap base/quote in pair for reverse lookup
+            // Try reverse order
+            poolAddress = await findPool(factory, quoteAddr, baseAddr, fee);
+            if (poolAddress) {
+              // Create reversed pair for lookup
               const reversedPair = {
                 ...pair,
                 base: pair.quote,
@@ -252,27 +309,36 @@ export function getUniswapV3Adapter(): VenueAdapter {
               };
               const quotes = await fetchPoolData(poolAddress, reversedPair);
               if (quotes && quotes.length > 0) {
-                // Reverse the quotes back
-                const reversedQuotes = quotes.map(q => ({
+                console.log(`[uniswap-v3] Found pool for ${pair.base}/${pair.quote} (reversed) at ${poolAddress} (fee ${fee})`);
+                // Reverse quotes back to original pair orientation
+                return quotes.map(q => ({
                   ...q,
                   pairId: `${pair.base}/${pair.quote}`,
-                  tokenIn: q.tokenIn === pair.quote ? pair.base : pair.quote,
-                  tokenOut: q.tokenOut === pair.quote ? pair.base : pair.quote,
-                  price: 1 / q.price,
+                  tokenIn: q.tokenIn === reversedPair.base ? pair.base : pair.quote,
+                  tokenOut: q.tokenOut === reversedPair.base ? pair.base : pair.quote,
+                  price: q.price === 0 ? 0 : 1 / q.price,
                   amountOut: q.amountIn,
                   amountIn: q.amountOut,
                 }));
-                allQuotes.push(...reversedQuotes);
-                foundPool = true;
-                break;
               }
-            } catch (err) {
-              continue;
             }
+          } catch (err) {
+            // Continue to next fee tier - don't log every failure to avoid spam
+            continue;
           }
+        }
+        // No Uniswap pool found for this pair
+        return [];
+      });
+
+      const results = await Promise.all(poolPromises);
+      for (const quotes of results) {
+        if (quotes.length > 0) {
+          allQuotes.push(...quotes);
         }
       }
 
+      console.log(`[uniswap-v3] fetched ${allQuotes.length} quotes from ${allQuotes.length > 0 ? new Set(allQuotes.map(q => q.pairId)).size : 0} pairs`);
       return allQuotes;
     },
   };
