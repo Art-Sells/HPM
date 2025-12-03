@@ -1,9 +1,0 @@
-{
-  "levels": [
-    { "price": 1.50, "size": 2000 },
-    { "price": 1.48, "size": 1500 },
-    { "price": 1.45, "size": 1000 }
-  ],
-  "gasUsd": 0.05
-}
-

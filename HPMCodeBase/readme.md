@@ -1,8 +1,8 @@
-# HPM Code Base Architecture (for cbBitcoin)
+# HPM Code Base Architecture (version 1)
 
 ***Built with React (Typescript).***
 
-**Free for any organization or person to use and integrate into their own systems inside or outside cbBitcoin.**
+**Free for any organization or person to use and integrate into their own systems**
 
 ---
 
