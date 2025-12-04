@@ -1,4 +1,4 @@
-# HPM Code Base Architecture (version 1)
+# Vavity Code Base Architecture (version 1)
 
 ***Built with React (Typescript).***
 
