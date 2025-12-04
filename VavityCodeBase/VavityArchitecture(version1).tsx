@@ -27,7 +27,7 @@ interface VatopCombinations {
   acVactTaa: number; // Sum of all cVactTaa
 }
 
-interface HPMarchitectureType {
+interface VavityarchitectureType {
   bitcoinPrice: number;
   vatopGroups: VatopGroup[];
   vatopCombinations: VatopCombinations;
@@ -49,9 +49,9 @@ interface HPMarchitectureType {
   updateABTCFile: (amount: number) => Promise<number>;
 }
 
-const HPMarchitecture = createContext<HPMarchitectureType | undefined>(undefined);
+const Vavityarchitecture = createContext<VavityarchitectureType | undefined>(undefined);
 
-export const HPMProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [email, setEmail] = useState<string>('');
   const [refreshData, setRefreshData] = useState<boolean>(false);
   const [bitcoinPrice, setBitcoinPrice] = useState<number>(60000);
@@ -666,7 +666,7 @@ export const HPMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
 
   return (
-    <HPMarchitecture.Provider
+    <Vavityarchitecture.Provider
       value={{
         bitcoinPrice,
         vatopGroups,
@@ -690,14 +690,14 @@ export const HPMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }}
     >
       {children}
-    </HPMarchitecture.Provider>
+    </Vavityarchitecture.Provider>
   );
 };
 
-export const useHPM = () => {
-  const context = useContext(HPMarchitecture);
+export const useVavity = () => {
+  const context = useContext(Vavityarchitecture);
   if (context === undefined) {
-    throw new Error('useHPM must be used within an HPMProvider');
+    throw new Error('useVavity must be used within an VavityProvider');
   }
   return context;
 };

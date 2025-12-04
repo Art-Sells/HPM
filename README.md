@@ -1,9 +1,12 @@
-<img src="https://github.com/Art-Sells/Arells/blob/test/Art/General/HPMLogoDisplay.png" width="400px"> 
+<img src="https://github.com/Art-Sells/Arells/blob/test/Art/General/Vavity-Logo.png" width="600px"> 
 
-## HPM (Holding Price Mechanism)
-Holds the highest price of an asset after its initial decline in value thus eliminating bear markets.
+## VAVITY
 
-**HPM is the world's first BMOFA or Bear Market Obfuscating Financial Architecture that introduces a new kind of marketplace and market dynamics:**
+#### Virtual Autonomous Volatility Immunizing Tethering Yielder
+
+**A psychological and technological invention that anchors asset prices before they fall.**
+
+**Vavity's architecture eliminates bear markets from financial syystem and introduces a new kind of marketplace and market dynamics:**
 
 - **Solid Marketplace:** a marketplace in which investments either stagnate or increase.
 - **Sloth Market:** a market in which investments stagnate.
