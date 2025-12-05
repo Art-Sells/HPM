@@ -1,6 +1,6 @@
 # Vavity (version 1)
 
-If you import your investment asset at an external asset price per token at $60k (for example), Vavity anchors your investment at that price (should the asset price decline) ensuring your investments are bear-market immune. And should the asset price increase, Vavity's anchored pricing system (VAPA) lifts so you ride profits on upswings and protect those profits during downswings.
+If you import your investment asset at an external asset price per token at $60k (for example), Vavity autonomously anchors your investment at that price (should the asset price decline) ensuring your investments are bear-market immune. And should the asset price increase, Vavity's anchored pricing system (VAPA) lifts so you ride profits on upswings and protect those profits during downswings.
 
 ***With Vavity, you set your investments and forget them (without worrying about bear-market losses).***
 
