@@ -2,8 +2,6 @@
 
 ## VAVITY
 
-Virtual Autonomous Volatility Immunizing Tethering Yielder
-
 **A psychological and technological invention that anchors asset prices before they fall.**
 
 Vavity's architecture eliminates bear markets from financial syystem and introduces a new kind of marketplace and market dynamics:
