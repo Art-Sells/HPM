@@ -6,42 +6,27 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { fetchBitcoinPrice, setManualBitcoinPrice as setManualBitcoinPriceApi } from '../lib/coingecko-api';
 import { fetchUserAttributes } from 'aws-amplify/auth';
 
-interface VatopGroup {
-  cVatop: number;
-  cpVatop: number;
-  cdVatop: number;
-  cVact: number;
-  cpVact: number;
-  cVactTa: number;
-  cVactDa: number;
-  cVactTaa: number; // Reflects cVactTa if cdVatop > 0, else 0
-  HAP: number;
-}
-
-interface VatopCombinations {
-  acVatops: number;
-  acVacts: number;
-  acVactTas: number;
-  acVactDas: number;
-  acdVatops: number;
-  acVactTaa: number; // Sum of all cVactTaa
+interface VatoiState {
+  cVatoi: number; // Value of the asset investment at the time of import
+  cpVatoi: number; // Asset price at the time of import
+  cdVatoi: number; // Difference between cVact and cVatoi: cdVatoi = cVact - cVatoi
+  cVact: number; // Current value of the asset investment
+  cpVact: number; // Current price of the asset
+  cVactTaa: number; // Token amount of the asset available
 }
 
 interface VavityarchitectureType {
   bitcoinPrice: number;
-  vatopGroups: VatopGroup[];
-  vatopCombinations: VatopCombinations;
-  hpap: number;
-  buyAmount: number;
+  vatoiState: VatoiState | null;
+  vataai: number; // Valued Asset Price Anchored At Import (replaces HPAP)
+  vapa: number; // Valued Asset Price Anchored (replaces HAP)
+  importAmount: number;
   sellAmount: number;
-  setBuyAmount: (amount: number) => void;
+  setImportAmount: (amount: number) => void;
   setSellAmount: (amount: number) => void;
-  handleBuy: (amount: number) => void;
+  handleImport: (amount: number) => void;
   handleImportABTC: (amount: number) => void;
   handleSell: (amount: number) => void;
-  handleBuyConcept: (amount: number) => void;
-  handleSellConcept: (amount: number) => void;
-  setManualBitcoinPriceConcept: (price: number | ((currentPrice: number) => number)) => void;
   setManualBitcoinPrice: (price: number | ((currentPrice: number) => number)) => void;
   soldAmounts: number;
   email: string;
@@ -53,26 +38,15 @@ const Vavityarchitecture = createContext<VavityarchitectureType | undefined>(und
 
 export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [email, setEmail] = useState<string>('');
-  const [refreshData, setRefreshData] = useState<boolean>(false);
   const [bitcoinPrice, setBitcoinPrice] = useState<number>(60000);
-  const [buyAmount, setBuyAmount] = useState<number>(0);
+  const [importAmount, setImportAmount] = useState<number>(0);
   const [sellAmount, setSellAmount] = useState<number>(0);
-  const [vatopGroups, setVatopGroups] = useState<VatopGroup[]>([]);
-  const [vatopUpdateTrigger, setVatopUpdateTrigger] = useState(false);
-  
-  const [vatopCombinations, setVatopCombinations] = useState<VatopCombinations>({
-    acVatops: 0,
-    acVacts: 0,
-    acVactTas: 0,
-    acVactDas: 0,
-    acdVatops: 0,
-    acVactTaa: 0,
-  });
-
-  const [hpap, setHpap] = useState<number>(60000);
+  const [vatoiState, setVatoiState] = useState<VatoiState | null>(null);
+  const [vataai, setVataai] = useState<number>(60000); // Valued Asset Price Anchored At Import
+  const [vapa, setVapa] = useState<number>(60000); // Valued Asset Price Anchored
   const [soldAmounts, setSoldAmounts] = useState<number>(0);
 
- useEffect(() => {
+  useEffect(() => {
     const fetchEmail = async () => {
       try {
         const attributesResponse = await fetchUserAttributes();
@@ -87,174 +61,110 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     fetchEmail();
   }, []);
 
-
   useEffect(() => {
-    const fetchVatopGroups = async () => {
+    const fetchVatoiState = async () => {
       try {
         if (!email) {
-          console.warn('No email provided, skipping fetchVatopGroups');
+          console.warn('No email provided, skipping fetchVatoiState');
           return;
         }
   
-        const response = await axios.get('/api/fetchVatopGroups', { params: { email } });
-        const fetchedVatopGroups = response.data.vatopGroups || [];
-        const fetchedVatopCombinations = response.data.vatopCombinations || {};
+        const response = await axios.get('/api/fetchVatoiState', { params: { email } });
+        const fetchedState = response.data.vatoiState || null;
         const fetchedSoldAmounts = response.data.soldAmounts || 0;
+        const fetchedVataai = response.data.vataai || bitcoinPrice;
+        const fetchedVapa = response.data.vapa || bitcoinPrice;
   
-        // Ensure no duplicate or redundant groups
-        const uniqueVatopGroups = fetchedVatopGroups.filter(
-          (group: VatopGroup, index: number, self: VatopGroup[]) =>
-            index === self.findIndex((g) => g.cpVatop === group.cpVatop && g.cVactTa === group.cVactTa)
-        );
-  
-        // Remove groups with zero or invalid values
-        const validVatopGroups = uniqueVatopGroups.filter(
-          (group: { cVatop: number; cVact: number; cVactTa: number; cdVatop: number; }) => group.cVatop > 0 || group.cVact > 0 || group.cVactTa > 0 || group.cdVatop > 0
-        );
-  
-        setVatopGroups(validVatopGroups); // Update state with valid groups
-        setVatopCombinations(fetchedVatopCombinations);
+        if (fetchedState) {
+          setVatoiState(fetchedState);
+          // Recalculate cdVatoi
+          const updatedState = {
+            ...fetchedState,
+            cdVatoi: parseFloat((fetchedState.cVact - fetchedState.cVatoi).toFixed(2)),
+          };
+          setVatoiState(updatedState);
+        }
+        
         setSoldAmounts(fetchedSoldAmounts);
-  
-        // Recalculate HPAP
-        const maxCpVact = Math.max(...validVatopGroups.map((group: { cpVact: any; }) => group.cpVact || 0));
-        setHpap(maxCpVact);
+        setVataai(fetchedVataai);
+        setVapa(fetchedVapa);
       } catch (error) {
-        console.error('Error fetching vatop groups:', error);
+        console.error('Error fetching vatoi state:', error);
       }
     };
   
-    fetchVatopGroups();
-  }, [email]);
+    fetchVatoiState();
+  }, [email, bitcoinPrice]);
 
   useEffect(() => {
-    if (!vatopGroups.length) {
-      setHpap(bitcoinPrice); // Default HPAP to current Bitcoin price if no groups exist
+    if (!vatoiState) {
+      setVataai(bitcoinPrice); // Default VATAAI to current Bitcoin price if no state exists
+      setVapa(bitcoinPrice);
       return;
     }
   
-    const highestCpVact = Math.max(...vatopGroups.map((group) => group.cpVact || 0));
-    setHpap(highestCpVact);
-  }, [vatopGroups, bitcoinPrice]); // Depend on vatopGroups and bitcoinPrice
-
-  const updateVatopCombinations = (groups: VatopGroup[]): VatopCombinations => {
-    const combinations = groups.reduce(
-      (acc, group) => {
-        acc.acVatops += group.cVatop;
-        acc.acVacts += group.cVact;
-        acc.acVactTas += group.cVactTa;
-        acc.acVactDas += group.cVactDa;
-        acc.acdVatops += group.cVact - group.cVatop > 0 ? group.cVact - group.cVatop : 0;
-        acc.acVactTaa += group.cVactTaa; // Sum all cVactTaa
-        return acc;
-      },
-      {
-        acVatops: 0,
-        acVacts: 0,
-        acVactTas: 0,
-        acVactDas: 0,
-        acdVatops: 0,
-        acVactTaa: 0, // Initialize as 0
-      }
-    );
-  
-    setVatopCombinations(combinations);
-    return combinations;
-  };
-  
-
-  useEffect(() => {
-    if (!vatopUpdateTrigger) return; // Only run if triggered
-  
-    const updatedVatopGroups = vatopGroups
-      .map((group) => ({
-        ...group,
-        cVact: group.cVactTa * group.cpVact, // Reflect cpVact in cVact
-        cdVatop: group.cVactTa * (group.cpVact - group.cpVatop), // Use cpVact - cpVatop
-      }))
-      .filter((group) => group.cVact > 0); // Filter valid groups
-  
-    setVatopGroups(updatedVatopGroups);
-    updateVatopCombinations(updatedVatopGroups); // Update combinations
-    setVatopUpdateTrigger(false); // Reset the trigger
-  }, [vatopUpdateTrigger]); 
-  useEffect(() => {
-    if (!vatopGroups.length) {
-      setHpap(bitcoinPrice); // Default HPAP to current Bitcoin price if no groups exist
-      return;
-    }
-  
-    const highestCpVact = Math.max(...vatopGroups.map((group) => group.cpVact || 0));
-    setHpap(highestCpVact);
-  }, [vatopGroups, bitcoinPrice]); // Depend on vatopGroups and bitcoinPrice
-  const filterEmptyGroupsAndUpdateHPAP = (groups: VatopGroup[]): VatopGroup[] => {
-    // Filter out groups where cVact <= 0 or cVatop <= 0
-    const filteredGroups = groups.filter(
-      (group) => group.cVact > 0 && group.cVatop > 0
-    );
-  
-    // Update HPAP based on the remaining groups
-    if (filteredGroups.length > 0) {
-      const highestCpVact = Math.max(...filteredGroups.map((group) => group.cpVact || 0));
-      setHpap(highestCpVact);
-    } else {
-      setHpap(bitcoinPrice); // Fallback to bitcoinPrice if no valid groups
-    }
-  
-    return filteredGroups;
-  };
-  const recalculateCdVatop = (groups: VatopGroup[]): VatopGroup[] => {
-    return groups.map((group) => ({
-      ...group,
-      cdVatop: parseFloat((group.cVact - group.cVatop).toFixed(2)), // Recalculate cdVatop
-    }));
-  };
-
-
-
+    // VATAAI is the highest cpVact (which is the same as cpVatoi initially, then increases)
+    setVataai(Math.max(vatoiState.cpVact, vataai));
+    // VAPA is the highest valued asset price anchored
+    setVapa(Math.max(vatoiState.cpVact, vapa));
+  }, [vatoiState, bitcoinPrice]);
 
   const updateAllState = async (
     newBitcoinPrice: number,
-    updatedGroups: VatopGroup[],
+    updatedState: VatoiState | null,
     email: string
   ) => {
-    const processedGroups = updatedGroups.map((group) => {
-      const newCpVact = Math.max(group.cpVact, newBitcoinPrice);
-      const newCVact = group.cVactTa * newCpVact;
-      const newCVactTaa = newBitcoinPrice >= newCpVact ? group.cVactTa : 0;
-      const newCVactDa = newBitcoinPrice < newCpVact ? newCVact : 0;
-  
-      return {
-        ...group,
-        cpVact: newCpVact,
-        cVact: parseFloat(newCVact.toFixed(2)),
-        cVactTaa: parseFloat(newCVactTaa.toFixed(7)),
-        cVactDa: parseFloat(newCVactDa.toFixed(2)),
-        cdVatop: parseFloat((newCVact - group.cVatop).toFixed(2)),
-      };
-    });
-  
-    // Filter out invalid groups
-    const validGroups = processedGroups.filter(
-      (group) => group.cVatop > 0 || group.cVact > 0 || group.cVactTa > 0 || group.cdVatop > 0
-    );
-  
-    setVatopGroups(validGroups);
-  
-    const newCombinations = updateVatopCombinations(validGroups);
-  
+    if (!updatedState) {
+      setVatoiState(null);
+      setVataai(newBitcoinPrice);
+      setVapa(newBitcoinPrice);
+      
+      try {
+        await axios.post('/api/saveVatoiState', {
+          email,
+          vatoiState: null,
+          vataai: newBitcoinPrice,
+          vapa: newBitcoinPrice,
+        });
+      } catch (error) {
+        console.error("Error saving vatoi state:", error);
+      }
+      return;
+    }
+
+    // Update cpVact based on VAPA (highest price observed)
+    const newCpVact = Math.max(updatedState.cpVact, newBitcoinPrice);
+    // Recalculate cVact based on cVactTaa and new cpVact
+    const newCVact = parseFloat((updatedState.cVactTaa * newCpVact).toFixed(2));
+    // Recalculate cdVatoi
+    const newCdVatoi = parseFloat((newCVact - updatedState.cVatoi).toFixed(2));
+
+    const processedState: VatoiState = {
+      ...updatedState,
+      cpVact: newCpVact,
+      cVact: newCVact,
+      cdVatoi: newCdVatoi,
+    };
+
+    // Update VATAAI and VAPA
+    const newVataai = Math.max(newCpVact, vataai);
+    const newVapa = Math.max(newCpVact, vapa);
+
+    setVatoiState(processedState);
+    setVataai(newVataai);
+    setVapa(newVapa);
+
     try {
-      await axios.post('/api/saveVatopGroups', {
+      await axios.post('/api/saveVatoiState', {
         email,
-        vatopGroups: validGroups,
-        vatopCombinations: newCombinations,
+        vatoiState: processedState,
+        vataai: newVataai,
+        vapa: newVapa,
       });
     } catch (error) {
-      console.error("Error saving vatopGroups:", error);
+      console.error("Error saving vatoi state:", error);
     }
   };
-
-
 
   const setManualBitcoinPrice = async (
     price: number | ((currentPrice: number) => number)
@@ -263,25 +173,28 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   
     setBitcoinPrice(newPrice); // Update the state immediately
   
-    const updatedGroups = vatopGroups.map((group) => {
-      const newCpVact = Math.max(group.cpVact, newPrice); // Ensure cpVact only increases
-      const newCVact = group.cVactTa * newCpVact; // Update cVact
-      const newCVactTaa = newPrice >= newCpVact ? group.cVactTa : 0; // cVactTaa logic
-      const newCVactDa = newPrice < newCpVact ? newCVact : 0; // cVactDa logic
-      const newCdVatop = newCVact - group.cVatop; // Recalculate cdVatop
+    if (!vatoiState) {
+      await updateAllState(newPrice, null, email);
+      return;
+    }
+
+    // Update cpVact based on VAPA (highest price observed)
+    const newCpVact = Math.max(vatoiState.cpVact, newPrice);
+    // Recalculate cVact
+    const newCVact = parseFloat((vatoiState.cVactTaa * newCpVact).toFixed(2));
+    // Recalculate cdVatoi
+    const newCdVatoi = parseFloat((newCVact - vatoiState.cVatoi).toFixed(2));
+
+    const updatedState: VatoiState = {
+      ...vatoiState,
+      cpVact: newCpVact,
+      cVact: newCVact,
+      cdVatoi: newCdVatoi,
+    };
   
-      return {
-        ...group,
-        cpVact: parseFloat(newCpVact.toFixed(2)),
-        cVact: parseFloat(newCVact.toFixed(2)),
-        cVactTaa: parseFloat(newCVactTaa.toFixed(7)),
-        cVactDa: parseFloat(newCVactDa.toFixed(2)),
-        cdVatop: parseFloat(newCdVatop.toFixed(2)),
-      };
-    });
-  
-    await updateAllState(newPrice, updatedGroups, email); // Ensure downstream updates happen after the price is set
+    await updateAllState(newPrice, updatedState, email);
   };
+
   const readABTCFile = async (): Promise<number | null> => {
     try {
       if (!email) throw new Error("Email is not set in context.");
@@ -308,221 +221,9 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  useEffect(() => {
-    let isSyncing = false; // Add a lock to prevent overlapping updates
-  
-    const interval = setInterval(async () => {
-      if (isSyncing) return; // Prevent concurrent updates
-  
-      isSyncing = true;
-  
-      try {
-        // Fetch and import data only when necessary
-        await readABTCFile(); // Fetch the current aBTC (if needed for internal use)
-        await handleImport(); // Call handleImport to sync
-      } catch (error) {
-        console.error("Error in interval execution:", error);
-      } finally {
-        isSyncing = false; // Release lock
-      }
-    }, 3000); // Run every 3 seconds
-  
-    return () => clearInterval(interval); // Cleanup on unmount
-  }, [vatopCombinations, email]); // Ensure dependencies include relevant state
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const updateAllStateConcept = (newBitcoinPrice: number, updatedGroups: VatopGroup[]) => {
-    const epsilon = 0.0001;
-
-    const processedGroups = updatedGroups.map((group) => {
-      const newHighestPrice = Math.max(group.HAP || group.cpVatop, newBitcoinPrice);
-      const newCpVact = newHighestPrice;
-      const newCVact = group.cVactTa * newCpVact;
-      const newCVactDa = newBitcoinPrice > 0 && newBitcoinPrice <= group.cpVatop ? newCVact : 0;
-
-      return {
-        ...group,
-        HAP: newHighestPrice,
-        cpVact: parseFloat(newCpVact.toFixed(2)),
-        cVact: parseFloat(Math.max(newCVact, 0).toFixed(2)),
-        cVactDa: parseFloat(newCVactDa.toFixed(2)),
-        cVactTa: parseFloat(group.cVactTa.toFixed(7)),
-        cdVatop: parseFloat((group.cVactTa * (newCpVact - group.cpVatop)).toFixed(2)),
-        cVatop: parseFloat(group.cVatop.toFixed(2)),
-      };
-    });
-
-    const retainedGroups = processedGroups.filter(
-      (group) =>
-        group.cVact > epsilon || group.cVactTa > epsilon || group.cVatop > epsilon
-    );
-
-    const newVatopCombinations = retainedGroups.reduce(
-      (acc, group) => {
-        acc.acVatops += group.cVatop;
-        acc.acVacts += group.cVact;
-        acc.acVactTas += group.cVactTa;
-        acc.acVactDas += group.cVactDa;
-        acc.acdVatops += group.cdVatop > 0 ? group.cdVatop : 0;
-        return acc;
-      },
-      {
-        acVatops: 0,
-        acVacts: 0,
-        acVactTas: 0,
-        acVactDas: 0,
-        acdVatops: 0,
-        acVactTaa: 0,
-      } as VatopCombinations
-    );
-
-    setVatopGroups(retainedGroups);
-    setVatopCombinations({
-      acVatops: parseFloat(newVatopCombinations.acVatops.toFixed(2)),
-      acVacts: parseFloat(newVatopCombinations.acVacts.toFixed(2)),
-      acVactTas: parseFloat(newVatopCombinations.acVactTas.toFixed(7)),
-      acVactDas: parseFloat(newVatopCombinations.acVactDas.toFixed(2)),
-      acdVatops: parseFloat(newVatopCombinations.acdVatops.toFixed(2)),
-      acVactTaa: parseFloat(newVatopCombinations.acVactTaa.toFixed(7))
-    });
-
-    if (retainedGroups.length > 0) {
-      const maxCpVatop = Math.max(...retainedGroups.map((group) => group.cpVatop));
-      const maxCpVact = Math.max(...retainedGroups.map((group) => group.cpVact));
-      setHpap(maxCpVact > maxCpVatop ? maxCpVact : maxCpVatop);
-    } else {
-      setHpap(newBitcoinPrice);
-    }
-
-    return newVatopCombinations;
-  };
-  const setManualBitcoinPriceConcept = (price: number | ((currentPrice: number) => number)) => {
-    setBitcoinPrice((currentPrice) => {
-      const newPrice = typeof price === 'function' ? price(currentPrice) : price;
-
-      const updatedGroups = vatopGroups.map((group) => ({
-        ...group,
-        HAP: Math.max(group.HAP || group.cpVatop, newPrice),
-        cVact: group.cVactTa * Math.max(newPrice, hpap),
-        cdVatop: group.cVactTa * (Math.max(newPrice, hpap) - group.cpVatop),
-      }));
-
-      updateAllStateConcept(newPrice, updatedGroups);
-      return newPrice;
-    });
-  };
-
-  const handleBuyConcept = (amount: number) => {
-    if (amount <= 0) return;
-
-    const newVatop: VatopGroup = {
-      cVatop: amount,
-      cpVatop: bitcoinPrice,
-      cVact: amount,
-      cpVact: bitcoinPrice,
-      cVactTa: amount / bitcoinPrice,
-      cVactDa: amount,
-      cdVatop: 0,
-      cVactTaa: 0,
-      HAP: bitcoinPrice,
-    };
-
-    const updatedGroups = [...vatopGroups, newVatop];
-    updateAllStateConcept(bitcoinPrice, updatedGroups);
-  };
-
-  const handleSellConcept = (amount: number) => {
-    if (amount <= 0 || vatopCombinations.acVacts <= 0) return;
-
-    let remainingAmount = amount;
-
-    const updatedGroups = vatopGroups.map((group) => {
-      if (remainingAmount <= 0) return group;
-
-      const sellAmount = Math.min(group.cVact, remainingAmount);
-      remainingAmount -= sellAmount;
-
-      return {
-        ...group,
-        cVatop: Math.max(group.cVatop - sellAmount, 0),
-        cVact: Math.max(group.cVact - sellAmount, 0),
-        cVactTa: Math.max(group.cVactTa - sellAmount / group.cpVact, 0),
-        cdVatop: Math.max(group.cVactTa * (group.cpVact - group.cpVatop), 0),
-      };
-    });
-
-    const retainedGroups = updatedGroups.filter(
-      (group) => group.cVatop > 0 || group.cVact > 0 || group.cVactTa > 0
-    );
-
-    updateAllStateConcept(bitcoinPrice, retainedGroups);
-  };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-
-  const handleBuy = async (amount: number) => {
-    if (amount <= 0) return;
-  
-    const newVatop: VatopGroup = {
-      cVatop: amount,
-      cpVatop: bitcoinPrice,
-      cVact: amount,
-      cpVact: bitcoinPrice,
-      cVactTa: amount / bitcoinPrice,
-      cVactDa: amount,
-      cdVatop: 0,
-      cVactTaa: 0,
-      HAP: bitcoinPrice,
-    };
-  
-    const updatedVatopGroups = [...vatopGroups, newVatop];
-    await updateAllState(bitcoinPrice, updatedVatopGroups, email);
-  };
-  const handleImportABTC = async (amount: number) => {
-    if (amount < 0.0001) {
-      alert('The minimum import amount is 0.0001 BTC.');
-      return;
-    }
-    try {
-      await axios.post('/api/saveABTC', { email, amount });
-    } catch (error) {
-      console.error('Error saving to aBTC.json:', error);
-    }
-  };
   let isUpdating = false; // Shared lock variable
   
-  const handleImport = async () => {
+  const handleImport = async (amount: number) => {
     if (isUpdating) {
       return;
     }
@@ -537,40 +238,47 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return;
       }
   
-      const acVactTas = vatopCombinations.acVactTas || 0;
+      const currentCVactTaa = vatoiState?.cVactTaa || 0;
   
-      if (aBTC - acVactTas < 0.00001) {
+      if (aBTC - currentCVactTaa < 0.00001) {
         return;
       }
   
-      if (aBTC > acVactTas) {
-        const amountToImport = parseFloat((aBTC - acVactTas).toFixed(8));
-  
+      if (aBTC > currentCVactTaa) {
+        const amountToImport = parseFloat((aBTC - currentCVactTaa).toFixed(8));
         const currentPrice = bitcoinPrice;
 
-        const newGroup = {
-          cVatop: amountToImport * currentPrice,
-          cpVatop: currentPrice,
-          cVact: amountToImport * currentPrice,
-          cpVact: currentPrice,
-          cVactTa: amountToImport,
-          cVactDa: amountToImport * currentPrice,
-          cdVatop: 0,
-          cVactTaa: 0,
-          HAP: currentPrice,
-        };
-  
-        const updatedVatopGroups = [...vatopGroups, newGroup];
-        await updateAllState(currentPrice, updatedVatopGroups, email);
+        if (!vatoiState) {
+          // First import - create new state
+          const newState: VatoiState = {
+            cVatoi: amountToImport * currentPrice,
+            cpVatoi: currentPrice,
+            cdVatoi: 0,
+            cVact: amountToImport * currentPrice,
+            cpVact: currentPrice,
+            cVactTaa: amountToImport,
+          };
+          await updateAllState(currentPrice, newState, email);
+        } else {
+          // Additional import - accumulate values
+          const newCVactTaa = vatoiState.cVactTaa + amountToImport;
+          const newCVatoi = vatoiState.cVatoi + (amountToImport * currentPrice);
+          // cpVatoi should be the weighted average or the initial import price
+          // For simplicity, keeping the original cpVatoi
+          const newCVact = parseFloat((newCVactTaa * Math.max(vatoiState.cpVact, currentPrice)).toFixed(2));
+          const newCpVact = Math.max(vatoiState.cpVact, currentPrice);
+          const newCdVatoi = parseFloat((newCVact - newCVatoi).toFixed(2));
 
-        setVatopCombinations((prev) => ({
-          ...prev,
-          acVactTas: aBTC,
-        }));
-      } else {
-        // console.log(
-        //   `No import needed: aBTC (${aBTC.toFixed(8)}) is less than or equal to acVactTas (${acVactTas.toFixed(8)}).`
-        // );
+          const updatedState: VatoiState = {
+            cVatoi: newCVatoi,
+            cpVatoi: vatoiState.cpVatoi, // Keep original import price
+            cdVatoi: newCdVatoi,
+            cVact: newCVact,
+            cpVact: newCpVact,
+            cVactTaa: newCVactTaa,
+          };
+          await updateAllState(currentPrice, updatedState, email);
+        }
       }
     } catch (error) {
       console.error("Error during handleImport:", error);
@@ -578,81 +286,106 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       isUpdating = false;
     }
   };
-  
-  const saveVatopGroups = async ({
+
+  const handleImportABTC = async (amount: number) => {
+    if (amount < 0.0001) {
+      alert('The minimum import amount is 0.0001 BTC.');
+      return;
+    }
+    try {
+      await axios.post('/api/saveABTC', { email, amount });
+    } catch (error) {
+      console.error('Error saving to aBTC.json:', error);
+    }
+  };
+
+  const saveVatoiState = async ({
     email,
-    vatopGroups,
-    vatopCombinations,
+    vatoiState,
+    vataai,
+    vapa,
     soldAmounts,
   }: {
     email: string;
-    vatopGroups: VatopGroup[];
-    vatopCombinations: VatopCombinations;
+    vatoiState: VatoiState | null;
+    vataai: number;
+    vapa: number;
     soldAmounts: number;
   }) => {
     try {
       const payload = {
         email,
-        vatopGroups,
-        vatopCombinations,
-        soldAmounts, // Updated field
+        vatoiState,
+        vataai,
+        vapa,
+        soldAmounts,
       };
   
-      const response = await axios.post('/api/saveVatopGroups', payload);
+      const response = await axios.post('/api/saveVatoiState', payload);
     } catch (error) {
-      console.error('Error saving vatop groups:', error);
+      console.error('Error saving vatoi state:', error);
     }
   };
+
   const handleSell = async (amount: number) => {
     if (isUpdating) return;
   
     isUpdating = true;
   
     try {
+      if (!vatoiState || vatoiState.cVact <= 0) {
+        alert(`Insufficient assets! You tried to sell $${amount}, but no assets are available.`);
+        return;
+      }
+
       const btcAmount = parseFloat((amount / bitcoinPrice).toFixed(8));
   
-      if (amount > vatopCombinations.acVacts) {
-        alert(`Insufficient BTC! You tried to sell $${amount}, but only $${vatopCombinations.acVacts} is available.`);
+      if (amount > vatoiState.cVact) {
+        alert(`Insufficient assets! You tried to sell $${amount}, but only $${vatoiState.cVact} is available.`);
         return;
       }
   
       const newABTC = await updateABTCFile(-btcAmount);
   
-      setVatopCombinations((prev) => ({
-        ...prev,
-        acVactTas: newABTC,
-      }));
-  
-      let remainingBTC = btcAmount;
-      const updatedVatopGroups = vatopGroups.map((group) => {
-        if (remainingBTC <= 0) return group;
-  
-        const sellBTC = Math.min(group.cVactTa, remainingBTC);
-        remainingBTC -= sellBTC;
-  
-        return {
-          ...group,
-          cVatop: Math.max(group.cVatop - sellBTC * group.cpVatop, 0),
-          cVact: Math.max(group.cVact - sellBTC * group.cpVact, 0),
-          cVactTa: Math.max(group.cVactTa - sellBTC, 0),
-          cVactDa: Math.max(group.cVactDa - sellBTC * group.cpVact, 0),
-          cVactTaa: group.cVactTaa > 0 ? Math.max(group.cVactTa - sellBTC, 0) : 0,
+      // Calculate new values after sell
+      const sellRatio = amount / vatoiState.cVact;
+      const newCVactTaa = parseFloat((vatoiState.cVactTaa * (1 - sellRatio)).toFixed(8));
+      const newCVatoi = parseFloat((vatoiState.cVatoi * (1 - sellRatio)).toFixed(2));
+      const newCVact = parseFloat((newCVactTaa * vatoiState.cpVact).toFixed(2));
+      const newCdVatoi = parseFloat((newCVact - newCVatoi).toFixed(2));
+
+      if (newCVactTaa <= 0.00001) {
+        // All assets sold, reset state
+        setVatoiState(null);
+        setSoldAmounts((prev) => prev + amount);
+        await saveVatoiState({
+          email,
+          vatoiState: null,
+          vataai,
+          vapa,
+          soldAmounts: soldAmounts + amount,
+        });
+      } else {
+        const updatedState: VatoiState = {
+          cVatoi: newCVatoi,
+          cpVatoi: vatoiState.cpVatoi,
+          cdVatoi: newCdVatoi,
+          cVact: newCVact,
+          cpVact: vatoiState.cpVact,
+          cVactTaa: newCVactTaa,
         };
-      });
   
-      const filteredGroups = updatedVatopGroups.filter((group) => group.cVact > 0);
+        setVatoiState(updatedState);
+        setSoldAmounts((prev) => prev + amount);
   
-      setVatopGroups(filteredGroups);
-  
-      const newVatopCombinations = updateVatopCombinations(filteredGroups);
-      setSoldAmounts((prev) => prev + amount);
-  
-      await saveVatopGroups({
-        email,
-        vatopGroups: filteredGroups,
-        vatopCombinations: newVatopCombinations,
-        soldAmounts,
-      });
+        await saveVatoiState({
+          email,
+          vatoiState: updatedState,
+          vataai,
+          vapa,
+          soldAmounts: soldAmounts + amount,
+        });
+      }
     } catch (error) {
       console.error("Error during sell operation:", error);
     } finally {
@@ -660,28 +393,20 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-
-
-
-
-
   return (
     <Vavityarchitecture.Provider
       value={{
         bitcoinPrice,
-        vatopGroups,
-        vatopCombinations,
-        hpap,
-        buyAmount,
+        vatoiState,
+        vataai,
+        vapa,
+        importAmount,
         sellAmount,
-        setBuyAmount,
+        setImportAmount,
         setSellAmount,
-        handleBuy,
+        handleImport,
         handleImportABTC,
         handleSell,
-        handleBuyConcept,
-        handleSellConcept,
-        setManualBitcoinPriceConcept,
         setManualBitcoinPrice,
         email,
         soldAmounts,
