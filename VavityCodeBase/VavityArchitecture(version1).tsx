@@ -2,7 +2,7 @@
 
 import { useUser } from './UserContext';
 import axios from 'axios';
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { fetchBitcoinPrice, setManualBitcoinPrice as setManualBitcoinPriceApi } from '../lib/coingecko-api';
 import { fetchUserAttributes } from 'aws-amplify/auth';
 
@@ -10,41 +10,56 @@ interface VatoiState {
   cVatoi: number; // Value of the asset investment at the time of import
   cpVatoi: number; // Asset price at the time of import
   cdVatoi: number; // Difference between cVact and cVatoi: cdVatoi = cVact - cVatoi
+}
+
+interface VactState {
   cVact: number; // Current value of the asset investment
-  cpVact: number; // Current price of the asset
+  cpVact: number; // Current price of the asset (VAPA)
   cVactTaa: number; // Token amount of the asset available
 }
 
 interface VavityarchitectureType {
-  bitcoinPrice: number;
-  vatoiState: VatoiState | null;
-  vataai: number; // Valued Asset Price Anchored At Import (replaces HPAP)
-  vapa: number; // Valued Asset Price Anchored (replaces HAP)
+  assetPrice: number;
+  vatoi: VatoiState;
+  vact: VactState;
+  vapa: number; // Valued Asset Price Anchored (highest cpVact)
   importAmount: number;
-  sellAmount: number;
+  exportAmount: number;
   setImportAmount: (amount: number) => void;
-  setSellAmount: (amount: number) => void;
+  setExportAmount: (amount: number) => void;
   handleImport: (amount: number) => void;
-  handleImportABTC: (amount: number) => void;
-  handleSell: (amount: number) => void;
-  setManualBitcoinPrice: (price: number | ((currentPrice: number) => number)) => void;
-  soldAmounts: number;
+  handleImportASSET: (amount: number) => void;
+  handleExport: (amount: number) => void;
+  setManualAssetPrice: (price: number | ((currentPrice: number) => number)) => void;
+  exportedAmounts: number;
   email: string;
-  readABTCFile: () => Promise<number | null>;
-  updateABTCFile: (amount: number) => Promise<number>;
+  readASSETFile: () => Promise<number | null>;
+  updateASSETFile: (amount: number) => Promise<number>;
 }
 
 const Vavityarchitecture = createContext<VavityarchitectureType | undefined>(undefined);
 
 export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [email, setEmail] = useState<string>('');
-  const [bitcoinPrice, setBitcoinPrice] = useState<number>(60000);
+  const [assetPrice, setAssetPrice] = useState<number>(60000);
   const [importAmount, setImportAmount] = useState<number>(0);
-  const [sellAmount, setSellAmount] = useState<number>(0);
-  const [vatoiState, setVatoiState] = useState<VatoiState | null>(null);
-  const [vataai, setVataai] = useState<number>(60000); // Valued Asset Price Anchored At Import
-  const [vapa, setVapa] = useState<number>(60000); // Valued Asset Price Anchored
-  const [soldAmounts, setSoldAmounts] = useState<number>(0);
+  const [exportAmount, setExportAmount] = useState<number>(0);
+  const [exportedAmounts, setExportedAmounts] = useState<number>(0);
+  
+  // Single aggregated state instead of groups
+  const [vatoi, setVatoi] = useState<VatoiState>({
+    cVatoi: 0,
+    cpVatoi: 0,
+    cdVatoi: 0,
+  });
+
+  const [vact, setVact] = useState<VactState>({
+    cVact: 0,
+    cpVact: 0,
+    cVactTaa: 0,
+  });
+
+  const [vapa, setVapa] = useState<number>(60000);
 
   useEffect(() => {
     const fetchEmail = async () => {
@@ -70,95 +85,85 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
   
         const response = await axios.get('/api/fetchVatoiState', { params: { email } });
-        const fetchedState = response.data.vatoiState || null;
-        const fetchedSoldAmounts = response.data.soldAmounts || 0;
-        const fetchedVataai = response.data.vataai || bitcoinPrice;
-        const fetchedVapa = response.data.vapa || bitcoinPrice;
+        const fetchedVatoi = response.data.vatoi || { cVatoi: 0, cpVatoi: 0, cdVatoi: 0 };
+        const fetchedVact = response.data.vact || { cVact: 0, cpVact: 0, cVactTaa: 0 };
+        const fetchedVapa = response.data.vapa || assetPrice;
+        const fetchedExportedAmounts = response.data.exportedAmounts || 0;
   
-        if (fetchedState) {
-          setVatoiState(fetchedState);
-          // Recalculate cdVatoi
-          const updatedState = {
-            ...fetchedState,
-            cdVatoi: parseFloat((fetchedState.cVact - fetchedState.cVatoi).toFixed(2)),
-          };
-          setVatoiState(updatedState);
-        }
-        
-        setSoldAmounts(fetchedSoldAmounts);
-        setVataai(fetchedVataai);
+        setVatoi(fetchedVatoi);
+        setVact(fetchedVact);
         setVapa(fetchedVapa);
+        setExportedAmounts(fetchedExportedAmounts);
       } catch (error) {
         console.error('Error fetching vatoi state:', error);
       }
     };
   
     fetchVatoiState();
-  }, [email, bitcoinPrice]);
+  }, [email, assetPrice]);
 
+  // Update VAPA when cpVact changes
   useEffect(() => {
-    if (!vatoiState) {
-      setVataai(bitcoinPrice); // Default VATAAI to current Bitcoin price if no state exists
-      setVapa(bitcoinPrice);
-      return;
+    if (vact.cpVact > 0) {
+      setVapa(Math.max(vapa, vact.cpVact));
+    } else {
+      setVapa(assetPrice); // Default to current Asset price if no assets exist
     }
-  
-    // VATAAI is the highest cpVact (which is the same as cpVatoi initially, then increases)
-    setVataai(Math.max(vatoiState.cpVact, vataai));
-    // VAPA is the highest valued asset price anchored
-    setVapa(Math.max(vatoiState.cpVact, vapa));
-  }, [vatoiState, bitcoinPrice]);
+  }, [vact.cpVact, assetPrice]);
+
+  // Update cdVatoi when cVact or cVatoi changes
+  useEffect(() => {
+    const newCdVatoi = vact.cVact - vatoi.cVatoi;
+    setVatoi((prev) => ({
+      ...prev,
+      cdVatoi: parseFloat(newCdVatoi.toFixed(2)),
+    }));
+  }, [vact.cVact, vatoi.cVatoi]);
+
+  // Update cpVact based on VAPA (highest price observed)
+  useEffect(() => {
+    const newCpVact = Math.max(vact.cpVact, assetPrice);
+    if (newCpVact !== vact.cpVact) {
+      const newCVact = vact.cVactTaa * newCpVact;
+      setVact((prev) => ({
+        ...prev,
+        cpVact: newCpVact,
+        cVact: parseFloat(newCVact.toFixed(2)),
+      }));
+    }
+  }, [assetPrice, vact.cVactTaa]);
 
   const updateAllState = async (
-    newBitcoinPrice: number,
-    updatedState: VatoiState | null,
+    newAssetPrice: number,
+    updatedVatoi: VatoiState,
+    updatedVact: VactState,
     email: string
   ) => {
-    if (!updatedState) {
-      setVatoiState(null);
-      setVataai(newBitcoinPrice);
-      setVapa(newBitcoinPrice);
-      
-      try {
-        await axios.post('/api/saveVatoiState', {
-          email,
-          vatoiState: null,
-          vataai: newBitcoinPrice,
-          vapa: newBitcoinPrice,
-        });
-      } catch (error) {
-        console.error("Error saving vatoi state:", error);
-      }
-      return;
-    }
+    // Ensure cpVact only increases (VAPA behavior)
+    const newCpVact = Math.max(updatedVact.cpVact, newAssetPrice);
+    const newCVact = updatedVact.cVactTaa * newCpVact;
+    const newVapa = Math.max(vapa, newCpVact);
 
-    // Update cpVact based on VAPA (highest price observed)
-    const newCpVact = Math.max(updatedState.cpVact, newBitcoinPrice);
-    // Recalculate cVact based on cVactTaa and new cpVact
-    const newCVact = parseFloat((updatedState.cVactTaa * newCpVact).toFixed(2));
-    // Recalculate cdVatoi
-    const newCdVatoi = parseFloat((newCVact - updatedState.cVatoi).toFixed(2));
-
-    const processedState: VatoiState = {
-      ...updatedState,
+    const finalVact: VactState = {
+      cVact: parseFloat(newCVact.toFixed(2)),
       cpVact: newCpVact,
-      cVact: newCVact,
-      cdVatoi: newCdVatoi,
+      cVactTaa: updatedVact.cVactTaa,
     };
 
-    // Update VATAAI and VAPA
-    const newVataai = Math.max(newCpVact, vataai);
-    const newVapa = Math.max(newCpVact, vapa);
+    const finalVatoi: VatoiState = {
+      ...updatedVatoi,
+      cdVatoi: parseFloat((newCVact - updatedVatoi.cVatoi).toFixed(2)),
+    };
 
-    setVatoiState(processedState);
-    setVataai(newVataai);
+    setVact(finalVact);
+    setVatoi(finalVatoi);
     setVapa(newVapa);
 
     try {
       await axios.post('/api/saveVatoiState', {
         email,
-        vatoiState: processedState,
-        vataai: newVataai,
+        vatoi: finalVatoi,
+        vact: finalVact,
         vapa: newVapa,
       });
     } catch (error) {
@@ -166,63 +171,53 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  const setManualBitcoinPrice = async (
+  const setManualAssetPrice = async (
     price: number | ((currentPrice: number) => number)
   ) => {
-    const newPrice = typeof price === "function" ? price(bitcoinPrice) : price;
+    const newPrice = typeof price === "function" ? price(assetPrice) : price;
   
-    setBitcoinPrice(newPrice); // Update the state immediately
+    setAssetPrice(newPrice);
   
-    if (!vatoiState) {
-      await updateAllState(newPrice, null, email);
-      return;
-    }
-
-    // Update cpVact based on VAPA (highest price observed)
-    const newCpVact = Math.max(vatoiState.cpVact, newPrice);
-    // Recalculate cVact
-    const newCVact = parseFloat((vatoiState.cVactTaa * newCpVact).toFixed(2));
-    // Recalculate cdVatoi
-    const newCdVatoi = parseFloat((newCVact - vatoiState.cVatoi).toFixed(2));
-
-    const updatedState: VatoiState = {
-      ...vatoiState,
+    // Update cpVact to be max of current cpVact and new price (VAPA behavior)
+    const newCpVact = Math.max(vact.cpVact, newPrice);
+    const newCVact = vact.cVactTaa * newCpVact;
+  
+    const updatedVact: VactState = {
+      cVact: parseFloat(newCVact.toFixed(2)),
       cpVact: newCpVact,
-      cVact: newCVact,
-      cdVatoi: newCdVatoi,
+      cVactTaa: vact.cVactTaa,
     };
   
-    await updateAllState(newPrice, updatedState, email);
+    await updateAllState(newPrice, vatoi, updatedVact, email);
   };
 
-  const readABTCFile = async (): Promise<number | null> => {
+  const readASSETFile = async (): Promise<number | null> => {
     try {
       if (!email) throw new Error("Email is not set in context.");
       
-      const response = await axios.get('/api/readABTC', { params: { email } });
-      return response.data.aBTC || 0;
+      const response = await axios.get('/api/readASSET', { params: { email } });
+      return response.data.aASSET || 0;
     } catch (error) {
-      console.error('Error reading aBTC.json:', error);
+      console.error('Error reading aASSET.json:', error);
       return null;
     }
   };
 
-  const updateABTCFile = async (amount: number): Promise<number> => {
+  const updateASSETFile = async (amount: number): Promise<number> => {
     try {
       if (!email) throw new Error("Email is not set in context.");
       
-      const response = await axios.post('/api/saveABTC', { email, amount });
+      const response = await axios.post('/api/saveASSET', { email, amount });
   
-      // Return the updated aBTC value from the server response
-      return response.data.aBTC;
+      return response.data.aASSET;
     } catch (error) {
-      console.error('Error updating aBTC.json:', error);
+      console.error('Error updating aASSET.json:', error);
       throw error;
     }
   };
 
-  let isUpdating = false; // Shared lock variable
-  
+  let isUpdating = false;
+
   const handleImport = async (amount: number) => {
     if (isUpdating) {
       return;
@@ -231,54 +226,46 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     isUpdating = true;
   
     try {
-      const aBTC = await readABTCFile(); // Fetch the current aBTC value
+      const aASSET = await readASSETFile();
   
-      if (aBTC === null) {
-        console.error("Invalid state: aBTC is null.");
+      if (aASSET === null) {
+        console.error("Invalid state: aASSET is null.");
         return;
       }
   
-      const currentCVactTaa = vatoiState?.cVactTaa || 0;
+      const currentVactTaa = vact.cVactTaa || 0;
   
-      if (aBTC - currentCVactTaa < 0.00001) {
+      if (aASSET - currentVactTaa < 0.00001) {
         return;
       }
   
-      if (aBTC > currentCVactTaa) {
-        const amountToImport = parseFloat((aBTC - currentCVactTaa).toFixed(8));
-        const currentPrice = bitcoinPrice;
-
-        if (!vatoiState) {
-          // First import - create new state
-          const newState: VatoiState = {
-            cVatoi: amountToImport * currentPrice,
-            cpVatoi: currentPrice,
-            cdVatoi: 0,
-            cVact: amountToImport * currentPrice,
-            cpVact: currentPrice,
-            cVactTaa: amountToImport,
-          };
-          await updateAllState(currentPrice, newState, email);
-        } else {
-          // Additional import - accumulate values
-          const newCVactTaa = vatoiState.cVactTaa + amountToImport;
-          const newCVatoi = vatoiState.cVatoi + (amountToImport * currentPrice);
-          // cpVatoi should be the weighted average or the initial import price
-          // For simplicity, keeping the original cpVatoi
-          const newCVact = parseFloat((newCVactTaa * Math.max(vatoiState.cpVact, currentPrice)).toFixed(2));
-          const newCpVact = Math.max(vatoiState.cpVact, currentPrice);
-          const newCdVatoi = parseFloat((newCVact - newCVatoi).toFixed(2));
-
-          const updatedState: VatoiState = {
-            cVatoi: newCVatoi,
-            cpVatoi: vatoiState.cpVatoi, // Keep original import price
-            cdVatoi: newCdVatoi,
-            cVact: newCVact,
-            cpVact: newCpVact,
-            cVactTaa: newCVactTaa,
-          };
-          await updateAllState(currentPrice, updatedState, email);
-        }
+      if (aASSET > currentVactTaa) {
+        const amountToImport = parseFloat((aASSET - currentVactTaa).toFixed(8));
+        const importValue = amountToImport * assetPrice;
+  
+        // Update Vatoi: accumulate the import value
+        const newCVatoi = vatoi.cVatoi + importValue;
+        // cpVatoi should be the price at which the first import happened, or current price if first import
+        const newCpVatoi = vatoi.cpVatoi === 0 ? assetPrice : vatoi.cpVatoi;
+  
+        // Update Vact: add tokens and recalculate value
+        const newCVactTaa = vact.cVactTaa + amountToImport;
+        const newCpVact = Math.max(vact.cpVact, assetPrice); // VAPA behavior
+        const newCVact = newCVactTaa * newCpVact;
+  
+        const updatedVatoi: VatoiState = {
+          cVatoi: parseFloat(newCVatoi.toFixed(2)),
+          cpVatoi: newCpVatoi,
+          cdVatoi: 0, // Will be recalculated
+        };
+  
+        const updatedVact: VactState = {
+          cVact: parseFloat(newCVact.toFixed(2)),
+          cpVact: newCpVact,
+          cVactTaa: parseFloat(newCVactTaa.toFixed(8)),
+        };
+  
+        await updateAllState(assetPrice, updatedVatoi, updatedVact, email);
       }
     } catch (error) {
       console.error("Error during handleImport:", error);
@@ -287,107 +274,120 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  const handleImportABTC = async (amount: number) => {
+  useEffect(() => {
+    let isSyncing = false;
+  
+    const interval = setInterval(async () => {
+      if (isSyncing) return;
+  
+      isSyncing = true;
+  
+      try {
+        await readASSETFile();
+        await handleImport(0); // Trigger import check
+      } catch (error) {
+        console.error("Error in interval execution:", error);
+      } finally {
+        isSyncing = false;
+      }
+    }, 3000);
+  
+    return () => clearInterval(interval);
+  }, [vact.cVactTaa, email]);
+
+  const handleImportASSET = async (amount: number) => {
     if (amount < 0.0001) {
-      alert('The minimum import amount is 0.0001 BTC.');
+      alert('The minimum import amount is 0.0001 ASSET.');
       return;
     }
     try {
-      await axios.post('/api/saveABTC', { email, amount });
+      await axios.post('/api/saveASSET', { email, amount });
     } catch (error) {
-      console.error('Error saving to aBTC.json:', error);
+      console.error('Error saving to aASSET.json:', error);
     }
   };
 
   const saveVatoiState = async ({
     email,
-    vatoiState,
-    vataai,
+    vatoi,
+    vact,
     vapa,
-    soldAmounts,
+    exportedAmounts,
   }: {
     email: string;
-    vatoiState: VatoiState | null;
-    vataai: number;
+    vatoi: VatoiState;
+    vact: VactState;
     vapa: number;
-    soldAmounts: number;
+    exportedAmounts: number;
   }) => {
     try {
       const payload = {
         email,
-        vatoiState,
-        vataai,
+        vatoi,
+        vact,
         vapa,
-        soldAmounts,
+        exportedAmounts,
       };
   
-      const response = await axios.post('/api/saveVatoiState', payload);
+      await axios.post('/api/saveVatoiState', payload);
     } catch (error) {
       console.error('Error saving vatoi state:', error);
     }
   };
 
-  const handleSell = async (amount: number) => {
+  const handleExport = async (amount: number) => {
     if (isUpdating) return;
   
     isUpdating = true;
   
     try {
-      if (!vatoiState || vatoiState.cVact <= 0) {
-        alert(`Insufficient assets! You tried to sell $${amount}, but no assets are available.`);
-        return;
-      }
-
-      const btcAmount = parseFloat((amount / bitcoinPrice).toFixed(8));
+      const assetAmount = parseFloat((amount / assetPrice).toFixed(8));
   
-      if (amount > vatoiState.cVact) {
-        alert(`Insufficient assets! You tried to sell $${amount}, but only $${vatoiState.cVact} is available.`);
+      if (amount > vact.cVact) {
+        alert(`Insufficient funds! You tried to export $${amount}, but only $${vact.cVact} is available.`);
         return;
       }
   
-      const newABTC = await updateABTCFile(-btcAmount);
-  
-      // Calculate new values after sell
-      const sellRatio = amount / vatoiState.cVact;
-      const newCVactTaa = parseFloat((vatoiState.cVactTaa * (1 - sellRatio)).toFixed(8));
-      const newCVatoi = parseFloat((vatoiState.cVatoi * (1 - sellRatio)).toFixed(2));
-      const newCVact = parseFloat((newCVactTaa * vatoiState.cpVact).toFixed(2));
-      const newCdVatoi = parseFloat((newCVact - newCVatoi).toFixed(2));
-
-      if (newCVactTaa <= 0.00001) {
-        // All assets sold, reset state
-        setVatoiState(null);
-        setSoldAmounts((prev) => prev + amount);
-        await saveVatoiState({
-          email,
-          vatoiState: null,
-          vataai,
-          vapa,
-          soldAmounts: soldAmounts + amount,
-        });
-      } else {
-        const updatedState: VatoiState = {
-          cVatoi: newCVatoi,
-          cpVatoi: vatoiState.cpVatoi,
-          cdVatoi: newCdVatoi,
-          cVact: newCVact,
-          cpVact: vatoiState.cpVact,
-          cVactTaa: newCVactTaa,
-        };
-  
-        setVatoiState(updatedState);
-        setSoldAmounts((prev) => prev + amount);
-  
-        await saveVatoiState({
-          email,
-          vatoiState: updatedState,
-          vataai,
-          vapa,
-          soldAmounts: soldAmounts + amount,
-        });
+      if (assetAmount > vact.cVactTaa) {
+        alert(`Insufficient tokens! You tried to export ${assetAmount} ASSET, but only ${vact.cVactTaa} ASSET is available.`);
+        return;
       }
+  
+      const newASSET = await updateASSETFile(-assetAmount);
+  
+      // Calculate new token amount and values
+      const newCVactTaa = vact.cVactTaa - assetAmount;
+      const newCVact = newCVactTaa * vact.cpVact;
+      
+      // Update Vatoi: reduce cVatoi proportionally
+      const exportRatio = assetAmount / vact.cVactTaa;
+      const newCVatoi = vatoi.cVatoi * (1 - exportRatio);
+  
+      const updatedVact: VactState = {
+        cVact: parseFloat(newCVact.toFixed(2)),
+        cpVact: vact.cpVact, // Keep same price (VAPA)
+        cVactTaa: parseFloat(newCVactTaa.toFixed(8)),
+      };
+  
+      const updatedVatoi: VatoiState = {
+        cVatoi: parseFloat(newCVatoi.toFixed(2)),
+        cpVatoi: vatoi.cpVatoi, // Keep original import price
+        cdVatoi: 0, // Will be recalculated
+      };
+  
+      setVact(updatedVact);
+      setVatoi(updatedVatoi);
+      setExportedAmounts((prev) => prev + amount);
+  
+      await saveVatoiState({
+        email,
+        vatoi: updatedVatoi,
+        vact: updatedVact,
+        vapa,
+        exportedAmounts: exportedAmounts + amount,
+      });
     } catch (error) {
-      console.error("Error during sell operation:", error);
+      console.error("Error during export operation:", error);
     } finally {
       isUpdating = false;
     }
@@ -396,22 +396,22 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   return (
     <Vavityarchitecture.Provider
       value={{
-        bitcoinPrice,
-        vatoiState,
-        vataai,
+        assetPrice,
+        vatoi,
+        vact,
         vapa,
         importAmount,
-        sellAmount,
+        exportAmount,
         setImportAmount,
-        setSellAmount,
+        setExportAmount,
         handleImport,
-        handleImportABTC,
-        handleSell,
-        setManualBitcoinPrice,
+        handleImportASSET,
+        handleExport,
+        setManualAssetPrice,
         email,
-        soldAmounts,
-        readABTCFile, 
-        updateABTCFile
+        exportedAmounts,
+        readASSETFile, 
+        updateASSETFile
       }}
     >
       {children}

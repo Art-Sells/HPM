@@ -6,13 +6,9 @@ If you import your investment asset at an external asset price per token at $60k
 
 ## Terminologies:
 
-**VAPAAI** = Valued Asset Price Anchored At Import
-
-- The highest `cpVact`. Defaults to external price if no assets exist.
-
 **VAPA** = Valued Asset Price Anchored
 
-- The highest valued asset price anchored.
+- The highest valued asset price anchored. Defaults to external price if no assets exist.
 
 **Vatoi** = Value At Time Of Import
 
@@ -34,32 +30,28 @@ If you import your investment asset at an external asset price per token at $60k
 
 - **Action:** $500 worth of the external asset investment imported.
 - **Results:**
-  - **VATAAI** = $60,000.
+  - **VAPA** = $60,000.
     - `cVatoi` = $500, `cpVatoi` = $60,000, `cVact` = $500, `cpVact` = $60,000.
     - `cVactTaa` = 0.00833 Tokens `cdVatop` = $0.
-    - `VAPA` = $60,000.
 
 ### 2. External asset price falls: $54,000
 
 - **Action:** $600 worth of the external asset investment imported.
 - **Results:**
-  - **VATAAI** = $60,000.
+  - **VAPA** = $60,000.
     - `cVatoi` = $1,166, `cpVatoi` = $60,000, `cVact` = $1,166, `cpVact` = $60,000.
     - `cVactTaa` = 0.01944, `cdVatop` = $0.
-    - `VAPA` = $60,000.
 
-### 3. External asset price rises: $65,000
+### 4. External asset price rises: $65,000
 
 - **Results:**
-  - **VATAAI** = $65,000.
+  - **VAPA** = $65,000.
     - `cVatoi` = $1,166, `cpVatoi` = $60,000, `cVact` = $1,263, `cpVact` = $65,000.
     - `cVactTaa` = 0.01944, `cdVatop` = $97.
-    - `VAPA` = $65,000.
 
 ### 4. External asset price falls: $63,000
 
 - **Results:**
-  - **VATAAI** = $65,000.
+  - **VAPA** = $65,000.
     - `cVatoi` = $1,166, `cpVatoi` = $60,000, `cVact` = $1,263, `cpVact` = $65,000.
     - `cVactTaa` = 0.01944, `cdVatop` = $97.
-    - `VAPA` = $65,000.
