@@ -10,9 +10,3 @@ Vavity autonomously eliminates bear markets from financial systems and introduce
 - **Sloth Market:** a market in which investments stagnate.
 
 <img src="https://github.com/Art-Sells/Arells/blob/test/Art/Marketing/BeforeandAfterArellss.png" width="500px"> 
-
-________________________________________
-
-### Important Note for any future innovators & builders:
-
-Psychological financial systems work only if the rules are controlled and bounded. Going against the bounds destroys the fundamental premise of the inventions.
