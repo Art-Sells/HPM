@@ -3,30 +3,16 @@
 - **Psychology handles the meaning.**
 - **Technology handles the rules.**
 
-## Anchored Upward Limit
-
-prevents:
-
-- price hyperinflation
-- runaway psychological valuation
-- unbounded optimism or mania
-
-## Self-Limiting
-
-- Price cannot exceed external reference
-- Price cannot fall below imports/purchases
-- There is no mechanic that encourages runaway behavior (price hyper-inflation)
-
 ## Why Previous Systems Failed
 
-Every failed psychological monetary system was self-amplifying:
+Every failed new psychological monetary invention was human dependent:
 
-- more trust → more issuance → more risk
-- more hype → more exposure → greater collapse potential
+- human trust → human issuance → human risk
+- human hype → human exposure → greater collapse potential
 
-## Why Vavity succeeds
+## Why Vavity Succeeds
 
-- Autonomous systems have now made it possible to hard-code human psychology out of financial systems.
+- Removes human psychology out of financial systems.
 
 ## Vavity's Autonomous Protections
 
@@ -50,4 +36,18 @@ This makes Vavity:
 - non-manipulable
 - non-inflationary
 - non-extractive
+
+## Anchored Upward Limit
+
+prevents:
+
+- price hyperinflation
+- runaway psychological valuation
+- unbounded optimism or mania
+
+## Self-Limiting
+
+- Price cannot exceed external reference
+- Price cannot fall below imports/purchases
+- There is no mechanic that encourages runaway behavior (price hyper-inflation)
 
