@@ -1,7 +1,6 @@
 # Rules of Vavity
 
-- **Psychology handles the meaning.**
-- **Technology handles the rules.**
+- **Machines handle the rules, not humans.**
 
 ## Why Previous Systems Failed
 

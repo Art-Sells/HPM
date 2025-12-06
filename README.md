@@ -2,9 +2,11 @@
 
 ## VAVITY
 
-**A psychological and technological invention that anchors asset prices before they fall.**
+**An autonomous financial system that anchors asset prices before they fall.**
 
-Vavity autonomously eliminates bear markets from financial systems and introduces a new kind of marketplace and market dynamics:
+- This is accomplished by removing human psychology out of financial systems.
+
+By eliminating bear markets, Vavity introduces a new kind of marketplace and market dynamics:
 
 - **Solid Marketplace:** a marketplace in which investments either stagnate or increase.
 - **Sloth Market:** a market in which investments stagnate.
