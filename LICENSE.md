@@ -1,7 +1,5 @@
 # LICENSE
 
-**Copyright (C) 2025 Arells Inc**
-
 This project is licensed under the terms of the **GNU General Public License v3.0**.
 
 ---
