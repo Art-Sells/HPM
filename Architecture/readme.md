@@ -4,7 +4,7 @@ If you import your investment asset at an external asset price per token at $60k
 
 ***With Vavity, you set your investments and forget them (without worrying about bear-market losses).***
 
-## Terminologies:
+## Aggregator Terminologies:
 
 **VAPA** = Valued Asset Price Anchored
 
