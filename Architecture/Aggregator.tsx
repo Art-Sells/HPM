@@ -18,10 +18,18 @@ interface VactState {
   cVactTaa: number; // Token amount of the asset available
 }
 
-interface VavityarchitectureType {
+interface TotalsState {
+  acVatoi: number; // Combination of all the cVatois
+  acdVatoi: number; // Combination of all the cdVatois
+  acVact: number; // Combination of all cVacts
+  acVactTaa: number; // Combination of all cVactTaas
+}
+
+interface VavityaggregatorType {
   assetPrice: number;
   vatoi: VatoiState;
   vact: VactState;
+  totals: TotalsState;
   vapa: number; // Valued Asset Price Anchored (highest cpVact)
   importAmount: number;
   exportAmount: number;
@@ -37,7 +45,7 @@ interface VavityarchitectureType {
   updateASSETFile: (amount: number) => Promise<number>;
 }
 
-const Vavityarchitecture = createContext<VavityarchitectureType | undefined>(undefined);
+const Vavityaggregator = createContext<VavityaggregatorType | undefined>(undefined);
 
 export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [email, setEmail] = useState<string>('');
@@ -57,6 +65,13 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     cVact: 0,
     cpVact: 0,
     cVactTaa: 0,
+  });
+
+  const [totals, setTotals] = useState<TotalsState>({
+    acVatoi: 0,
+    acdVatoi: 0,
+    acVact: 0,
+    acVactTaa: 0,
   });
 
   const [vapa, setVapa] = useState<number>(60000);
@@ -119,6 +134,16 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       cdVatoi: parseFloat(newCdVatoi.toFixed(2)),
     }));
   }, [vact.cVact, vatoi.cVatoi]);
+
+  // Update totals when vatoi or vact changes
+  useEffect(() => {
+    setTotals({
+      acVatoi: vatoi.cVatoi,
+      acdVatoi: vatoi.cdVatoi,
+      acVact: vact.cVact,
+      acVactTaa: vact.cVactTaa,
+    });
+  }, [vatoi.cVatoi, vatoi.cdVatoi, vact.cVact, vact.cVactTaa]);
 
   // Update cpVact based on VAPA (highest price observed)
   useEffect(() => {
@@ -394,11 +419,12 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   return (
-    <Vavityarchitecture.Provider
+    <Vavityaggregator.Provider
       value={{
         assetPrice,
         vatoi,
         vact,
+        totals,
         vapa,
         importAmount,
         exportAmount,
@@ -415,12 +441,12 @@ export const VavityProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }}
     >
       {children}
-    </Vavityarchitecture.Provider>
+    </Vavityaggregator.Provider>
   );
 };
 
 export const useVavity = () => {
-  const context = useContext(Vavityarchitecture);
+  const context = useContext(Vavityaggregator);
   if (context === undefined) {
     throw new Error('useVavity must be used within an VavityProvider');
   }
